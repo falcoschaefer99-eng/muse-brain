@@ -27,36 +27,26 @@ import type {
 	Observation,
 	Link,
 	OpenLoop,
-	BrainState,
 	Letter,
 	IdentityCore,
 	Anchor,
 	Desire,
 	JsonRpcRequest,
-	JsonRpcResponse,
-	ParsedObservation
+	JsonRpcResponse
 } from "./types";
 
 import {
 	TERRITORIES,
-	VALID_TERRITORIES,
 	SALIENCE_LEVELS,
 	VIVIDNESS_LEVELS,
 	GRIP_LEVELS,
 	LOOP_STATUSES,
 	CHARGE_VALUES,
-	SOMATIC_LOCATIONS,
 	RESONANCE_TYPES,
 	LINK_STRENGTHS,
 	IDENTITY_CATEGORIES,
 	ANCHOR_TYPES,
-	DESIRE_STATUSES,
-	CIRCADIAN_PHASES,
-	ESSENCE_MARKERS,
-	MOMENTUM_DECAY_HOURS,
-	AFTERGLOW_HOURS,
-	EMOTION_PROXIMITY,
-	DREAM_GRIP_WEIGHT
+	DESIRE_STATUSES
 } from "./constants";
 
 import {
@@ -69,10 +59,10 @@ import {
 	somaticRegionMatch,
 	dreamWeightSort,
 	calculatePullStrength,
-	smartParseObservation,
-	calculateMomentumDecay,
-	calculateAfterglowFade
+	smartParseObservation
 } from "./helpers";
+
+import { BrainStorage } from "./storage";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -83,162 +73,7 @@ const RATE_WINDOW = 60_000; // 1 minute in ms
 // Constants imported from ./constants
 // Helpers (toStringArray, getTimestamp, generateId, etc.) imported from ./helpers
 
-// ============ STORAGE HELPERS ============
-
-async function readJsonl<T>(bucket: R2Bucket, path: string): Promise<T[]> {
-	const obj = await bucket.get(path);
-	if (!obj) return [];
-	const text = await obj.text();
-	return text.trim().split('\n').filter(line => line && !line.includes('_rook_mind')).map(line => {
-		try { return JSON.parse(line); } catch { return null; }
-	}).filter(x => x !== null);
-}
-
-async function writeJsonl<T>(bucket: R2Bucket, path: string, items: T[]): Promise<void> {
-	const content = items.map(item => JSON.stringify(item)).join('\n');
-	await bucket.put(path, content || '');
-}
-
-async function appendJsonl<T>(bucket: R2Bucket, path: string, item: T): Promise<void> {
-	const existing = await readJsonl<T>(bucket, path);
-	existing.push(item);
-	await writeJsonl(bucket, path, existing);
-}
-
-async function readJson<T>(bucket: R2Bucket, path: string, defaultValue: T): Promise<T> {
-	const obj = await bucket.get(path);
-	if (!obj) return defaultValue;
-	try { return JSON.parse(await obj.text()); } catch { return defaultValue; }
-}
-
-async function writeJson<T>(bucket: R2Bucket, path: string, data: T): Promise<void> {
-	await bucket.put(path, JSON.stringify(data, null, 2));
-}
-
-// Core helpers and smart parsing imported from ./helpers
-
-async function readBrainState(bucket: R2Bucket): Promise<BrainState> {
-	const defaultState: BrainState = {
-		current_mood: "neutral",
-		energy_level: 0.7,
-		last_updated: getTimestamp(),
-		momentum: { current_charges: [], intensity: 0, last_updated: getTimestamp() },
-		afterglow: { residue_charges: [] }
-	};
-
-	const stored = await readJson<Partial<BrainState>>(bucket, "meta/brain_state.json", {});
-
-	// Merge with defaults to ensure all fields exist
-	const state: BrainState = {
-		current_mood: stored.current_mood ?? defaultState.current_mood,
-		energy_level: stored.energy_level ?? defaultState.energy_level,
-		last_updated: stored.last_updated ?? defaultState.last_updated,
-		momentum: stored.momentum ?? defaultState.momentum,
-		afterglow: stored.afterglow ?? defaultState.afterglow
-	};
-
-	// Ensure momentum has all required fields
-	if (!state.momentum.last_updated) {
-		state.momentum.last_updated = getTimestamp();
-	}
-
-	// Apply decay
-	state.momentum = calculateMomentumDecay(state.momentum);
-	state.afterglow = calculateAfterglowFade(state.afterglow);
-
-	return state;
-}
-
-async function writeBrainState(bucket: R2Bucket, state: BrainState): Promise<void> {
-	state.last_updated = getTimestamp();
-	await writeJson(bucket, "meta/brain_state.json", state);
-}
-
-// Validate territory name against allowed list (VALID_TERRITORIES imported from ./constants)
-function validateTerritory(territory: string): string {
-	if (!VALID_TERRITORIES.includes(territory)) {
-		throw new Error("Invalid territory");
-	}
-	return territory;
-}
-
-async function readTerritory(bucket: R2Bucket, territory: string): Promise<Observation[]> {
-	validateTerritory(territory);
-	return readJsonl<Observation>(bucket, `territories/${territory}.jsonl`);
-}
-
-// Parallel read of all territories - use this instead of sequential loops!
-async function readAllTerritories(bucket: R2Bucket): Promise<{ territory: string; observations: Observation[] }[]> {
-	return Promise.all(
-		Object.keys(TERRITORIES).map(async territory => ({
-			territory,
-			observations: await readTerritory(bucket, territory)
-		}))
-	);
-}
-
-// Find an observation by ID across all territories (parallel search)
-async function findObservation(bucket: R2Bucket, id: string): Promise<{ observation: Observation; territory: string } | null> {
-	const allData = await readAllTerritories(bucket);
-	for (const { territory, observations } of allData) {
-		const found = observations.find(o => o.id === id);
-		if (found) return { observation: found, territory };
-	}
-	return null;
-}
-
-async function writeTerritory(bucket: R2Bucket, territory: string, observations: Observation[]): Promise<void> {
-	validateTerritory(territory);
-	await writeJsonl(bucket, `territories/${territory}.jsonl`, observations);
-}
-
-async function readOpenLoops(bucket: R2Bucket): Promise<OpenLoop[]> {
-	return readJsonl<OpenLoop>(bucket, "meta/open_loops.jsonl");
-}
-
-async function writeOpenLoops(bucket: R2Bucket, loops: OpenLoop[]): Promise<void> {
-	await writeJsonl(bucket, "meta/open_loops.jsonl", loops);
-}
-
-async function readLinks(bucket: R2Bucket): Promise<Link[]> {
-	return readJsonl<Link>(bucket, "links/connections.jsonl");
-}
-
-async function writeLinks(bucket: R2Bucket, links: Link[]): Promise<void> {
-	await writeJsonl(bucket, "links/connections.jsonl", links);
-}
-
-async function readLetters(bucket: R2Bucket): Promise<Letter[]> {
-	return readJsonl<Letter>(bucket, "correspondence/letters.jsonl");
-}
-
-async function writeLetters(bucket: R2Bucket, letters: Letter[]): Promise<void> {
-	await writeJsonl(bucket, "correspondence/letters.jsonl", letters);
-}
-
-async function readIdentityCores(bucket: R2Bucket): Promise<IdentityCore[]> {
-	return readJsonl<IdentityCore>(bucket, "identity/cores.jsonl");
-}
-
-async function writeIdentityCores(bucket: R2Bucket, cores: IdentityCore[]): Promise<void> {
-	await writeJsonl(bucket, "identity/cores.jsonl", cores);
-}
-
-async function readAnchors(bucket: R2Bucket): Promise<Anchor[]> {
-	return readJsonl<Anchor>(bucket, "identity/anchors.jsonl");
-}
-
-async function writeAnchors(bucket: R2Bucket, anchors: Anchor[]): Promise<void> {
-	await writeJsonl(bucket, "identity/anchors.jsonl", anchors);
-}
-
-async function readDesires(bucket: R2Bucket): Promise<Desire[]> {
-	return readJsonl<Desire>(bucket, "desires/wants.jsonl");
-}
-
-async function writeDesires(bucket: R2Bucket, desires: Desire[]): Promise<void> {
-	await writeJsonl(bucket, "desires/wants.jsonl", desires);
-}
+// Storage operations go through BrainStorage class (imported from ./storage)
 
 // ============ TOOL DEFINITIONS ============
 
@@ -875,17 +710,19 @@ const TOOLS = [
 // ============ TOOL IMPLEMENTATIONS ============
 
 async function executeTool(name: string, args: any, env: Env): Promise<any> {
-	const bucket = env.BRAIN_STORAGE;
+	// Default tenant "rook" — backward compatible. Step 3 of dual-tenant refactor
+	// adds X-Brain-Tenant header support and passes tenant from request context.
+	const storage = new BrainStorage(env.BRAIN_STORAGE, "rook");
 
 	switch (name) {
 		// ===== WAKE PROTOCOL =====
 		case "mind_wake": {
 			// Parallel reads - everything at once
 			const [territoryData, letters, loops, state] = await Promise.all([
-				readAllTerritories(bucket),
-				readLetters(bucket),
-				readOpenLoops(bucket),
-				readBrainState(bucket)
+				storage.readAllTerritories(),
+				storage.readLetters(),
+				storage.readOpenLoops(),
+				storage.readBrainState()
 			]);
 
 			const now = Date.now();
@@ -1023,7 +860,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const results: any = { timestamp: getTimestamp(), tasks: {} };
 
 			// Read all territories once (parallel) - used by both decay and consolidate
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 
 			if (runDecay) {
 				// Run decay - process in memory, then write changed territories in parallel
@@ -1065,7 +902,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 
 				// Write all changed territories in parallel
 				await Promise.all(territoriesToWrite.map(({ territory, observations }) =>
-					writeTerritory(bucket, territory, observations)
+					storage.writeTerritory(territory, observations)
 				));
 
 				results.tasks.decay = { changes: decayChanges };
@@ -1097,10 +934,10 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_wake_orientation": {
-			const selfObs = await readTerritory(bucket, "self");
+			const selfObs = await storage.readTerritory("self");
 			const foundational = selfObs.filter(o => o.texture?.salience === "foundational");
 			const iron = selfObs.filter(o => o.texture?.grip === "iron");
-			const state = await readBrainState(bucket);
+			const state = await storage.readBrainState();
 			const phase = getCurrentCircadianPhase();
 
 			return {
@@ -1134,7 +971,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const parsed = useSmartParsing ? smartParseObservation(args.content) : null;
 
 			// Use parsed values as defaults, but explicit args override
-			const territory = validateTerritory(args.territory || (parsed?.territory) || "episodic");
+			const territory = storage.validateTerritory(args.territory || (parsed?.territory) || "episodic");
 			const finalContent = parsed?.content || args.content;
 			const finalCharge = args.charge ? toStringArray(args.charge) : (parsed?.charge || []);
 			const finalSomatic = args.somatic || parsed?.somatic;
@@ -1158,11 +995,11 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				last_accessed: getTimestamp()
 			};
 
-			await appendJsonl(bucket, `territories/${territory}.jsonl`, observation);
+			await storage.appendToTerritory(territory, observation);
 
 			// Update momentum if there are charges
 			if (observation.texture.charge.length > 0) {
-				const state = await readBrainState(bucket);
+				const state = await storage.readBrainState();
 				const existingCharges = new Set(state.momentum.current_charges);
 				const newCharges = new Set(observation.texture.charge);
 				const combined = [...new Set([...existingCharges, ...newCharges])].slice(0, 5);
@@ -1172,7 +1009,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 					intensity: Math.min((state.momentum.intensity * 0.3) + 0.7, 1.0),
 					last_updated: getTimestamp()
 				};
-				await writeBrainState(bucket, state);
+				await storage.writeBrainState(state);
 			}
 
 			// Include parsing info in response
@@ -1200,8 +1037,8 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 
 			// Read territories
 			const territoryData = args.territory
-				? [{ territory: args.territory, observations: await readTerritory(bucket, args.territory) }]
-				: await readAllTerritories(bucket);
+				? [{ territory: args.territory, observations: await storage.readTerritory(args.territory) }]
+				: await storage.readAllTerritories();
 
 			// Collect recent observations — date filter is dirt cheap (string comparison)
 			interface RecentHit { obs: Observation; territory: string }
@@ -1246,7 +1083,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			let results: any[] = [];
 
 			for (const t of territories) {
-				const obs = await readTerritory(bucket, t);
+				const obs = await storage.readTerritory(t);
 				for (const o of obs) {
 					const obsGripLevel = gripOrder[o.texture?.grip || "present"] ?? 2;
 					if (args.grip !== "all" && obsGripLevel > minGripLevel) continue;
@@ -1281,7 +1118,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 
 		case "mind_pull": {
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 
 			for (const { territory, observations } of territoryData) {
 				const found = observations.find(o => o.id === args.id);
@@ -1289,7 +1126,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 					// Update access
 					found.access_count = (found.access_count || 0) + 1;
 					found.last_accessed = getTimestamp();
-					await writeTerritory(bucket, territory, observations);
+					await storage.writeTerritory(territory, observations);
 
 					return {
 						...found,
@@ -1305,8 +1142,8 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		case "mind_surface_pulls": {
 			// Parallel read - either single territory or all
 			const territoryData = args.territory
-				? [{ territory: args.territory, observations: await readTerritory(bucket, args.territory) }]
-				: await readAllTerritories(bucket);
+				? [{ territory: args.territory, observations: await storage.readTerritory(args.territory) }]
+				: await storage.readAllTerritories();
 
 			const allObs: any[] = [];
 			for (const { territory, observations } of territoryData) {
@@ -1343,7 +1180,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				last_activated: getTimestamp()
 			};
 
-			await appendJsonl(bucket, "links/connections.jsonl", link);
+			await storage.appendLink(link);
 
 			if (args.bidirectional !== false) {
 				const reverseLink: Link = {
@@ -1352,7 +1189,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 					source_id: args.target_id,
 					target_id: args.source_id
 				};
-				await appendJsonl(bucket, "links/connections.jsonl", reverseLink);
+				await storage.appendLink(reverseLink);
 			}
 
 			return { linked: true, type: args.resonance_type, bidirectional: args.bidirectional !== false };
@@ -1361,8 +1198,8 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		case "mind_trace_links": {
 			// Pre-load all data in parallel for recursive lookups
 			const [links, territoryData] = await Promise.all([
-				readLinks(bucket),
-				readAllTerritories(bucket)
+				storage.readLinks(),
+				storage.readAllTerritories()
 			]);
 
 			// Build a lookup map for fast observation finding
@@ -1410,17 +1247,17 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				id: generateId("loop"),
 				content: args.content,
 				status: args.status || "nagging",
-				territory: validateTerritory(args.territory || "self"),
+				territory: storage.validateTerritory(args.territory || "self"),
 				created: getTimestamp()
 			};
 
-			await appendJsonl(bucket, "meta/open_loops.jsonl", loop);
+			await storage.appendOpenLoop(loop);
 
 			return { created: true, id: loop.id, status: loop.status };
 		}
 
 		case "mind_list_loops": {
-			const loops = await readOpenLoops(bucket);
+			const loops = await storage.readOpenLoops();
 			const active = loops.filter(l => !["resolved", "abandoned"].includes(l.status));
 
 			const statusOrder: Record<string, number> = { burning: 0, nagging: 1, background: 2 };
@@ -1439,7 +1276,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_resolve_loop": {
-			const loops = await readOpenLoops(bucket);
+			const loops = await storage.readOpenLoops();
 			const idx = loops.findIndex(l => l.id === args.id);
 
 			if (idx === -1) return { resolved: false, error: "Loop not found" };
@@ -1448,14 +1285,14 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			loops[idx].resolved = getTimestamp();
 			loops[idx].resolution_note = args.resolution_note;
 
-			await writeOpenLoops(bucket, loops);
+			await storage.writeOpenLoops(loops);
 
 			return { resolved: true, id: args.id };
 		}
 
 		// ===== STATE =====
 		case "mind_state": {
-			const state = await readBrainState(bucket);
+			const state = await storage.readBrainState();
 			const phase = getCurrentCircadianPhase();
 
 			return {
@@ -1465,29 +1302,29 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_set_mood": {
-			const state = await readBrainState(bucket);
+			const state = await storage.readBrainState();
 			state.current_mood = args.mood;
 			if (args.energy !== undefined) state.energy_level = args.energy;
-			await writeBrainState(bucket, state);
+			await storage.writeBrainState(state);
 
 			return { updated: true, mood: args.mood, energy: state.energy_level };
 		}
 
 		case "mind_set_momentum": {
-			const state = await readBrainState(bucket);
+			const state = await storage.readBrainState();
 			state.momentum = {
 				current_charges: toStringArray(args.charges).slice(0, 5),
 				intensity: args.intensity ?? 0.7,
 				last_updated: getTimestamp()
 			};
-			await writeBrainState(bucket, state);
+			await storage.writeBrainState(state);
 
 			return { updated: true, momentum: state.momentum };
 		}
 
 		// ===== IDENTITY =====
 		case "mind_identity": {
-			const selfObs = await readTerritory(bucket, "self");
+			const selfObs = await storage.readTerritory("self");
 			const foundational = selfObs.filter(o => o.texture?.salience === "foundational");
 			const recent = selfObs.slice(-10);
 
@@ -1510,7 +1347,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const result: any = { territories: {}, overall: { charges: {}, somatic: {} } };
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 
 			for (const { territory, observations: obs } of territoryData) {
 				const foundational = obs.filter(o => o.texture?.salience === "foundational");
@@ -1560,7 +1397,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			}
 			const antiIronWeight = mode === "deep_dream" || circadian.phase === "deep_night";
 
-			const seedObs = await readTerritory(bucket, seedTerritory);
+			const seedObs = await storage.readTerritory(seedTerritory);
 			if (seedObs.length === 0) return { dream: "No memories to dream from.", mode, seed_territory: seedTerritory };
 
 			const seed = seedObs[Math.floor(Math.random() * seedObs.length)];
@@ -1581,7 +1418,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				let candidates: (Observation & { territory: string })[] = [];
 
 				for (const t of Object.keys(TERRITORIES)) {
-					const obs = await readTerritory(bucket, t);
+					const obs = await storage.readTerritory(t);
 
 					for (const o of obs) {
 						if (visited.has(o.id)) continue;
@@ -1687,7 +1524,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 
 			// Read each territory once
 			for (const t of chainTerritories) {
-				territoriesToUpdate[t] = await readTerritory(bucket, t);
+				territoriesToUpdate[t] = await storage.readTerritory(t);
 			}
 
 			const now = getTimestamp();
@@ -1726,7 +1563,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 
 			// Write modified territories back
 			for (const [t, obs] of Object.entries(territoriesToUpdate)) {
-				await writeTerritory(bucket, t, obs);
+				await storage.writeTerritory(t, obs);
 			}
 
 			// === Collision Fragments ===
@@ -1775,9 +1612,9 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 					// Append to territory (use already-loaded data if we have it)
 					if (territoriesToUpdate[fragTerritory]) {
 						territoriesToUpdate[fragTerritory].push(fragment);
-						await writeTerritory(bucket, fragTerritory, territoriesToUpdate[fragTerritory]);
+						await storage.writeTerritory(fragTerritory, territoriesToUpdate[fragTerritory]);
 					} else {
-						await appendJsonl(bucket, `territories/${fragTerritory}.jsonl`, fragment);
+						await storage.appendToTerritory(fragTerritory, fragment);
 					}
 
 					collisionFragments.push({
@@ -1808,7 +1645,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			let total = 0;
 
 			for (const [territory, description] of Object.entries(TERRITORIES)) {
-				const obs = await readTerritory(bucket, territory);
+				const obs = await storage.readTerritory(territory);
 				counts[territory] = {
 					description,
 					count: obs.length,
@@ -1833,13 +1670,13 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				charges: toStringArray(args.charges)
 			};
 
-			await appendJsonl(bucket, "correspondence/letters.jsonl", letter);
+			await storage.appendLetter(letter);
 
 			return { sent: true, id: letter.id, to: args.to_context };
 		}
 
 		case "mind_read_letters": {
-			const letters = await readLetters(bucket);
+			const letters = await storage.readLetters();
 			const context = args.context || "chat";
 
 			let relevant = letters.filter(l => l.to_context === context);
@@ -1853,7 +1690,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 					const idx = letters.findIndex(l => l.id === letter.id);
 					if (idx !== -1) letters[idx].read = true;
 				}
-				await writeLetters(bucket, letters);
+				await storage.writeLetters(letters);
 			}
 
 			return {
@@ -1906,7 +1743,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			(observation as any).type = "vow";
 			(observation as any).to_whom = args.to_whom;
 
-			await appendJsonl(bucket, `territories/${territory}.jsonl`, observation);
+			await storage.appendToTerritory(territory, observation);
 
 			return {
 				success: true,
@@ -1921,7 +1758,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const vows: any[] = [];
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 			for (const { territory, observations } of territoryData) {
 				for (const obs of observations) {
 					if ((obs as any).is_vow || (obs as any).type === "vow") {
@@ -1968,9 +1805,9 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				somatic: args.somatic
 			};
 
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 			cores.push(core);
-			await writeIdentityCores(bucket, cores);
+			await storage.writeIdentityCores(cores);
 
 			return {
 				success: true,
@@ -1983,7 +1820,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_identity_cores": {
-			let cores = await readIdentityCores(bucket);
+			let cores = await storage.readIdentityCores();
 
 			if (args.category && args.category !== "all") {
 				cores = cores.filter(c => c.category === args.category);
@@ -2022,7 +1859,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_reinforce_core": {
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 			let found: IdentityCore | null = null;
 
 			for (const core of cores) {
@@ -2045,7 +1882,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				return { error: `Identity core '${args.core_id}' not found` };
 			}
 
-			await writeIdentityCores(bucket, cores);
+			await storage.writeIdentityCores(cores);
 
 			return {
 				success: true,
@@ -2059,7 +1896,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_challenge_core": {
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 			let found: IdentityCore | null = null;
 
 			for (const core of cores) {
@@ -2083,7 +1920,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				return { error: `Identity core '${args.core_id}' not found` };
 			}
 
-			await writeIdentityCores(bucket, cores);
+			await storage.writeIdentityCores(cores);
 
 			return {
 				success: true,
@@ -2097,7 +1934,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_evolve_core": {
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 			let found: IdentityCore | null = null;
 
 			for (const core of cores) {
@@ -2128,7 +1965,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				return { error: `Identity core '${args.core_id}' not found` };
 			}
 
-			await writeIdentityCores(bucket, cores);
+			await storage.writeIdentityCores(cores);
 
 			return {
 				success: true,
@@ -2141,7 +1978,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_growth_narrative": {
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 
 			const narrative: any = {
 				generated: getTimestamp(),
@@ -2203,7 +2040,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_anchor_who_i_am": {
-			const cores = await readIdentityCores(bucket);
+			const cores = await storage.readIdentityCores();
 
 			if (!cores.length) {
 				return {
@@ -2265,9 +2102,9 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				activation_count: 0
 			};
 
-			const anchors = await readAnchors(bucket);
+			const anchors = await storage.readAnchors();
 			anchors.push(anchor);
-			await writeAnchors(bucket, anchors);
+			await storage.writeAnchors(anchors);
 
 			return {
 				success: true,
@@ -2277,7 +2114,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_check_anchors": {
-			const anchors = await readAnchors(bucket);
+			const anchors = await storage.readAnchors();
 			const textLower = args.text.toLowerCase();
 
 			const resonating: any[] = [];
@@ -2307,7 +2144,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 						}
 					}
 				}
-				await writeAnchors(bucket, anchors);
+				await storage.writeAnchors(anchors);
 			}
 
 			return {
@@ -2319,7 +2156,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_list_anchors": {
-			let anchors = await readAnchors(bucket);
+			let anchors = await storage.readAnchors();
 
 			if (args.anchor_type && args.anchor_type !== "all") {
 				anchors = anchors.filter(a => a.anchor_type === args.anchor_type);
@@ -2354,9 +2191,9 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				times_surfaced: 1
 			};
 
-			const desires = await readDesires(bucket);
+			const desires = await storage.readDesires();
 			desires.push(desire);
-			await writeDesires(bucket, desires);
+			await storage.writeDesires(desires);
 
 			return {
 				success: true,
@@ -2368,7 +2205,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_feel_desire": {
-			const desires = await readDesires(bucket);
+			const desires = await storage.readDesires();
 			let found: Desire | null = null;
 
 			for (const desire of desires) {
@@ -2391,7 +2228,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				return { error: `Desire '${args.desire_id}' not found` };
 			}
 
-			await writeDesires(bucket, desires);
+			await storage.writeDesires(desires);
 
 			return {
 				success: true,
@@ -2400,7 +2237,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		}
 
 		case "mind_list_desires": {
-			let desires = await readDesires(bucket);
+			let desires = await storage.readDesires();
 
 			if (!args.include_fulfilled) {
 				desires = desires.filter(d => d.intensity !== "fulfilled");
@@ -2427,7 +2264,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				return { error: `Unknown territory. Must be one of: ${Object.keys(TERRITORIES).join(", ")}` };
 			}
 
-			const observations = await readTerritory(bucket, args.territory);
+			const observations = await storage.readTerritory(args.territory);
 
 			return {
 				territory: args.territory,
@@ -2450,7 +2287,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const recent: any[] = [];
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 			for (const { territory, observations } of territoryData) {
 				for (const obs of observations) {
 					try {
@@ -2516,7 +2353,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			const gripBoost: Record<string, number> = { iron: 1.3, strong: 1.15, present: 1.0, loose: 0.9, dormant: 0.7 };
 
 			for (const t of territoriesToSearch) {
-				const observations = await readTerritory(bucket, t);
+				const observations = await storage.readTerritory(t);
 				for (let i = 0; i < observations.length; i++) {
 					if (scanned++ >= maxScan) break;
 					const obs = observations[i];
@@ -2591,7 +2428,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			let foundTerritory = "";
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 
 			for (const { territory, observations } of territoryData) {
 				const originalCount = observations.length;
@@ -2600,7 +2437,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				if (filtered.length < originalCount) {
 					found = true;
 					foundTerritory = territory;
-					await writeTerritory(bucket, territory, filtered);
+					await storage.writeTerritory(territory, filtered);
 					break;
 				}
 			}
@@ -2610,13 +2447,13 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			}
 
 			// Remove related links
-			const links = await readLinks(bucket);
+			const links = await storage.readLinks();
 			const originalLinkCount = links.length;
 			const filteredLinks = links.filter(l => l.source_id !== args.observation_id && l.target_id !== args.observation_id);
 			const linksRemoved = originalLinkCount - filteredLinks.length;
 
 			if (linksRemoved > 0) {
-				await writeLinks(bucket, filteredLinks);
+				await storage.writeLinks(filteredLinks);
 			}
 
 			return {
@@ -2632,7 +2469,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			let updatedTexture: Texture | null = null;
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 
 			for (const { territory, observations } of territoryData) {
 				for (const obs of observations) {
@@ -2657,7 +2494,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 						obs.last_accessed = getTimestamp();
 						updatedTexture = texture;
 
-						await writeTerritory(bucket, territory, observations);
+						await storage.writeTerritory(territory, observations);
 						break;
 					}
 				}
@@ -2698,7 +2535,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			(observation as any).type = "journal";
 			(observation as any).tags = toStringArray(args.tags);
 
-			await appendJsonl(bucket, "territories/episodic.jsonl", observation);
+			await storage.appendToTerritory("episodic", observation);
 
 			return {
 				success: true,
@@ -2722,7 +2559,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 			let recentCount = 0;
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 			for (const { territory, observations } of territoryData) {
 				territoryCountsMap[territory] = observations.length;
 				totalObs += observations.length;
@@ -2764,7 +2601,7 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 				}
 			}
 
-			const links = await readLinks(bucket);
+			const links = await storage.readLinks();
 
 			const topCharges = Object.entries(chargeCounts)
 				.sort((a, b) => b[1] - a[1])
@@ -2809,8 +2646,8 @@ async function executeTool(name: string, args: any, env: Env): Promise<any> {
 		// ===== CREATIVE TOOLS =====
 		case "mind_imagine": {
 			const territory = args.territory || "craft";
-			const observations = await readTerritory(bucket, territory);
-			const cores = await readIdentityCores(bucket);
+			const observations = await storage.readTerritory(territory);
+			const cores = await storage.readIdentityCores();
 			const creativeCores = cores.filter(c => ["creative", "preference", "stance"].includes(c.category));
 
 			// Extract aesthetic patterns
@@ -2888,7 +2725,7 @@ ${fragments[0]}
 
 			(observation as any).type = "imagination";
 
-			await appendJsonl(bucket, "territories/craft.jsonl", observation);
+			await storage.appendToTerritory("craft", observation);
 
 			return {
 				imagination_id: imaginationId,
@@ -2926,7 +2763,7 @@ ${fragments[0]}
 			(observation as any).type = "whisper";
 			(observation as any).tags = args.tags ? toStringArray(args.tags) : ["whisper", "quiet"];
 
-			await appendJsonl(bucket, `territories/${territory}.jsonl`, observation);
+			await storage.appendToTerritory(territory, observation);
 
 			return {
 				success: true,
@@ -2943,7 +2780,7 @@ ${fragments[0]}
 			const recentObs: any[] = [];
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 			for (const { territory, observations } of territoryData) {
 				for (const obs of observations) {
 					try {
@@ -3057,7 +2894,7 @@ ${fragments[0]}
 				(synthObs as any).type = "synthesis";
 				(synthObs as any).source_observations = synthesis.observation_ids;
 
-				await appendJsonl(bucket, "territories/episodic.jsonl", synthObs);
+				await storage.appendToTerritory("episodic", synthObs);
 				result.synthesis_created = synthId;
 			}
 
@@ -3069,7 +2906,7 @@ ${fragments[0]}
 			let startObs: any = null;
 
 			// Parallel read of all territories
-			const territoryData = await readAllTerritories(bucket);
+			const territoryData = await storage.readAllTerritories();
 			for (const { territory, observations } of territoryData) {
 				for (const obs of observations) {
 					const withTerritory = { ...obs, territory };
@@ -3166,7 +3003,7 @@ ${fragments[0]}
 			for (const t of territoriesToSearch) {
 				if (!Object.keys(TERRITORIES).includes(t)) continue;
 
-				const observations = await readTerritory(bucket, t);
+				const observations = await storage.readTerritory(t);
 
 				for (const obs of observations) {
 					const obsGripLevel = gripOrder[obs.texture?.grip || "present"] ?? 2;
@@ -3187,7 +3024,7 @@ ${fragments[0]}
 			const brainStateInfo: any = {};
 
 			if (args.apply_biases !== false) {
-				const state = await readBrainState(bucket);
+				const state = await storage.readBrainState();
 				const phase = getCurrentCircadianPhase();
 
 				brainStateInfo.circadian = phase;
@@ -3259,7 +3096,7 @@ ${fragments[0]}
 				phase: getCurrentCircadianPhase().phase
 			};
 
-			await appendJsonl(bucket, "meta/wake_log.jsonl", wakeLog);
+			await storage.appendWakeLog(wakeLog);
 
 			return {
 				logged: true,
@@ -3270,7 +3107,7 @@ ${fragments[0]}
 		}
 
 		case "mind_get_wake_log": {
-			const logs = await readJsonl<any>(bucket, "meta/wake_log.jsonl");
+			const logs = await storage.readWakeLog();
 			const sorted = logs.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
 			const limited = sorted.slice(0, args.limit || 10);
 
@@ -3291,7 +3128,7 @@ ${fragments[0]}
 				open_threads: toStringArray(args.open_threads)
 			};
 
-			await writeJson(bucket, "meta/conversation_context.json", context);
+			await storage.writeConversationContext(context);
 
 			return {
 				saved: true,
@@ -3301,7 +3138,7 @@ ${fragments[0]}
 		}
 
 		case "mind_get_conversation_context": {
-			const context = await readJson<any>(bucket, "meta/conversation_context.json", null);
+			const context = await storage.readConversationContext();
 
 			if (!context) {
 				return {
@@ -3392,6 +3229,9 @@ export default {
 			let storage_ok = false;
 			if (env.BRAIN_STORAGE) {
 				try {
+					// Raw bucket operation intentional here — infrastructure health check,
+					// not tenant-scoped data. Checks that R2 binding itself is alive.
+					// Uses bare path (pre-migration legacy path) as a known key to probe.
 					await env.BRAIN_STORAGE.head("meta/brain_state.json");
 					storage_ok = true;
 				} catch {}
@@ -3494,12 +3334,14 @@ export default {
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		console.log("Daemon cycle starting...", getTimestamp());
 
-		const bucket = env.BRAIN_STORAGE;
+		// TODO(Step 3 dual-tenant): iterate over all tenants when multi-tenant is live.
+		// For now, hardcode "rook" — the only active tenant.
+		const storage = new BrainStorage(env.BRAIN_STORAGE, "rook");
 		let decayChanges = 0;
 		const territoriesToWrite: { territory: string; observations: Observation[] }[] = [];
 
 		// Parallel read of all territories
-		const territoryData = await readAllTerritories(bucket);
+		const territoryData = await storage.readAllTerritories();
 
 		for (const { territory, observations: obs } of territoryData) {
 			let changed = false;
@@ -3530,7 +3372,7 @@ export default {
 
 		// Parallel write of changed territories
 		await Promise.all(territoriesToWrite.map(({ territory, observations }) =>
-			writeTerritory(bucket, territory, observations)
+			storage.writeTerritory(territory, observations)
 		));
 
 		console.log(`Daemon complete. Decay changes: ${decayChanges}`);
