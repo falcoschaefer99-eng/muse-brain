@@ -69,12 +69,6 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 120; // requests per minute
 const RATE_WINDOW = 60_000; // 1 minute in ms
 
-// Types imported from ./types
-// Constants imported from ./constants
-// Helpers (toStringArray, getTimestamp, generateId, etc.) imported from ./helpers
-
-// Storage operations go through BrainStorage class (imported from ./storage)
-
 // ============ TOOL DEFINITIONS ============
 
 const TOOLS = [
@@ -3229,10 +3223,9 @@ export default {
 			let storage_ok = false;
 			if (env.BRAIN_STORAGE) {
 				try {
-					// Raw bucket operation intentional here — infrastructure health check,
-					// not tenant-scoped data. Checks that R2 binding itself is alive.
-					// Uses bare path (pre-migration legacy path) as a known key to probe.
-					await env.BRAIN_STORAGE.head("meta/brain_state.json");
+					// Health probe uses BrainStorage to test tenant-scoped path (post-migration).
+					const healthStorage = new BrainStorage(env.BRAIN_STORAGE, "rook");
+					await healthStorage.readBrainState();
 					storage_ok = true;
 				} catch {}
 			}

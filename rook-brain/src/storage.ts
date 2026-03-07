@@ -10,7 +10,8 @@ import type {
 	Letter,
 	IdentityCore,
 	Anchor,
-	Desire
+	Desire,
+	WakeLogEntry
 } from "./types";
 
 import { TERRITORIES, VALID_TERRITORIES } from "./constants";
@@ -21,9 +22,11 @@ export class BrainStorage {
 		private bucket: R2Bucket,
 		private tenant: string
 	) {
-		// Validate tenant on construction — fail fast, fail loud
-		if (!/^[a-z][a-z0-9-]*$/.test(tenant)) {
-			throw new Error(`Invalid tenant ID: ${tenant}`);
+		// Validate tenant on construction — fail fast, fail loud.
+		// DNS label rules: 3-63 chars, lowercase alphanumeric + hyphens, no trailing hyphen.
+		// Length cap prevents CPU waste on absurdly long keys (R2 limit is 1024 bytes).
+		if (!/^[a-z][a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(tenant)) {
+			throw new Error("Invalid tenant ID");
 		}
 	}
 
@@ -32,9 +35,9 @@ export class BrainStorage {
 	// Path validation prevents traversal: no ../ segments, no null bytes.
 
 	private key(path: string): string {
-		// Null byte check
-		if (path.includes('\0')) {
-			throw new Error("Invalid path: null byte");
+		// Reject empty, null-byte, and slash-bounded paths
+		if (!path || path.includes('\0') || path.startsWith('/') || path.endsWith('/')) {
+			throw new Error("Invalid path");
 		}
 		// Traversal check — reject any segment that would escape tenant root
 		const segments = path.split('/');
@@ -223,15 +226,14 @@ export class BrainStorage {
 		await this.writeJsonl("desires/wants.jsonl", desires);
 	}
 
-	// --- Wake Log ---
+	// --- Wake Log (append-only — no overwrite method by design) ---
 
-	async appendWakeLog(entry: any): Promise<void> {
+	async appendWakeLog(entry: WakeLogEntry): Promise<void> {
 		await this.appendJsonl("meta/wake_log.jsonl", entry);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	async readWakeLog(): Promise<any[]> {
-		return this.readJsonl<any>("meta/wake_log.jsonl");
+	async readWakeLog(): Promise<WakeLogEntry[]> {
+		return this.readJsonl<WakeLogEntry>("meta/wake_log.jsonl");
 	}
 
 	// --- Conversation Context ---

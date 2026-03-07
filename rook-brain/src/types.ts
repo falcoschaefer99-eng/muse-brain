@@ -150,3 +150,14 @@ export interface ParsedObservation {
 	grip: string;              // Detected or default
 	was_parsed: boolean;       // Whether smart parsing was applied
 }
+
+export interface WakeLogEntry {
+	id: string;
+	timestamp: string;
+	summary?: unknown;
+	actions?: string[];
+	iron_pulls?: string[];
+	mood?: unknown;
+	phase?: string;
+	[key: string]: unknown;    // Allow additional fields from different wake types
+}
