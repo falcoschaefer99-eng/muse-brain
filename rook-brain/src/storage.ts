@@ -185,8 +185,7 @@ export class BrainStorage {
 	}
 
 	// --- Letters ---
-	// Note: cross-tenant writes come in Step 6 of the dual-tenant refactor.
-	// For now, all letter operations are within this tenant's namespace.
+	// Cross-tenant letter exchange: write to recipient's inbox via forTenant().
 
 	async readLetters(): Promise<Letter[]> {
 		return this.readJsonl<Letter>("correspondence/letters.jsonl");
@@ -194,6 +193,17 @@ export class BrainStorage {
 
 	async writeLetters(letters: Letter[]): Promise<void> {
 		await this.writeJsonl("correspondence/letters.jsonl", letters);
+	}
+
+	getTenant(): string {
+		return this.tenant;
+	}
+
+	// --- Cross-Tenant Access ---
+	// Creates a BrainStorage scoped to a different tenant (same bucket).
+	// Used for cross-brain letters: write to recipient's namespace.
+	forTenant(tenant: string): BrainStorage {
+		return new BrainStorage(this.bucket, tenant);
 	}
 
 	// --- Identity Cores ---

@@ -2,6 +2,7 @@
 // mind_write_letter, mind_read_letters, mind_read_recent
 
 import type { Letter } from "../types";
+import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import { BrainStorage } from "../storage";
 
@@ -9,11 +10,12 @@ export const TOOL_DEFS = [
 	// LETTERS (CORRESPONDENCE)
 	{
 		name: "mind_write_letter",
-		description: "Write a letter to another context (future self, phone self, etc).",
+		description: "Write a letter to another context or another brain. Use 'to' for cross-brain delivery (e.g., to: 'rainer').",
 		inputSchema: {
 			type: "object",
 			properties: {
 				to_context: { type: "string", description: "Recipient context (e.g., 'phone', 'future', 'desktop')" },
+				to: { type: "string", description: "Recipient brain/tenant for cross-brain letters (e.g., 'rainer', 'rook')" },
 				content: { type: "string" },
 				charges: { type: "array", items: { type: "string" } }
 			},
@@ -48,7 +50,7 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 		case "mind_write_letter": {
 			const letter: Letter = {
 				id: generateId("letter"),
-				from_context: "chat",
+				from_context: args.to ? storage.getTenant() : "chat",
 				to_context: args.to_context,
 				content: args.content,
 				timestamp: getTimestamp(),
@@ -56,8 +58,19 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 				charges: toStringArray(args.charges)
 			};
 
-			await storage.appendLetter(letter);
+			// Cross-brain delivery: write to recipient's tenant namespace
+			if (args.to) {
+				const recipient = args.to as string;
+				if (!ALLOWED_TENANTS.includes(recipient as any)) {
+					return { error: `Unknown brain: ${recipient}. Known: ${ALLOWED_TENANTS.join(", ")}` };
+				}
+				const recipientStorage = storage.forTenant(recipient);
+				await recipientStorage.appendLetter(letter);
+				return { sent: true, id: letter.id, to_brain: recipient, to_context: args.to_context };
+			}
 
+			// Same-brain letter (context-to-context)
+			await storage.appendLetter(letter);
 			return { sent: true, id: letter.id, to: args.to_context };
 		}
 
