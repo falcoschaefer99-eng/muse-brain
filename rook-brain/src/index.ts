@@ -122,9 +122,10 @@ export default {
 			});
 		}
 
-		// Auth (timing-safe comparison) — Bearer header only
+		// Auth (timing-safe comparison) — Bearer header preferred, query param fallback
+		// Query param needed for Desktop app connectors (no custom header support)
 		const authHeader = request.headers.get("Authorization");
-		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (url.searchParams.get("key") || "");
 
 		const encoder = new TextEncoder();
 		const keyA = encoder.encode(providedKey || "");
