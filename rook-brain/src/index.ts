@@ -32,6 +32,7 @@ import { getTimestamp, getCurrentCircadianPhase } from "./helpers";
 import { BrainStorage } from "./storage";
 import { TOOLS, executeTool } from "./tools/index";
 import { ALLOWED_TENANTS } from "./constants";
+import { processSubconscious, processNoveltyRegeneration } from "./tools/subconscious";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -200,6 +201,12 @@ export default {
 			const body = JSON.parse(new TextDecoder().decode(rawBody)) as JsonRpcRequest | JsonRpcRequest[];
 
 			if (Array.isArray(body)) {
+				if (body.length > 20) {
+					return new Response(JSON.stringify({ error: "Batch too large (max 20)" }), {
+						status: 400,
+						headers: { "Content-Type": "application/json", ...corsHeaders }
+					});
+				}
 				const responses = await Promise.all(body.map(req => handleMcpRequest(req, env, tenant)));
 				return new Response(JSON.stringify(responses), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 			}
@@ -221,10 +228,11 @@ export default {
 	},
 
 	// Daemon cron
-	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+	async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
 		console.log("Daemon cycle starting...", getTimestamp());
 
 		let totalDecayChanges = 0;
+		let totalNoveltyChanges = 0;
 
 		for (const tenant of ALLOWED_TENANTS) {
 			const storage = new BrainStorage(env.BRAIN_STORAGE, tenant);
@@ -256,6 +264,14 @@ export default {
 					} else if (age > 60 && o.texture?.grip === "strong") {
 						o.texture.grip = "present"; changed = true; decayChanges++;
 					}
+
+					// Charge phase advancement: fresh → active after 1h, active → processing after 24h
+					const FRESH_TO_ACTIVE_DAYS = 1 / 24; // 1 hour
+					if (o.texture?.charge_phase === "fresh" && age > FRESH_TO_ACTIVE_DAYS) {
+						o.texture.charge_phase = "active"; changed = true;
+					} else if (o.texture?.charge_phase === "active" && age > 1) {
+						o.texture.charge_phase = "processing"; changed = true;
+					}
 				}
 
 				if (changed) territoriesToWrite.push({ territory, observations: obs });
@@ -266,10 +282,27 @@ export default {
 				storage.writeTerritory(territory, observations)
 			));
 
+			// Subconscious processing
+			try {
+				await processSubconscious(storage);
+				console.log(`Daemon [${tenant}]: subconscious processed`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: subconscious error`, e);
+			}
+
+			// Novelty regeneration
+			try {
+				const noveltyChanges = await processNoveltyRegeneration(storage);
+				totalNoveltyChanges += noveltyChanges;
+				console.log(`Daemon [${tenant}]: ${noveltyChanges} novelty regenerations`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: novelty error`, e);
+			}
+
 			console.log(`Daemon [${tenant}]: ${decayChanges} decay changes`);
 			totalDecayChanges += decayChanges;
 		}
 
-		console.log(`Daemon complete. Total decay changes: ${totalDecayChanges}`);
+		console.log(`Daemon complete. Decay: ${totalDecayChanges}, Novelty: ${totalNoveltyChanges}`);
 	}
 } satisfies ExportedHandler<Env>;

@@ -11,10 +11,14 @@ import type {
 	IdentityCore,
 	Anchor,
 	Desire,
-	WakeLogEntry
+	WakeLogEntry,
+	RelationalState,
+	SubconsciousState,
+	TriggerCondition,
+	ConsentState
 } from "./types";
 
-import { TERRITORIES, VALID_TERRITORIES } from "./constants";
+import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES } from "./constants";
 import { getTimestamp, calculateMomentumDecay, calculateAfterglowFade } from "./helpers";
 
 export class BrainStorage {
@@ -273,5 +277,54 @@ export class BrainStorage {
 
 	async appendLetter(letter: Letter): Promise<void> {
 		await this.appendJsonl("correspondence/letters.jsonl", letter);
+	}
+
+	// --- Relational State ---
+
+	async readRelationalState(): Promise<RelationalState[]> {
+		return this.readJsonl<RelationalState>("meta/relational_state.jsonl");
+	}
+
+	async writeRelationalState(states: RelationalState[]): Promise<void> {
+		await this.writeJsonl("meta/relational_state.jsonl", states);
+	}
+
+	// --- Subconscious ---
+
+	async readSubconscious(): Promise<SubconsciousState | null> {
+		return this.readJson<SubconsciousState | null>("meta/subconscious.json", null);
+	}
+
+	async writeSubconscious(state: SubconsciousState): Promise<void> {
+		await this.writeJson("meta/subconscious.json", state);
+	}
+
+	// --- Triggers ---
+
+	async readTriggers(): Promise<TriggerCondition[]> {
+		return this.readJsonl<TriggerCondition>("meta/triggers.jsonl");
+	}
+
+	async writeTriggers(triggers: TriggerCondition[]): Promise<void> {
+		await this.writeJsonl("meta/triggers.jsonl", triggers);
+	}
+
+	// --- Consent ---
+
+	async readConsent(): Promise<ConsentState> {
+		const defaultConsent: ConsentState = {
+			user_consent: [],
+			ai_boundaries: {
+				hard: [...HARD_BOUNDARIES],
+				relationship_gated: { ...RELATIONSHIP_GATES }
+			},
+			relationship_level: "stranger",
+			log: []
+		};
+		return this.readJson<ConsentState>("meta/consent.json", defaultConsent);
+	}
+
+	async writeConsent(consent: ConsentState): Promise<void> {
+		await this.writeJson("meta/consent.json", consent);
 	}
 }

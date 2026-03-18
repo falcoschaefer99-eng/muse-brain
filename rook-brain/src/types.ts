@@ -12,6 +12,9 @@ export interface Texture {
 	charge: string[];
 	somatic?: string;
 	grip: string;
+	charge_phase?: "fresh" | "active" | "processing" | "metabolized";
+	novelty_score?: number;
+	last_surfaced_at?: string;
 }
 
 export interface Observation {
@@ -160,4 +163,66 @@ export interface WakeLogEntry {
 	mood?: unknown;
 	phase?: string;
 	[key: string]: unknown;    // Allow additional fields from different wake types
+}
+
+export interface RelationalState {
+	id: string;
+	entity: string;
+	direction: "toward" | "from" | "mutual";
+	feeling: string;
+	intensity: number; // 0-1
+	charges: string[];
+	context?: string;
+	created: string;
+	updated: string;
+	history: Array<{
+		feeling: string;
+		intensity: number;
+		charges: string[];
+		timestamp: string;
+	}>;
+}
+
+export interface SubconsciousState {
+	last_processed: string;
+	hot_entities: Array<{ entity: string; mention_count: number; recent_charges: string[] }>;
+	co_surfacing: Array<{ pair: [string, string]; count: number }>;
+	mood_inference: { suggested_mood: string; confidence: number; based_on: string[] };
+	orphans: Array<{ id: string; territory: string; reason: string }>;
+}
+
+export interface TriggerCondition {
+	id: string;
+	type: "no_contact" | "presence_transition" | "time_window";
+	entity?: string;
+	config: Record<string, unknown>;
+	created: string;
+	last_checked: string;
+	last_fired?: string;
+	active: boolean;
+}
+
+export interface ConsentEntry {
+	domain: string;
+	level: "standing" | "session" | "ask_each_time" | "prohibited";
+	granted_at: string;
+	expires_at?: string;
+}
+
+export interface ConsentLogEntry {
+	timestamp: string;
+	domain: string;
+	action: "granted" | "revoked" | "checked" | "denied";
+	level: string;
+	context?: string;
+}
+
+export interface ConsentState {
+	user_consent: ConsentEntry[];
+	ai_boundaries: {
+		hard: string[];
+		relationship_gated: Record<string, string>;
+	};
+	relationship_level: "stranger" | "familiar" | "close" | "bonded";
+	log: ConsentLogEntry[];
 }

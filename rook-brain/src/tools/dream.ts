@@ -227,6 +227,12 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 					}
 				}
 
+				// Dreams advance charge phase: processing → metabolized
+				if (target.texture.charge_phase === "processing") {
+					textureShifts.push({ id: target.id, territory: node.territory, field: "charge_phase", from: "processing", to: "metabolized" });
+					target.texture.charge_phase = "metabolized";
+				}
+
 				target.last_accessed = now;
 			}
 

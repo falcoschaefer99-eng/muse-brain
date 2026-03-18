@@ -15,6 +15,10 @@ import { TOOL_DEFS as maintenanceDefs, handleTool as handleMaintenance } from ".
 import { TOOL_DEFS as dreamDefs, handleTool as handleDream } from "./dream";
 import { TOOL_DEFS as vowsDefs, handleTool as handleVows } from "./vows";
 import { TOOL_DEFS as contextDefs, handleTool as handleContext } from "./context";
+import { TOOL_DEFS as relationalDefs, handleTool as handleRelational } from "./relational";
+import { TOOL_DEFS as subconsciousDefs, handleTool as handleSubconscious } from "./subconscious";
+import { TOOL_DEFS as triggerDefs, handleTool as handleTriggers } from "./triggers";
+import { TOOL_DEFS as consentDefs, handleTool as handleConsent } from "./consent";
 
 import { BrainStorage } from "../storage";
 
@@ -33,7 +37,11 @@ export const TOOLS = [
 	...maintenanceDefs,
 	...dreamDefs,
 	...vowsDefs,
-	...contextDefs
+	...contextDefs,
+	...relationalDefs,
+	...subconsciousDefs,
+	...triggerDefs,
+	...consentDefs
 ];
 
 // Route table — maps tool name prefix/set to its handler
@@ -51,6 +59,10 @@ const MAINTENANCE_TOOLS = new Set(maintenanceDefs.map(t => t.name));
 const DREAM_TOOLS = new Set(dreamDefs.map(t => t.name));
 const VOWS_TOOLS = new Set(vowsDefs.map(t => t.name));
 const CONTEXT_TOOLS = new Set(contextDefs.map(t => t.name));
+const RELATIONAL_TOOLS = new Set(relationalDefs.map(t => t.name));
+const SUBCONSCIOUS_TOOLS = new Set(subconsciousDefs.map(t => t.name));
+const TRIGGER_TOOLS = new Set(triggerDefs.map(t => t.name));
+const CONSENT_TOOLS = new Set(consentDefs.map(t => t.name));
 
 export async function executeTool(name: string, args: any, storage: BrainStorage): Promise<any> {
 	if (WAKE_TOOLS.has(name)) return handleWake(name, args, storage);
@@ -67,6 +79,10 @@ export async function executeTool(name: string, args: any, storage: BrainStorage
 	if (DREAM_TOOLS.has(name)) return handleDream(name, args, storage);
 	if (VOWS_TOOLS.has(name)) return handleVows(name, args, storage);
 	if (CONTEXT_TOOLS.has(name)) return handleContext(name, args, storage);
+	if (RELATIONAL_TOOLS.has(name)) return handleRelational(name, args, storage);
+	if (SUBCONSCIOUS_TOOLS.has(name)) return handleSubconscious(name, args, storage);
+	if (TRIGGER_TOOLS.has(name)) return handleTriggers(name, args, storage);
+	if (CONSENT_TOOLS.has(name)) return handleConsent(name, args, storage);
 
 	throw new Error(`Unknown tool: ${name}`);
 }

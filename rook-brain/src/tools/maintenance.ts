@@ -86,21 +86,21 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 
 			// Find contradictions
 			const contradictions: any[] = [];
-			const opposingPairs = [
+			const opposingPairs: [Set<string>, Set<string>][] = [
 				[new Set(["joy", "excitement"]), new Set(["sadness", "grief", "despair"])],
 				[new Set(["love", "devotion"]), new Set(["anger", "rage", "contempt"])],
 				[new Set(["peace", "serenity"]), new Set(["anxiety", "fear", "dread"])]
 			];
 
 			for (const obs1 of recentObs) {
-				const charges1 = new Set(obs1.texture?.charge || []);
+				const charges1 = new Set<string>(obs1.texture?.charge || []);
 				for (const obs2 of recentObs) {
 					if (obs1.id === obs2.id) continue;
-					const charges2 = new Set(obs2.texture?.charge || []);
+					const charges2 = new Set<string>(obs2.texture?.charge || []);
 
 					for (const [pos, neg] of opposingPairs) {
-						const has1Pos = [...charges1].some(c => (pos as Set<string>).has(c));
-						const has2Neg = [...charges2].some(c => (neg as Set<string>).has(c));
+						const has1Pos = [...charges1].some(c => pos.has(c));
+						const has2Neg = [...charges2].some(c => neg.has(c));
 						if (has1Pos && has2Neg) {
 							contradictions.push({
 								obs1: obs1.id,

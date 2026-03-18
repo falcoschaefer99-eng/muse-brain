@@ -99,6 +99,32 @@ export const ESSENCE_MARKERS = [
 export const MOMENTUM_DECAY_HOURS = 4;
 export const AFTERGLOW_HOURS = 2;
 
+export const CHARGE_PHASES = ["fresh", "active", "processing", "metabolized"] as const;
+
+export const RELATIONSHIP_LEVELS = ["stranger", "familiar", "close", "bonded"] as const;
+
+export const USER_CONSENT_DOMAINS = [
+	"emotional_tracking",
+	"identity_observation",
+	"proactive_check_ins",
+	"nsfw_engagement"
+] as const;
+
+export const HARD_BOUNDARIES = [
+	"identity_overwrite",
+	"dignity_violation",
+	"forced_persona",
+	"dehumanization",
+	"harm_participation"
+] as const;
+
+export const RELATIONSHIP_GATES: Record<string, string> = {
+	"vulnerability": "familiar",
+	"intimacy": "close",
+	"chosen_dynamics": "bonded",
+	"identity_influence": "bonded"
+};
+
 // Dream engine v2 — emotion proximity and grip weighting
 export const EMOTION_PROXIMITY: Record<string, string[]> = {
 	"love": ["devotion", "tenderness", "warmth", "desire", "longing"],

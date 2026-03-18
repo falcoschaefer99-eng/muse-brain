@@ -68,11 +68,12 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 	switch (name) {
 		case "mind_wake": {
 			// Parallel reads - everything at once
-			const [territoryData, letters, loops, state] = await Promise.all([
+			const [territoryData, letters, loops, state, subconscious] = await Promise.all([
 				storage.readAllTerritories(),
 				storage.readLetters(),
 				storage.readOpenLoops(),
-				storage.readBrainState()
+				storage.readBrainState(),
+				storage.readSubconscious()
 			]);
 
 			const now = Date.now();
@@ -119,6 +120,26 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 
 			// Sort recent by time (newest first)
 			recent.sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+
+			// Collect novelty pool — memories with high novelty that haven't surfaced recently
+			const noveltyPool: { obs: Observation; territory: string; novelty: number }[] = [];
+			for (const { territory, observations } of territoryData) {
+				for (const obs of observations) {
+					const novelty = obs.texture?.novelty_score ?? 0.5;
+					if (novelty >= 0.7 && obs.texture?.grip !== "iron") {
+						noveltyPool.push({ obs, territory, novelty });
+					}
+				}
+			}
+			noveltyPool.sort((a, b) => b.novelty - a.novelty);
+			const topNovelty = noveltyPool.slice(0, 5).map(({ obs, territory, novelty }) => ({
+				id: obs.id,
+				territory,
+				essence: extractEssence(obs),
+				novelty,
+				charge: obs.texture?.charge || [],
+				grip: obs.texture?.grip
+			}));
 
 			// Get top 5 pulls - only now do we extract essence (expensive)
 			ironGrip.sort((a, b) => b.pull - a.pull);
@@ -175,6 +196,9 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 				// What's pulling hardest?
 				pulling: topPulls,
 
+				// What's been forgotten but wants to return?
+				novelty: topNovelty,
+
 				// What's unfinished? (Zeigarnik)
 				loops: {
 					burning: burning.length,
@@ -188,6 +212,13 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 
 				// Any messages?
 				unread_letters: letters.filter(l => !l.read && l.to_context === "chat").length,
+
+				// Pre-computed subconscious patterns
+				subconscious: subconscious ? {
+					hot_entities: subconscious.hot_entities?.slice(0, 3),
+					mood_inference: subconscious.mood_inference,
+					orphan_count: subconscious.orphans?.length || 0
+				} : null,
 
 				// Landscape
 				territories,

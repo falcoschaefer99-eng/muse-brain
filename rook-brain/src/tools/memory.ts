@@ -180,7 +180,9 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 					vividness: args.vividness || "vivid",
 					charge: finalCharge,
 					somatic: finalSomatic,
-					grip: finalGrip
+					grip: finalGrip,
+					charge_phase: "fresh",
+					novelty_score: 1.0
 				},
 				context: args.context,
 				mood: args.mood,
@@ -568,7 +570,9 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 					salience: "active",
 					vividness: "vivid",
 					charge: [],
-					grip: "present"
+					grip: "present",
+					charge_phase: "fresh",
+					novelty_score: 1.0
 				},
 				context: args.tags ? `tags: ${toStringArray(args.tags).join(", ")}` : undefined,
 				access_count: 0,
@@ -606,7 +610,9 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 					salience: "background",
 					vividness: "soft",
 					charge: [],
-					grip: "dormant"
+					grip: "dormant",
+					charge_phase: "fresh",
+					novelty_score: 1.0
 				},
 				context: args.tags ? `tags: ${toStringArray(args.tags).join(", ")}` : "Whispered - not meant to demand attention",
 				access_count: 1,
