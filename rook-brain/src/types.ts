@@ -28,6 +28,33 @@ export interface Observation {
 	last_accessed?: string;
 	access_count: number;
 	links?: string[];
+	summary?: string;  // L0: truncated excerpt with grip/charge markers. NOT sanitized — escape before HTML rendering.
+	type?: string;     // Observation subtype: "journal", "whisper", etc.
+	tags?: string[];   // User-assigned tags
+}
+
+// Phase B — not yet used by any tool
+export interface TerritoryOverview {
+	territory: string;
+	observation_count: number;
+	top_charges: string[];
+	top_grip: string;
+	recent_count: number;
+	iron_count: number;
+	iron_ids: string[];           // IDs of iron-grip observations
+	last_activity: string;
+	theme_summary: string;
+	generated_at: string;
+}
+
+// Phase B — not yet used by any tool
+export interface IronGripEntry {
+	id: string;
+	territory: string;
+	summary: string;
+	charges: string[];
+	pull: number;
+	updated: string;
 }
 
 export interface Link {

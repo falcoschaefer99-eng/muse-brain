@@ -12,6 +12,17 @@ import {
 	AFTERGLOW_HOURS
 } from "./constants";
 
+/** Generate L0 summary from observation. Pure string ops, nanoseconds. */
+export function generateSummary(obs: Observation): string {
+	const charge = obs.texture?.charge?.[0] || "";
+	const grip = obs.texture?.grip || "present";
+	const snippet = obs.content.slice(0, 60).replace(/\n/g, ' ').trim();
+	const ellipsis = obs.content.length > 60 ? "..." : "";
+	const chargeSuffix = charge ? ` [${charge}]` : "";
+	const gripPrefix = grip === "iron" ? "(!!) " : grip === "strong" ? "(!) " : "";
+	return `${gripPrefix}${snippet}${ellipsis}${chargeSuffix}`;
+}
+
 /** Safely coerce a value to a string array. Handles MCP clients that send arrays as JSON strings. */
 export function toStringArray(value: any, fallback: string[] = []): string[] {
 	if (!value) return fallback;

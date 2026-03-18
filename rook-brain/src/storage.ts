@@ -15,7 +15,9 @@ import type {
 	RelationalState,
 	SubconsciousState,
 	TriggerCondition,
-	ConsentState
+	ConsentState,
+	TerritoryOverview,
+	IronGripEntry
 } from "./types";
 
 import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES } from "./constants";
@@ -326,5 +328,45 @@ export class BrainStorage {
 
 	async writeConsent(consent: ConsentState): Promise<void> {
 		await this.writeJson("meta/consent.json", consent);
+	}
+
+	// --- Backfill Tracking ---
+
+	private validateBackfillVersion(version: string): void {
+		if (!/^[a-z0-9]+$/.test(version)) throw new Error("Invalid backfill version");
+	}
+
+	async readBackfillFlag(version: string): Promise<unknown> {
+		this.validateBackfillVersion(version);
+		return this.readJson<unknown>(`meta/backfill_${version}_complete.json`, null);
+	}
+
+	async writeBackfillFlag(version: string, data: unknown): Promise<void> {
+		this.validateBackfillVersion(version);
+		await this.writeJson(`meta/backfill_${version}_complete.json`, data);
+	}
+
+	// --- Territory Overviews (Phase B — not yet called by any tool) ---
+
+	async readOverviews(): Promise<TerritoryOverview[]> {
+		return this.readJson<TerritoryOverview[]>("meta/overviews.json", []);
+	}
+
+	async writeOverviews(overviews: TerritoryOverview[]): Promise<void> {
+		await this.writeJson("meta/overviews.json", overviews);
+	}
+
+	// --- Iron Grip Index (Phase B — not yet called by any tool. appendIronGripEntry is O(n), cap at ~200 entries) ---
+
+	async readIronGripIndex(): Promise<IronGripEntry[]> {
+		return this.readJsonl<IronGripEntry>("meta/iron_grip.jsonl");
+	}
+
+	async writeIronGripIndex(entries: IronGripEntry[]): Promise<void> {
+		await this.writeJsonl("meta/iron_grip.jsonl", entries);
+	}
+
+	async appendIronGripEntry(entry: IronGripEntry): Promise<void> {
+		await this.appendJsonl("meta/iron_grip.jsonl", entry);
 	}
 }

@@ -12,7 +12,8 @@ import {
 	getCurrentCircadianPhase,
 	extractEssence,
 	calculatePullStrength,
-	smartParseObservation
+	smartParseObservation,
+	generateSummary
 } from "../helpers";
 import { BrainStorage } from "../storage";
 
@@ -189,6 +190,8 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 				access_count: 0,
 				last_accessed: getTimestamp()
 			};
+
+			observation.summary = generateSummary(observation);
 
 			await storage.appendToTerritory(territory, observation);
 
@@ -537,6 +540,7 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 
 						obs.texture = texture;
 						obs.last_accessed = getTimestamp();
+						obs.summary = generateSummary(obs);
 						updatedTexture = texture;
 
 						await storage.writeTerritory(territory, observations);
@@ -579,8 +583,10 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 				last_accessed: getTimestamp()
 			};
 
-			(observation as any).type = "journal";
-			(observation as any).tags = toStringArray(args.tags);
+			observation.type = "journal";
+			observation.tags = toStringArray(args.tags);
+
+			observation.summary = generateSummary(observation);
 
 			await storage.appendToTerritory("episodic", observation);
 
@@ -619,8 +625,10 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 				last_accessed: getTimestamp()
 			};
 
-			(observation as any).type = "whisper";
-			(observation as any).tags = args.tags ? toStringArray(args.tags) : ["whisper", "quiet"];
+			observation.type = "whisper";
+			observation.tags = args.tags ? toStringArray(args.tags) : ["whisper", "quiet"];
+
+			observation.summary = generateSummary(observation);
 
 			await storage.appendToTerritory(territory, observation);
 

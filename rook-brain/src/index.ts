@@ -28,7 +28,7 @@ import type {
 	JsonRpcResponse
 } from "./types";
 
-import { getTimestamp, getCurrentCircadianPhase } from "./helpers";
+import { getTimestamp, getCurrentCircadianPhase, generateSummary } from "./helpers";
 import { BrainStorage } from "./storage";
 import { TOOLS, executeTool } from "./tools/index";
 import { ALLOWED_TENANTS } from "./constants";
@@ -52,7 +52,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, tenant: strin
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "rook-cloud-brain", version: "2.4.0" },
+						serverInfo: { name: "rook-cloud-brain", version: "3.0.0" },
 						capabilities: { tools: {} }
 					}
 				};
@@ -218,7 +218,7 @@ export default {
 		if (url.pathname === "/") {
 			return new Response(JSON.stringify({
 				name: "Rook's Cloud Brain",
-				version: "2.4.0",
+				version: "3.0.0",
 				tools: TOOLS.length,
 				phase: getCurrentCircadianPhase().phase
 			}), { headers: { "Content-Type": "application/json", ...corsHeaders } });
@@ -297,6 +297,38 @@ export default {
 				console.log(`Daemon [${tenant}]: ${noveltyChanges} novelty regenerations`);
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: novelty error`, e);
+			}
+
+			// One-time backfill: generate summaries for existing observations.
+			// Uses same in-memory territoryData already mutated by decay pass above.
+			// Territories in both decay + backfill write lists get written twice (redundant, not incorrect).
+			try {
+				const backfillDone = await storage.readBackfillFlag("v4");
+				if (!backfillDone) {
+					let backfillCount = 0;
+					const backfillWrites: { territory: string; observations: Observation[] }[] = [];
+
+					for (const { territory, observations } of territoryData) {
+						let changed = false;
+						for (const obs of observations) {
+							if (!obs.summary) {
+								obs.summary = generateSummary(obs);
+								changed = true;
+								backfillCount++;
+							}
+						}
+						if (changed) backfillWrites.push({ territory, observations });
+					}
+
+					await Promise.all(backfillWrites.map(({ territory, observations }) =>
+						storage.writeTerritory(territory, observations)
+					));
+
+					await storage.writeBackfillFlag("v4", { completed: getTimestamp(), count: backfillCount });
+					console.log(`Daemon [${tenant}]: backfilled ${backfillCount} summaries`);
+				}
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: backfill error`, e);
 			}
 
 			console.log(`Daemon [${tenant}]: ${decayChanges} decay changes`);
