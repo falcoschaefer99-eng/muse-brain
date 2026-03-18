@@ -25,10 +25,12 @@ import type {
 	Env,
 	Observation,
 	JsonRpcRequest,
-	JsonRpcResponse
+	JsonRpcResponse,
+	TerritoryOverview,
+	IronGripEntry
 } from "./types";
 
-import { getTimestamp, getCurrentCircadianPhase, generateSummary } from "./helpers";
+import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullStrength } from "./helpers";
 import { BrainStorage } from "./storage";
 import { TOOLS, executeTool } from "./tools/index";
 import { ALLOWED_TENANTS } from "./constants";
@@ -329,6 +331,68 @@ export default {
 				}
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: backfill error`, e);
+			}
+
+			// Generate territory overviews + iron-grip index (every cron cycle)
+			try {
+				const now = Date.now();
+				const cutoff48h = now - (48 * 60 * 60 * 1000);
+				const overviews: TerritoryOverview[] = [];
+				const ironIndex: IronGripEntry[] = [];
+
+				for (const { territory, observations } of territoryData) {
+					const charges: Record<string, number> = {};
+					let ironCount = 0;
+					const ironIds: string[] = [];
+					let recentCount = 0;
+					let maxTime = "";
+
+					for (const o of observations) {
+						for (const c of o.texture?.charge || []) charges[c] = (charges[c] || 0) + 1;
+						if (o.texture?.grip === "iron") {
+							ironCount++;
+							ironIds.push(o.id);
+							ironIndex.push({
+								id: o.id,
+								territory,
+								summary: o.summary || generateSummary(o),
+								charges: o.texture?.charge || [],
+								pull: calculatePullStrength(o),
+								updated: getTimestamp()
+							});
+						}
+						try {
+							if (new Date(o.created).getTime() > cutoff48h) recentCount++;
+						} catch {}
+						if (o.created && o.created > maxTime) maxTime = o.created;
+					}
+
+					const topCharges = Object.entries(charges).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k]) => k);
+					const topGrip = ironCount > 0 ? "iron"
+						: observations.some(o => o.texture?.grip === "strong") ? "strong" : "present";
+
+					overviews.push({
+						territory,
+						observation_count: observations.length,
+						top_charges: topCharges,
+						top_grip: topGrip,
+						recent_count: recentCount,
+						iron_count: ironCount,
+						iron_ids: ironIds,
+						last_activity: maxTime || getTimestamp(),
+						theme_summary: `${territory}: ${observations.length} obs, ${ironCount} iron, ${recentCount} recent`,
+						generated_at: getTimestamp()
+					});
+				}
+
+				await Promise.all([
+					storage.writeOverviews(overviews),
+					storage.writeIronGripIndex(ironIndex)
+				]);
+
+				console.log(`Daemon [${tenant}]: overviews generated (${overviews.length} territories, ${ironIndex.length} iron grip)`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: overview generation error`, e);
 			}
 
 			console.log(`Daemon [${tenant}]: ${decayChanges} decay changes`);

@@ -195,6 +195,20 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 
 			await storage.appendToTerritory(territory, observation);
 
+			// Append to iron-grip index if this is an iron-grip observation
+			if (observation.texture?.grip === "iron") {
+				try {
+					await storage.appendIronGripEntry({
+						id: observation.id,
+						territory,
+						summary: observation.summary || "",
+						charges: observation.texture.charge || [],
+						pull: calculatePullStrength(observation),
+						updated: getTimestamp()
+					});
+				} catch {} // Index rebuilt by cron, inline append is best-effort
+			}
+
 			// Update momentum if there are charges
 			if (observation.texture.charge.length > 0) {
 				const state = await storage.readBrainState();
@@ -544,6 +558,21 @@ export async function handleTool(name: string, args: any, storage: BrainStorage)
 						updatedTexture = texture;
 
 						await storage.writeTerritory(territory, observations);
+
+						// Update iron-grip index if grip is now iron
+						if (obs.texture?.grip === "iron") {
+							try {
+								await storage.appendIronGripEntry({
+									id: obs.id,
+									territory,
+									summary: obs.summary || "",
+									charges: obs.texture.charge || [],
+									pull: calculatePullStrength(obs),
+									updated: getTimestamp()
+								});
+							} catch {} // Index rebuilt by cron, inline append is best-effort
+						}
+
 						break;
 					}
 				}
