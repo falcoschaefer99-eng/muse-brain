@@ -96,8 +96,8 @@ function rowToLink(row: Record<string, unknown>): Link {
 		resonance_type: row.resonance_type as string,
 		strength: row.strength as string,
 		origin: row.origin as string,
-		created: row.created_at as string,
-		last_activated: row.last_activated_at as string
+		created: toISOString(row.created_at) || new Date().toISOString(),
+		last_activated: toISOString(row.last_activated_at) || toISOString(row.created_at) || new Date().toISOString()
 	};
 }
 
@@ -255,8 +255,8 @@ export class PostgresBrainStorage implements IBrainStorage {
 		try {
 			if (observations.length === 0) {
 				// Simple case: just delete, no inserts needed.
-				await this.sql.transaction([
-					this.sql`
+				await this.sql.transaction(txn => [
+					txn`
 						DELETE FROM observations
 						WHERE tenant_id = ${this.tenant}
 						  AND territory = ${territory}
@@ -411,7 +411,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 	// ============ OBSERVATION QUERIES (POSTGRES-NATIVE) ============
 
 	async queryObservations(filter: ObservationFilter): Promise<{ observation: Observation; territory: string }[]> {
-		const limit = filter.limit ?? 100;
+		const limit = Math.max(1, filter.limit ?? 100);
 		const offset = filter.offset ?? 0;
 		const orderBy = filter.order_by ?? "created";
 		const orderDir = filter.order_dir ?? "desc";
@@ -588,12 +588,13 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async deleteObservation(id: string): Promise<boolean> {
 		try {
-			await this.sql`
+			const rows = await this.sql`
 				DELETE FROM observations
 				WHERE id = ${id}
 				  AND tenant_id = ${this.tenant}
+				RETURNING id
 			`;
-			return true;
+			return rows.length > 0;
 		} catch (err) {
 			console.error("deleteObservation failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to delete observation");

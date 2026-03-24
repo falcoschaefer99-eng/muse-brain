@@ -497,24 +497,14 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (action === "reinforce") {
 				if (!args.vow_id) return { error: "vow_id is required for action=reinforce" };
 
-				// Find the vow and update last_accessed + access_count as a reinforcement signal
-				const territoryData = await storage.readAllTerritories();
-
-				for (const { territory, observations } of territoryData) {
-					const idx = observations.findIndex(o => o.id === args.vow_id && ((o as any).is_vow || (o as any).type === "vow"));
-					if (idx !== -1) {
-						observations[idx].access_count = (observations[idx].access_count || 0) + 1;
-						observations[idx].last_accessed = getTimestamp();
-						if (args.reinforcement_note) {
-							observations[idx].context = args.reinforcement_note;
-						}
-						await storage.writeTerritory(territory, observations);
-
-						return { success: true, vow_id: args.vow_id, note: "Vow reaffirmed. It holds." };
-					}
+				const vowResult = await storage.findObservation(args.vow_id);
+				if (!vowResult || ((vowResult.observation as any).type !== "vow" && !(vowResult.observation as any).is_vow)) {
+					return { error: `Vow '${args.vow_id}' not found` };
 				}
 
-				return { error: `Vow '${args.vow_id}' not found` };
+				await storage.updateObservationAccess(args.vow_id);
+
+				return { success: true, vow_id: args.vow_id, note: "Vow reaffirmed. It holds." };
 			}
 
 			return { error: `Unknown action: ${action}. Must be create, list, or reinforce.` };

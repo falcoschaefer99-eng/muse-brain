@@ -439,60 +439,43 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			}
 
 			if (action === "texture") {
-				let found = false;
-				let updatedTexture: Texture | null = null;
-
-				const territoryData = await storage.readAllTerritories();
-
-				for (const { territory, observations } of territoryData) {
-					for (const obs of observations) {
-						if (obs.id === args.observation_id) {
-							found = true;
-							const texture = obs.texture || { salience: "active", vividness: "vivid", charge: [], grip: "present" };
-
-							if (args.salience) texture.salience = args.salience;
-							if (args.vividness) texture.vividness = args.vividness;
-							if (args.grip) texture.grip = args.grip;
-							if (args.somatic) texture.somatic = args.somatic;
-							if (args.charge) {
-								const incomingCharge = toStringArray(args.charge);
-								if (args.charge_mode === "replace") {
-									texture.charge = incomingCharge;
-								} else {
-									texture.charge = [...new Set([...(texture.charge || []), ...incomingCharge])];
-								}
-							}
-
-							obs.texture = texture;
-							obs.last_accessed = getTimestamp();
-							obs.summary = generateSummary(obs);
-							updatedTexture = texture;
-
-							await storage.writeTerritory(territory, observations);
-
-							// Update iron-grip index if grip is now iron
-							if (obs.texture?.grip === "iron") {
-								try {
-									await storage.appendIronGripEntry({
-										id: obs.id,
-										territory,
-										summary: obs.summary || "",
-										charges: obs.texture.charge || [],
-										pull: calculatePullStrength(obs),
-										updated: getTimestamp()
-									});
-								} catch {} // Index rebuilt by cron, inline append is best-effort
-							}
-
-							break;
-						}
-					}
-					if (found) break;
-				}
-
+				const found = await storage.findObservation(args.observation_id);
 				if (!found) return { error: `Observation '${args.observation_id}' not found` };
 
-				return { success: true, observation_id: args.observation_id, updated_texture: updatedTexture };
+				const { observation: obs, territory } = found;
+				const texture = obs.texture || { salience: "active", vividness: "vivid", charge: [], grip: "present" };
+
+				if (args.salience) texture.salience = args.salience;
+				if (args.vividness) texture.vividness = args.vividness;
+				if (args.grip) texture.grip = args.grip;
+				if (args.somatic) texture.somatic = args.somatic;
+				if (args.charge) {
+					const incomingCharge = toStringArray(args.charge);
+					if (args.charge_mode === "replace") {
+						texture.charge = incomingCharge;
+					} else {
+						texture.charge = [...new Set([...(texture.charge || []), ...incomingCharge])];
+					}
+				}
+
+				await storage.updateObservationTexture(args.observation_id, texture);
+				await storage.updateObservationAccess(args.observation_id);
+
+				// Update iron-grip index if grip is now iron
+				if (texture.grip === "iron") {
+					try {
+						await storage.appendIronGripEntry({
+							id: obs.id,
+							territory,
+							summary: obs.summary || generateSummary({ ...obs, texture }),
+							charges: texture.charge || [],
+							pull: calculatePullStrength({ ...obs, texture }),
+							updated: getTimestamp()
+						});
+					} catch {} // Index rebuilt by cron, inline append is best-effort
+				}
+
+				return { success: true, observation_id: args.observation_id, updated_texture: texture };
 			}
 
 			return { error: `Unknown action: ${action}. Must be delete or texture.` };

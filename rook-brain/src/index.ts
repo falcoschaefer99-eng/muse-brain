@@ -427,6 +427,9 @@ export default {
 
 					if (rows.length > 0) {
 						const embeddings = await provider.embedBatch(rows.map(r => r.content));
+						if (embeddings.length !== rows.length) {
+							throw new Error(`Embedding batch size mismatch: expected ${rows.length}, got ${embeddings.length}`);
+						}
 						await storage.bulkUpdateEmbeddings(rows.map((row, i) => ({ id: row.id, embedding: embeddings[i] })));
 
 						const remainingCount = await storage.countUnembedded();
