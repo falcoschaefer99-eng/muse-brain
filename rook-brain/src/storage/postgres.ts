@@ -47,11 +47,14 @@ import type {
 	TriggerCondition,
 	ConsentState,
 	TerritoryOverview,
-	IronGripEntry
+	IronGripEntry,
+	Entity,
+	Relation,
+	EntityFilter
 } from "../types";
 
 import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES, CIRCADIAN_PHASES } from "../constants";
-import { getTimestamp, calculateMomentumDecay, calculateAfterglowFade } from "../helpers";
+import { getTimestamp, calculateMomentumDecay, calculateAfterglowFade, generateId } from "../helpers";
 
 import type {
 	IBrainStorage,
@@ -86,7 +89,8 @@ function rowToObservation(row: Record<string, unknown>): Observation {
 		links: (row.links as string[] | null) ?? [],
 		summary: row.summary as string | undefined,
 		type: row.type as string | undefined,
-		tags: (row.tags as string[] | null) ?? []
+		tags: (row.tags as string[] | null) ?? [],
+		entity_id: row.entity_id as string | undefined
 	};
 }
 
@@ -124,6 +128,34 @@ function rowToLetter(row: Record<string, unknown>): Letter {
 		timestamp: row.timestamp as string,
 		read: row.read as boolean,
 		charges: (row.charges as string[] | null) ?? undefined
+	};
+}
+
+function rowToEntity(row: Record<string, unknown>): Entity {
+	return {
+		id: row.id as string,
+		tenant_id: row.tenant_id as string,
+		name: row.name as string,
+		entity_type: row.entity_type as string,
+		tags: Array.isArray(row.tags) ? row.tags as string[] : [],
+		salience: (row.salience as string) || 'active',
+		primary_context: row.primary_context as string | undefined,
+		created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at as string,
+		updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at as string,
+	};
+}
+
+function rowToRelation(row: Record<string, unknown>): Relation {
+	return {
+		id: row.id as string,
+		tenant_id: row.tenant_id as string,
+		from_entity_id: row.from_entity_id as string,
+		to_entity_id: row.to_entity_id as string,
+		relation_type: row.relation_type as string,
+		strength: (row.strength as number) ?? 1.0,
+		context: row.context as string | undefined,
+		created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at as string,
+		updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at as string,
 	};
 }
 
@@ -346,11 +378,10 @@ export class PostgresBrainStorage implements IBrainStorage {
 	}
 
 	private async _insertObservation(obs: Observation, territory: string): Promise<void> {
-		const charges = obs.texture?.charge ?? [];
 		await this.sql`
 			INSERT INTO observations (
 				id, tenant_id, content, territory, created_at, texture, context,
-				mood, last_accessed_at, access_count, links, summary, type, tags
+				mood, last_accessed_at, access_count, links, summary, type, tags, entity_id
 			) VALUES (
 				${obs.id},
 				${this.tenant},
@@ -365,7 +396,8 @@ export class PostgresBrainStorage implements IBrainStorage {
 				${obs.links ?? null},
 				${obs.summary ?? null},
 				${obs.type ?? null},
-				${obs.tags ?? null}
+				${obs.tags ?? null},
+				${obs.entity_id ?? null}
 			)
 			ON CONFLICT (id) DO UPDATE SET
 				content        = EXCLUDED.content,
@@ -378,7 +410,8 @@ export class PostgresBrainStorage implements IBrainStorage {
 				links          = EXCLUDED.links,
 				summary        = EXCLUDED.summary,
 				type           = EXCLUDED.type,
-				tags           = EXCLUDED.tags
+				tags           = EXCLUDED.tags,
+				entity_id      = EXCLUDED.entity_id
 		`;
 	}
 
@@ -1360,6 +1393,228 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	// ============ ENTITIES (Sprint 3) ============
+
+	async createEntity(entity: Omit<Entity, 'id' | 'created_at' | 'updated_at'>): Promise<Entity> {
+		const id = generateId("ent");
+		try {
+			const rows = await this.sql`
+				INSERT INTO entities (id, tenant_id, name, entity_type, tags, salience, primary_context, created_at, updated_at)
+				VALUES (
+					${id},
+					${this.tenant},
+					${entity.name},
+					${entity.entity_type},
+					${entity.tags ?? []},
+					${entity.salience ?? 'active'},
+					${entity.primary_context ?? null},
+					NOW(),
+					NOW()
+				)
+				RETURNING *
+			`;
+			return rowToEntity(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "unknown error";
+			if (msg.includes("unique") || msg.includes("duplicate")) {
+				throw new Error(`Entity with name "${entity.name}" already exists for this tenant`);
+			}
+			console.error("createEntity failed:", msg);
+			throw new Error("Failed to create entity");
+		}
+	}
+
+	async findEntityByName(name: string): Promise<Entity | null> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM entities
+				WHERE tenant_id = ${this.tenant}
+				  AND LOWER(name) = LOWER(${name})
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return rowToEntity(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("findEntityByName failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async findEntityById(id: string): Promise<Entity | null> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM entities
+				WHERE id = ${id}
+				  AND tenant_id = ${this.tenant}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return rowToEntity(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("findEntityById failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async listEntities(filter?: EntityFilter): Promise<Entity[]> {
+		const limit = Math.min(filter?.limit ?? 50, 200);
+		const entityType = filter?.entity_type ?? null;
+		const salience = filter?.salience ?? null;
+		const tags = filter?.tags?.length ? filter.tags : null;
+
+		try {
+			const rows = await this.sql`
+				SELECT * FROM entities
+				WHERE tenant_id = ${this.tenant}
+				  AND (${entityType}::text IS NULL OR entity_type = ${entityType})
+				  AND (${salience}::text IS NULL OR salience = ${salience})
+				  AND (${tags}::text[] IS NULL OR tags && ${tags})
+				ORDER BY name ASC
+				LIMIT ${limit}
+			`;
+			return rows.map(r => rowToEntity(r as Record<string, unknown>));
+		} catch (err) {
+			console.error("listEntities failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async updateEntity(id: string, updates: Partial<Pick<Entity, 'name' | 'entity_type' | 'tags' | 'salience' | 'primary_context'>>): Promise<Entity> {
+		const current = await this.findEntityById(id);
+		if (!current) throw new Error("Entity not found");
+
+		const name = updates.name ?? current.name;
+		const entity_type = updates.entity_type ?? current.entity_type;
+		const tags = updates.tags ?? current.tags;
+		const salience = updates.salience ?? current.salience;
+		const primary_context = updates.primary_context !== undefined ? updates.primary_context : current.primary_context;
+
+		try {
+			const rows = await this.sql`
+				UPDATE entities SET
+					name = ${name},
+					entity_type = ${entity_type},
+					tags = ${tags},
+					salience = ${salience},
+					primary_context = ${primary_context ?? null},
+					updated_at = NOW()
+				WHERE id = ${id} AND tenant_id = ${this.tenant}
+				RETURNING *
+			`;
+			if (rows.length === 0) throw new Error("Entity not found after update");
+			return rowToEntity(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("updateEntity failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update entity");
+		}
+	}
+
+	// ============ RELATIONS (Sprint 3) ============
+
+	async createRelation(relation: Omit<Relation, 'id' | 'created_at' | 'updated_at'>): Promise<Relation> {
+		const id = generateId("rel");
+		try {
+			const rows = await this.sql`
+				INSERT INTO relations (id, tenant_id, from_entity_id, to_entity_id, relation_type, strength, context, created_at, updated_at)
+				VALUES (
+					${id},
+					${this.tenant},
+					${relation.from_entity_id},
+					${relation.to_entity_id},
+					${relation.relation_type},
+					${relation.strength ?? 1.0},
+					${relation.context ?? null},
+					NOW(),
+					NOW()
+				)
+				ON CONFLICT (tenant_id, from_entity_id, to_entity_id, relation_type)
+				DO UPDATE SET
+					strength   = EXCLUDED.strength,
+					context    = EXCLUDED.context,
+					updated_at = NOW()
+				RETURNING *
+			`;
+			return rowToRelation(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("createRelation failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to create relation");
+		}
+	}
+
+	async getEntityRelations(entityId: string): Promise<Relation[]> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM relations
+				WHERE tenant_id = ${this.tenant}
+				  AND (from_entity_id = ${entityId} OR to_entity_id = ${entityId})
+				ORDER BY created_at DESC
+				LIMIT 200
+			`;
+			return rows.map(row => rowToRelation(row as Record<string, unknown>));
+		} catch (err) {
+			console.error("getEntityRelations failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to get entity relations");
+		}
+	}
+
+	// ============ ENTITY-OBSERVATION LINKING (Sprint 3) ============
+
+	async linkObservationToEntity(observationId: string, entityId: string): Promise<void> {
+		try {
+			await this.sql`
+				UPDATE observations
+				SET entity_id = ${entityId}
+				WHERE id = ${observationId}
+				  AND tenant_id = ${this.tenant}
+			`;
+		} catch (err) {
+			console.error("linkObservationToEntity failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to link observation to entity");
+		}
+	}
+
+	async getEntityObservations(entityId: string, limit?: number): Promise<{ observation: Observation; territory: string }[]> {
+		const cap = limit ?? 20;
+		try {
+			const rows = await this.sql`
+				SELECT id, content, territory, created_at, texture, context, mood,
+				       last_accessed_at, access_count, links, summary, type, tags, entity_id
+				FROM observations
+				WHERE entity_id = ${entityId}
+				  AND tenant_id = ${this.tenant}
+				ORDER BY created_at DESC
+				LIMIT ${cap}
+			`;
+			return rows.map(row => ({
+				observation: rowToObservation(row as Record<string, unknown>),
+				territory: row.territory as string
+			}));
+		} catch (err) {
+			console.error("getEntityObservations failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to get entity observations");
+		}
+	}
+
+	async queryEntityTagsForBackfill(): Promise<Array<{ id: string; entity_tags: string[] }>> {
+		try {
+			const rows = await this.sql`
+				SELECT id, entity_tags
+				FROM observations
+				WHERE tenant_id = ${this.tenant}
+				  AND entity_tags != '{}'
+				  AND entity_id IS NULL
+				LIMIT 500
+			`;
+			return rows.map(row => ({
+				id: row.id as string,
+				entity_tags: (row.entity_tags as string[] | null) ?? []
+			}));
+		} catch (err) {
+			console.error("queryEntityTagsForBackfill failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to query entity tags for backfill");
+		}
+	}
+
 	// ============ HYBRID SEARCH (Sprint 2) ============
 
 	async hybridSearch(options: HybridSearchOptions): Promise<HybridSearchResult[]> {
@@ -1376,6 +1631,10 @@ export class PostgresBrainStorage implements IBrainStorage {
 			keyword_rank?: number;
 			novelty_score_raw?: number;
 			surface_count_raw?: number;
+			/** Candidate came in only via the entity query (no vector or keyword match). */
+			_entity_only?: boolean;
+			/** Candidate also matched via the entity query (already in map from vector/keyword). */
+			_entity_matched?: boolean;
 		}
 		const candidates = new Map<string, RawCandidate>();
 
@@ -1396,7 +1655,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       1 - (embedding <=> ${embeddingLiteral}::vector) AS vector_sim
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1410,7 +1669,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       1 - (embedding <=> ${embeddingLiteral}::vector) AS vector_sim
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1423,7 +1682,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       1 - (embedding <=> ${embeddingLiteral}::vector) AS vector_sim
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1436,7 +1695,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       1 - (embedding <=> ${embeddingLiteral}::vector) AS vector_sim
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1458,7 +1717,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1472,7 +1731,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1485,7 +1744,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1498,7 +1757,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
-						       novelty_score, surface_count,
+						       novelty_score, surface_count, entity_id,
 						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
@@ -1513,7 +1772,28 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 		})();
 
-		const [vectorRows, keywordRows] = await Promise.all([vectorPromise, keywordPromise]);
+		// 3. Entity-linked candidates (when entity_id filter is present)
+		const entityPromise: Promise<Record<string, unknown>[]> = (async () => {
+			if (!options.entity_id) return [];
+			try {
+				const rows = await this.sql`
+					SELECT id, content, territory, created_at, texture, context, mood,
+					       last_accessed_at, access_count, links, summary, type, tags,
+					       novelty_score, surface_count, entity_id
+					FROM observations
+					WHERE tenant_id = ${this.tenant}
+					  AND entity_id = ${options.entity_id}
+					ORDER BY created_at DESC
+					LIMIT 20
+				`;
+				return rows as Record<string, unknown>[];
+			} catch (err) {
+				console.error("hybridSearch entity query failed:", err instanceof Error ? err.message : "unknown error");
+				return [];
+			}
+		})();
+
+		const [vectorRows, keywordRows, entityRows] = await Promise.all([vectorPromise, keywordPromise, entityPromise]);
 
 		// Merge into candidates map — dedup by id, keep both scores if present.
 		for (const row of vectorRows) {
@@ -1546,6 +1826,27 @@ export class PostgresBrainStorage implements IBrainStorage {
 					keyword_rank: row.text_rank as number,
 					novelty_score_raw: row.novelty_score as number,
 					surface_count_raw: row.surface_count as number
+				});
+			}
+		}
+
+		// Merge entity-linked candidates — overlap adds 'entity' to match_sources signal;
+		// entity-only results enter the pool with a base score of 0.5.
+		for (const row of entityRows) {
+			const id = row.id as string;
+			const existing = candidates.get(id);
+			if (existing) {
+				// Mark as also entity-matched — the gravity modulation will apply later.
+				existing._entity_matched = true;
+			} else {
+				candidates.set(id, {
+					observation: rowToObservation(row),
+					territory: row.territory as string,
+					vector_sim: undefined,
+					keyword_rank: undefined,
+					novelty_score_raw: row.novelty_score as number,
+					surface_count_raw: row.surface_count as number,
+					_entity_only: true
 				});
 			}
 		}
@@ -1597,13 +1898,22 @@ export class PostgresBrainStorage implements IBrainStorage {
 			} else if (vector_sim !== undefined) {
 				baseScore = vector_sim;
 				match_sources.push('vector');
-			} else {
+			} else if (keyword_rank !== undefined) {
 				// keyword only
-				baseScore = maxKeywordRank > 0 ? (keyword_rank ?? 0) / maxKeywordRank : 0;
+				baseScore = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
 				match_sources.push('keyword');
+			} else {
+				// entity-only — no vector or keyword signal; use flat base score
+				baseScore = 0.5;
+			}
+
+			// Entity match source label (for candidates that appeared in entity query)
+			if (cand._entity_only || cand._entity_matched) {
+				match_sources.push('entity');
 			}
 
 			// Skip results below threshold before applying multipliers.
+			// Entity-only candidates always clear the threshold (baseScore = 0.5 >= default 0.3).
 			if (baseScore < minSimilarity) continue;
 
 			let score = baseScore;
@@ -1622,6 +1932,12 @@ export class PostgresBrainStorage implements IBrainStorage {
 			// 4. Circadian territory bias
 			if (circadianBiasSet.has(territory)) {
 				score *= 1.15;
+			}
+
+			// 5. Entity gravity — observations about same entity cluster
+			if (options.entity_id && observation.entity_id === options.entity_id) {
+				score *= 1.15;
+				if (!match_sources.includes('entity')) match_sources.push('entity');
 			}
 
 			results.push({

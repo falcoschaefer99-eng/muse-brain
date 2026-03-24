@@ -20,7 +20,10 @@ import type {
 	TriggerCondition,
 	ConsentState,
 	TerritoryOverview,
-	IronGripEntry
+	IronGripEntry,
+	Entity,
+	Relation,
+	EntityFilter
 } from "../types";
 
 // ============ FILTER / QUERY TYPES ============
@@ -83,6 +86,8 @@ export interface HybridSearchOptions {
 	limit?: number;
 	/** Current circadian phase name — used for territory bias modulation. */
 	circadian_phase?: string;
+	/** Filter to observations linked to this entity. */
+	entity_id?: string;
 }
 
 /** A hybrid search result with composite score and source indicators. */
@@ -295,4 +300,28 @@ export interface IBrainStorage {
 	readIronGripIndex(): Promise<IronGripEntry[]>;
 	writeIronGripIndex(entries: IronGripEntry[]): Promise<void>;
 	appendIronGripEntry(entry: IronGripEntry): Promise<void>;
+
+	// --- Entities ---
+
+	createEntity(entity: Omit<Entity, 'id' | 'created_at' | 'updated_at'>): Promise<Entity>;
+	findEntityByName(name: string): Promise<Entity | null>;
+	findEntityById(id: string): Promise<Entity | null>;
+	listEntities(filter?: EntityFilter): Promise<Entity[]>;
+	updateEntity(id: string, updates: Partial<Pick<Entity, 'name' | 'entity_type' | 'tags' | 'salience' | 'primary_context'>>): Promise<Entity>;
+
+	// --- Relations ---
+
+	createRelation(relation: Omit<Relation, 'id' | 'created_at' | 'updated_at'>): Promise<Relation>;
+	getEntityRelations(entityId: string): Promise<Relation[]>;
+
+	// --- Entity-Observation Linking ---
+
+	linkObservationToEntity(observationId: string, entityId: string): Promise<void>;
+	getEntityObservations(entityId: string, limit?: number): Promise<{ observation: Observation; territory: string }[]>;
+
+	/**
+	 * Backfill helper: return all observations that have entity_tags set but no entity_id yet.
+	 * Returns minimal rows — only id and entity_tags. Used by the backfill action in mind_entity.
+	 */
+	queryEntityTagsForBackfill(): Promise<Array<{ id: string; entity_tags: string[] }>>;
 }

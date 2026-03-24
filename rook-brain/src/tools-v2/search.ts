@@ -17,7 +17,8 @@ export const TOOL_DEFS = [
 				query: { type: "string", description: "Keywords or natural language to search for" },
 				territory: { type: "string", enum: [...Object.keys(TERRITORIES), "all"], default: "all", description: "Filter to one territory or 'all'" },
 				limit: { type: "number", default: 10, description: "Max results" },
-				grip_filter: { type: "string", enum: ["iron", "strong", "present", "loose", "dormant"], description: "Optional: only return observations at this grip level or stronger" }
+				grip_filter: { type: "string", enum: ["iron", "strong", "present", "loose", "dormant"], description: "Optional: only return observations at this grip level or stronger" },
+				entity: { type: "string", description: "Filter by entity name or ID" }
 			},
 			required: ["query"]
 		}
@@ -58,13 +59,26 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			// Get circadian phase for territory bias modulation.
 			const circadianInfo = getCurrentCircadianPhase();
 
+			// Resolve entity param to an entity_id if provided.
+			let entityId: string | undefined;
+			if (args.entity) {
+				const byId = await context.storage.findEntityById(args.entity);
+				if (byId) {
+					entityId = byId.id;
+				} else {
+					const byName = await context.storage.findEntityByName(args.entity);
+					if (byName) entityId = byName.id;
+				}
+			}
+
 			const hybridResults = await context.storage.hybridSearch({
 				query,
 				embedding,
 				territory,
 				grip: gripFilter,
 				limit,
-				circadian_phase: circadianInfo.phase
+				circadian_phase: circadianInfo.phase,
+				entity_id: entityId
 			});
 
 			// Fire-and-forget side effects.

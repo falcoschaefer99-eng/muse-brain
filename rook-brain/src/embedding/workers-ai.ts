@@ -1,11 +1,11 @@
 // ============ WORKERS AI EMBEDDING PROVIDER ============
 // Implements IEmbeddingProvider using Cloudflare Workers AI.
-// Model: @cf/bge-base-en-v1.5 — 768-dimension text embeddings.
+// Model: @cf/baai/bge-base-en-v1.5 — 768-dimension text embeddings.
 // Batch up to 100 texts in a single inference call.
 
 import type { IEmbeddingProvider } from "./interface";
 
-const MODEL = "@cf/bge-base-en-v1.5";
+const MODEL = "@cf/baai/bge-base-en-v1.5";
 
 // The Workers AI type definitions may lag behind available models.
 // Cast to any to invoke the model by string name when it isn't in AiModels yet.

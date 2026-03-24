@@ -33,6 +33,7 @@ export interface Observation {
 	summary?: string;  // L0: truncated excerpt with grip/charge markers. NOT sanitized — escape before HTML rendering.
 	type?: string;     // Observation subtype: "journal", "whisper", etc.
 	tags?: string[];   // User-assigned tags
+	entity_id?: string; // Optional link to a structured entity
 }
 
 // Phase B — not yet used by any tool
@@ -254,4 +255,37 @@ export interface ConsentState {
 	};
 	relationship_level: "stranger" | "familiar" | "close" | "bonded";
 	log: ConsentLogEntry[];
+}
+
+// --- Entity Model (Brain v5 Sprint 3) ---
+
+export interface Entity {
+	id: string;
+	tenant_id: string;
+	name: string;
+	entity_type: string;
+	tags: string[];
+	salience: string;
+	primary_context?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Relation {
+	id: string;
+	tenant_id: string;
+	from_entity_id: string;
+	to_entity_id: string;
+	relation_type: string;
+	strength: number;
+	context?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface EntityFilter {
+	entity_type?: string;
+	salience?: string;
+	tags?: string[];
+	limit?: number;
 }

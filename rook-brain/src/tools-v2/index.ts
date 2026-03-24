@@ -14,6 +14,7 @@ import { TOOL_DEFS as deeperDefs, handleTool as handleDeeper } from "./deeper";
 import { TOOL_DEFS as safetyDefs, handleTool as handleSafety } from "./safety";
 import { TOOL_DEFS as territoryDefs, handleTool as handleTerritory } from "./territory";
 import { TOOL_DEFS as searchDefs, handleTool as handleSearch } from "./search";
+import { TOOL_DEFS as entityDefs, handleTool as handleEntity } from "./entity";
 
 // ============ AGGREGATED TOOL DEFINITIONS ============
 
@@ -27,7 +28,8 @@ export const TOOL_DEFS = [
 	...deeperDefs,
 	...safetyDefs,
 	...territoryDefs,
-	...searchDefs
+	...searchDefs,
+	...entityDefs
 ];
 
 // ============ TOOL DISPATCH TABLE ============
@@ -75,7 +77,10 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 	mind_territory: handleTerritory,
 
 	// Search
-	mind_search: handleSearch
+	mind_search: handleSearch,
+
+	// Entity
+	mind_entity: handleEntity
 };
 
 // ============ EXECUTE TOOL ============

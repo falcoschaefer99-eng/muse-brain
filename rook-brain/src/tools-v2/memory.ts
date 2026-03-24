@@ -32,6 +32,24 @@ function scheduleEmbed(context: ToolContext, observation: Observation): void {
 	}
 }
 
+async function resolveOrCreateEntity(context: ToolContext, name: string, typeHint?: string): Promise<string | undefined> {
+	const cleanName = name.trim().replace(/[\x00-\x1f]/g, '');
+	if (!cleanName || cleanName.length > 200) return undefined;
+
+	const existing = await context.storage.findEntityByName(cleanName);
+	if (existing) return existing.id;
+
+	const entity = await context.storage.createEntity({
+		tenant_id: context.storage.getTenant(),
+		name: cleanName,
+		entity_type: typeHint || 'concept',
+		tags: [],
+		salience: 'active',
+		primary_context: undefined
+	});
+	return entity.id;
+}
+
 export const TOOL_DEFS = [
 	{
 		name: "mind_observe",
@@ -57,7 +75,9 @@ export const TOOL_DEFS = [
 				mood: { type: "string", description: "[observe] Mood when recorded" },
 				// journal/whisper params
 				entry: { type: "string", description: "[journal] Journal entry text (alternative to content)" },
-				tags: { type: "array", items: { type: "string" }, description: "[journal/whisper] Tags" }
+				tags: { type: "array", items: { type: "string" }, description: "[journal/whisper] Tags" },
+			entity_id: { type: "string", description: "[observe/journal/whisper] Link to entity by ID" },
+			entity_name: { type: "string", description: "[observe/journal/whisper] Link to entity by name (auto-creates if not found)" }
 			},
 			required: []
 		}
@@ -88,7 +108,8 @@ export const TOOL_DEFS = [
 				},
 				// Output
 				limit: { type: "number", default: 10, description: "Max results" },
-				full: { type: "boolean", default: false, description: "Include full content in results" }
+				full: { type: "boolean", default: false, description: "Include full content in results" },
+				entity: { type: "string", description: "Filter by entity name or ID" }
 			}
 		}
 	},
@@ -164,6 +185,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				observation.tags = toStringArray(args.tags);
 				observation.summary = generateSummary(observation);
 
+				// Entity linking
+				let journalEntityId: string | undefined = args.entity_id;
+				if (!journalEntityId && args.entity_name) {
+					journalEntityId = await resolveOrCreateEntity(context, args.entity_name);
+				}
+				if (journalEntityId) {
+					observation.entity_id = journalEntityId;
+				}
+
 				await storage.appendToTerritory("episodic", observation);
 
 				scheduleEmbed(context, observation);
@@ -205,6 +235,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				(observation as any).type = "whisper";
 				observation.tags = args.tags ? toStringArray(args.tags) : ["whisper", "quiet"];
 				observation.summary = generateSummary(observation);
+
+				// Entity linking
+				let whisperEntityId: string | undefined = args.entity_id;
+				if (!whisperEntityId && args.entity_name) {
+					whisperEntityId = await resolveOrCreateEntity(context, args.entity_name);
+				}
+				if (whisperEntityId) {
+					observation.entity_id = whisperEntityId;
+				}
 
 				await storage.appendToTerritory(territory, observation);
 
@@ -252,6 +291,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			};
 
 			observation.summary = generateSummary(observation);
+
+			// Entity linking
+			let observeEntityId: string | undefined = args.entity_id;
+			if (!observeEntityId && args.entity_name) {
+				observeEntityId = await resolveOrCreateEntity(context, args.entity_name);
+			}
+			if (observeEntityId) {
+				observation.entity_id = observeEntityId;
+			}
 
 			await storage.appendToTerritory(territory, observation);
 
@@ -330,13 +378,26 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const circadianInfo = getCurrentCircadianPhase();
 				const territory = args.territory || undefined;
 
+				// Resolve entity param to an entity_id if provided.
+				let entityId: string | undefined;
+				if (args.entity) {
+					const byId = await storage.findEntityById(args.entity);
+					if (byId) {
+						entityId = byId.id;
+					} else {
+						const byName = await storage.findEntityByName(args.entity);
+						if (byName) entityId = byName.id;
+					}
+				}
+
 				const hybridResults = await storage.hybridSearch({
 					query,
 					embedding,
 					territory,
 					grip: gripFilter,
 					limit,
-					circadian_phase: circadianInfo.phase
+					circadian_phase: circadianInfo.phase,
+					entity_id: entityId
 				});
 
 				// Fire-and-forget side effects.
