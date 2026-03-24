@@ -2,8 +2,10 @@
 // Pure leaf node — no imports. All types used across the brain.
 
 export interface Env {
-	BRAIN_STORAGE: R2Bucket;
+	BRAIN_STORAGE: R2Bucket;  // R2 — retained during migration period
+	DATABASE_URL: string;     // Neon Postgres — primary store post-migration
 	API_KEY: string;
+	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
 }
 
 export interface Texture {

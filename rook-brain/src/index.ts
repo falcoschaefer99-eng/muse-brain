@@ -31,10 +31,10 @@ import type {
 } from "./types";
 
 import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullStrength } from "./helpers";
-import { BrainStorage } from "./storage";
-import { TOOLS, executeTool } from "./tools/index";
+import { createStorage } from "./storage/index";
+import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
+import { createEmbeddingProvider } from "./embedding/index";
 import { ALLOWED_TENANTS } from "./constants";
-import { processSubconscious, processNoveltyRegeneration } from "./tools/subconscious";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -43,7 +43,7 @@ const RATE_WINDOW = 60_000; // 1 minute in ms
 
 // ============ MCP PROTOCOL ============
 
-async function handleMcpRequest(request: JsonRpcRequest, env: Env, tenant: string): Promise<JsonRpcResponse> {
+async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: ExecutionContext, tenant: string): Promise<JsonRpcResponse> {
 	const { id, method, params } = request;
 
 	try {
@@ -67,8 +67,8 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, tenant: strin
 
 			case "tools/call": {
 				const { name, arguments: args } = params;
-				const storage = new BrainStorage(env.BRAIN_STORAGE, tenant);
-				const result = await executeTool(name, args || {}, storage);
+				const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
+				const result = await executeTool(name, args || {}, { storage, ai: env.AI, waitUntil: ctx.waitUntil.bind(ctx) });
 				return {
 					jsonrpc: "2.0",
 					id,
@@ -80,7 +80,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, tenant: strin
 				return { jsonrpc: "2.0", id, result: {} };
 
 			default:
-				return { jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } };
+				return { jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } };
 		}
 	} catch (error: any) {
 		console.error("MCP error:", error);
@@ -111,10 +111,9 @@ export default {
 
 		if (url.pathname === "/health") {
 			let storage_ok = false;
-			if (env.BRAIN_STORAGE) {
+			if (env.DATABASE_URL) {
 				try {
-					// Health probe uses BrainStorage to test tenant-scoped path (post-migration).
-					const healthStorage = new BrainStorage(env.BRAIN_STORAGE, "rook");
+					const healthStorage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, "rook");
 					await healthStorage.readBrainState();
 					storage_ok = true;
 				} catch {}
@@ -209,11 +208,11 @@ export default {
 						headers: { "Content-Type": "application/json", ...corsHeaders }
 					});
 				}
-				const responses = await Promise.all(body.map(req => handleMcpRequest(req, env, tenant)));
+				const responses = await Promise.all(body.map(req => handleMcpRequest(req, env, ctx, tenant)));
 				return new Response(JSON.stringify(responses), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 			}
 
-			const response = await handleMcpRequest(body, env, tenant);
+			const response = await handleMcpRequest(body, env, ctx, tenant);
 			return new Response(JSON.stringify(response), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 		}
 
@@ -237,7 +236,7 @@ export default {
 		let totalNoveltyChanges = 0;
 
 		for (const tenant of ALLOWED_TENANTS) {
-			const storage = new BrainStorage(env.BRAIN_STORAGE, tenant);
+			const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
 			let decayChanges = 0;
 			const territoriesToWrite: { territory: string; observations: Observation[] }[] = [];
 
@@ -284,17 +283,49 @@ export default {
 				storage.writeTerritory(territory, observations)
 			));
 
-			// Subconscious processing
+			// Subconscious processing (v2 tool dispatch)
 			try {
-				await processSubconscious(storage, territoryData);
+				await executeTool("mind_subconscious", { action: "process" }, { storage, ai: env.AI });
 				console.log(`Daemon [${tenant}]: subconscious processed`);
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: subconscious error`, e);
 			}
 
-			// Novelty regeneration
+			// Novelty regeneration (inlined)
 			try {
-				const noveltyChanges = await processNoveltyRegeneration(storage, territoryData);
+				let noveltyChanges = 0;
+				const noveltyWrites: { territory: string; observations: Observation[] }[] = [];
+
+				for (const { territory, observations } of territoryData) {
+					let changed = false;
+
+					for (const o of observations) {
+						if (o.texture?.salience === "foundational") continue;
+
+						if (!o.texture?.novelty_score) {
+							// Backfill: no novelty_score set yet
+							if (!o.texture) continue;
+							o.texture.novelty_score = 0.5;
+							changed = true;
+							noveltyChanges++;
+						} else if (o.texture.last_surfaced_at) {
+							const daysSinceSurfaced = (Date.now() - new Date(o.texture.last_surfaced_at).getTime()) / (1000 * 60 * 60 * 24);
+							if (daysSinceSurfaced >= 30 && o.texture.novelty_score < 0.8) {
+								const boost = Math.min(0.1 * Math.floor(daysSinceSurfaced / 30), 0.5);
+								o.texture.novelty_score = Math.min(o.texture.novelty_score + boost, 1.0);
+								changed = true;
+								noveltyChanges++;
+							}
+						}
+					}
+
+					if (changed) noveltyWrites.push({ territory, observations });
+				}
+
+				await Promise.all(noveltyWrites.map(({ territory, observations }) =>
+					storage.writeTerritory(territory, observations)
+				));
+
 				totalNoveltyChanges += noveltyChanges;
 				console.log(`Daemon [${tenant}]: ${noveltyChanges} novelty regenerations`);
 			} catch (e) {
@@ -393,6 +424,25 @@ export default {
 				console.log(`Daemon [${tenant}]: overviews generated (${overviews.length} territories, ${ironIndex.length} iron grip)`);
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: overview generation error`, e);
+			}
+
+			// Embedding backfill — process up to 20 unembedded observations per cycle
+			if (env.AI) {
+				try {
+					const provider = createEmbeddingProvider(env.AI);
+
+					const rows = await storage.queryUnembedded(20);
+
+					if (rows.length > 0) {
+						const embeddings = await provider.embedBatch(rows.map(r => r.content));
+						await storage.bulkUpdateEmbeddings(rows.map((row, i) => ({ id: row.id, embedding: embeddings[i] })));
+
+						const remainingCount = await storage.countUnembedded();
+						console.log(`Daemon [${tenant}]: backfilled ${rows.length} embeddings (${remainingCount} remaining)`);
+					}
+				} catch (e) {
+					console.error(`Daemon [${tenant}]: embedding backfill error`, e);
+				}
 			}
 
 			console.log(`Daemon [${tenant}]: ${decayChanges} decay changes`);
