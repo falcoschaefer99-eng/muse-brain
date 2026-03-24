@@ -135,6 +135,15 @@ export interface IBrainStorage {
 	/** Batch-update texture dimensions for multiple observations (decay daemon). */
 	bulkUpdateTexture(updates: TextureUpdate[]): Promise<void>;
 
+	/** Overwrite the full texture for a single observation by ID (safe, no destructive territory rewrite). */
+	updateObservationTexture(id: string, texture: Observation["texture"]): Promise<void>;
+
+	/** Increment access_count and stamp last_accessed_at for a single observation (safe, no territory rewrite). */
+	updateObservationAccess(id: string): Promise<void>;
+
+	/** Delete a single observation by ID. Returns true if found and deleted. */
+	deleteObservation(id: string): Promise<boolean>;
+
 	// --- Vector Search (new — embeddings nullable until populated) ---
 
 	/** Update the embedding vector for a single observation (called after generation). */

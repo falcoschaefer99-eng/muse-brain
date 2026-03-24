@@ -358,8 +358,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			} else if (sortBy === "access") {
 				hits.sort((a, b) => (b.obs.access_count || 0) - (a.obs.access_count || 0));
 			} else {
-				// recency (default)
-				hits.sort((a, b) => b.obs.created.localeCompare(a.obs.created));
+				// recency (default) — created may be Date or string depending on driver
+				hits.sort((a, b) => new Date(b.obs.created).getTime() - new Date(a.obs.created).getTime());
 			}
 
 			const topHits = hits.slice(0, limit);
@@ -399,25 +399,18 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		case "mind_pull": {
 			if (!args.id) return { error: "id is required" };
 
-			const territoryData = await storage.readAllTerritories();
+			const pulledResult = await storage.findObservation(args.id);
+			if (!pulledResult) return { error: "Observation not found", id: args.id };
 
-			for (const { territory, observations } of territoryData) {
-				const found = observations.find(o => o.id === args.id);
-				if (found) {
-					found.access_count = (found.access_count || 0) + 1;
-					found.last_accessed = getTimestamp();
-					await storage.writeTerritory(territory, observations);
+			// Increment access count + stamp last_accessed — no destructive territory rewrite.
+			await storage.updateObservationAccess(args.id);
 
-					return {
-						...found,
-						territory,
-						essence: extractEssence(found),
-						pull: calculatePullStrength(found)
-					};
-				}
-			}
-
-			return { error: "Observation not found", id: args.id };
+			return {
+				...pulledResult.observation,
+				territory: pulledResult.territory,
+				essence: extractEssence(pulledResult.observation),
+				pull: calculatePullStrength(pulledResult.observation)
+			};
 		}
 
 		case "mind_edit": {
@@ -426,24 +419,14 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (!args.observation_id) return { error: "observation_id is required" };
 
 			if (action === "delete") {
-				let found = false;
-				let foundTerritory = "";
+				// Find the observation first to get territory for the response.
+				const deleteTarget = await storage.findObservation(args.observation_id as string);
+				if (!deleteTarget) return { error: `Observation '${args.observation_id}' not found` };
 
-				const territoryData = await storage.readAllTerritories();
+				const foundTerritory = deleteTarget.territory;
 
-				for (const { territory, observations } of territoryData) {
-					const originalCount = observations.length;
-					const filtered = observations.filter(o => o.id !== args.observation_id);
-
-					if (filtered.length < originalCount) {
-						found = true;
-						foundTerritory = territory;
-						await storage.writeTerritory(territory, filtered);
-						break;
-					}
-				}
-
-				if (!found) return { error: `Observation '${args.observation_id}' not found` };
+				// Delete directly — no destructive territory rewrite.
+				await storage.deleteObservation(args.observation_id as string);
 
 				const links = await storage.readLinks();
 				const originalLinkCount = links.length;

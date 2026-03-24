@@ -238,14 +238,14 @@ export default {
 		for (const tenant of ALLOWED_TENANTS) {
 			const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
 			let decayChanges = 0;
-			const territoriesToWrite: { territory: string; observations: Observation[] }[] = [];
 
 			// Parallel read of all territories
 			const territoryData = await storage.readAllTerritories();
 
-			for (const { territory, observations: obs } of territoryData) {
-				let changed = false;
+			// Decay pass: identify changed observations, update individually (no destructive territory rewrite).
+			const decayTexturesToUpdate: { id: string; texture: Observation["texture"] }[] = [];
 
+			for (const { observations: obs } of territoryData) {
 				for (const o of obs) {
 					if (o.texture?.salience === "foundational") continue;
 
@@ -253,35 +253,39 @@ export default {
 					if (!lastAccessed) continue;
 
 					const age = (Date.now() - new Date(lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
+					const originalTexture = JSON.stringify(o.texture);
 
 					if (age > 7 && o.texture?.vividness === "crystalline") {
-						o.texture.vividness = "vivid"; changed = true; decayChanges++;
+						o.texture.vividness = "vivid";
 					} else if (age > 30 && o.texture?.vividness === "vivid") {
-						o.texture.vividness = "soft"; changed = true; decayChanges++;
+						o.texture.vividness = "soft";
 					}
 
 					if (age > 14 && o.texture?.grip === "iron") {
-						o.texture.grip = "strong"; changed = true; decayChanges++;
+						o.texture.grip = "strong";
 					} else if (age > 60 && o.texture?.grip === "strong") {
-						o.texture.grip = "present"; changed = true; decayChanges++;
+						o.texture.grip = "present";
 					}
 
 					// Charge phase advancement: fresh → active after 1h, active → processing after 24h
 					const FRESH_TO_ACTIVE_DAYS = 1 / 24; // 1 hour
 					if (o.texture?.charge_phase === "fresh" && age > FRESH_TO_ACTIVE_DAYS) {
-						o.texture.charge_phase = "active"; changed = true;
+						o.texture.charge_phase = "active";
 					} else if (o.texture?.charge_phase === "active" && age > 1) {
-						o.texture.charge_phase = "processing"; changed = true;
+						o.texture.charge_phase = "processing";
+					}
+
+					if (JSON.stringify(o.texture) !== originalTexture) {
+						decayTexturesToUpdate.push({ id: o.id, texture: o.texture });
 					}
 				}
-
-				if (changed) territoriesToWrite.push({ territory, observations: obs });
 			}
 
-			// Parallel write of changed territories
-			await Promise.all(territoriesToWrite.map(({ territory, observations }) =>
-				storage.writeTerritory(territory, observations)
+			// Individual UPDATE per changed observation — no destructive territory rewrites.
+			await Promise.all(decayTexturesToUpdate.map(({ id, texture }) =>
+				storage.updateObservationTexture(id, texture)
 			));
+			decayChanges = decayTexturesToUpdate.length;
 
 			// Subconscious processing (v2 tool dispatch)
 			try {
@@ -293,12 +297,9 @@ export default {
 
 			// Novelty regeneration (inlined)
 			try {
-				let noveltyChanges = 0;
-				const noveltyWrites: { territory: string; observations: Observation[] }[] = [];
+				const noveltyTexturesToUpdate: { id: string; texture: Observation["texture"] }[] = [];
 
-				for (const { territory, observations } of territoryData) {
-					let changed = false;
-
+				for (const { observations } of territoryData) {
 					for (const o of observations) {
 						if (o.texture?.salience === "foundational") continue;
 
@@ -306,59 +307,50 @@ export default {
 							// Backfill: no novelty_score set yet
 							if (!o.texture) continue;
 							o.texture.novelty_score = 0.5;
-							changed = true;
-							noveltyChanges++;
+							noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
 						} else if (o.texture.last_surfaced_at) {
 							const daysSinceSurfaced = (Date.now() - new Date(o.texture.last_surfaced_at).getTime()) / (1000 * 60 * 60 * 24);
 							if (daysSinceSurfaced >= 30 && o.texture.novelty_score < 0.8) {
 								const boost = Math.min(0.1 * Math.floor(daysSinceSurfaced / 30), 0.5);
 								o.texture.novelty_score = Math.min(o.texture.novelty_score + boost, 1.0);
-								changed = true;
-								noveltyChanges++;
+								noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
 							}
 						}
 					}
-
-					if (changed) noveltyWrites.push({ territory, observations });
 				}
 
-				await Promise.all(noveltyWrites.map(({ territory, observations }) =>
-					storage.writeTerritory(territory, observations)
+				await Promise.all(noveltyTexturesToUpdate.map(({ id, texture }) =>
+					storage.updateObservationTexture(id, texture)
 				));
 
-				totalNoveltyChanges += noveltyChanges;
-				console.log(`Daemon [${tenant}]: ${noveltyChanges} novelty regenerations`);
+				totalNoveltyChanges += noveltyTexturesToUpdate.length;
+				console.log(`Daemon [${tenant}]: ${noveltyTexturesToUpdate.length} novelty regenerations`);
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: novelty error`, e);
 			}
 
 			// One-time backfill: generate summaries for existing observations.
-			// Uses same in-memory territoryData already mutated by decay pass above.
-			// Territories in both decay + backfill write lists get written twice (redundant, not incorrect).
+			// Uses individual upserts (appendToTerritory ON CONFLICT) — no destructive territory rewrites.
 			try {
 				const backfillDone = await storage.readBackfillFlag("v4");
 				if (!backfillDone) {
-					let backfillCount = 0;
-					const backfillWrites: { territory: string; observations: Observation[] }[] = [];
+					const backfillUpdates: { territory: string; obs: Observation }[] = [];
 
 					for (const { territory, observations } of territoryData) {
-						let changed = false;
 						for (const obs of observations) {
 							if (!obs.summary) {
 								obs.summary = generateSummary(obs);
-								changed = true;
-								backfillCount++;
+								backfillUpdates.push({ territory, obs });
 							}
 						}
-						if (changed) backfillWrites.push({ territory, observations });
 					}
 
-					await Promise.all(backfillWrites.map(({ territory, observations }) =>
-						storage.writeTerritory(territory, observations)
+					await Promise.all(backfillUpdates.map(({ territory, obs }) =>
+						storage.appendToTerritory(territory, obs)
 					));
 
-					await storage.writeBackfillFlag("v4", { completed: getTimestamp(), count: backfillCount });
-					console.log(`Daemon [${tenant}]: backfilled ${backfillCount} summaries`);
+					await storage.writeBackfillFlag("v4", { completed: getTimestamp(), count: backfillUpdates.length });
+					console.log(`Daemon [${tenant}]: backfilled ${backfillUpdates.length} summaries`);
 				}
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: backfill error`, e);
