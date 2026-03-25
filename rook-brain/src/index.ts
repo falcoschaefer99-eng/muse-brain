@@ -68,7 +68,8 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 
 			case "tools/call": {
 				const { name, arguments: args } = params;
-				const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
+				const dbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+				const storage = createStorage({ backend: 'postgres', databaseUrl: dbUrl }, tenant);
 				const result = await executeTool(name, args || {}, { storage, ai: env.AI, waitUntil: ctx.waitUntil.bind(ctx) });
 				return {
 					jsonrpc: "2.0",
@@ -112,9 +113,10 @@ export default {
 
 		if (url.pathname === "/health") {
 			let storage_ok = false;
-			if (env.DATABASE_URL) {
+			if (env.HYPERDRIVE || env.DATABASE_URL) {
 				try {
-					const healthStorage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, "rook");
+					const healthDbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+					const healthStorage = createStorage({ backend: 'postgres', databaseUrl: healthDbUrl }, "rook");
 					await healthStorage.readBrainState();
 					storage_ok = true;
 				} catch {}
@@ -237,7 +239,8 @@ export default {
 		let totalNoveltyChanges = 0;
 
 		for (const tenant of ALLOWED_TENANTS) {
-			const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
+			const daemonDbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+			const storage = createStorage({ backend: 'postgres', databaseUrl: daemonDbUrl }, tenant);
 			let decayChanges = 0;
 
 			// Sprint 4: Daemon Intelligence tasks run FIRST (before decay pass).
@@ -299,16 +302,69 @@ export default {
 			await storage.bulkReplaceTexture(decayTexturesToUpdate);
 			decayChanges = decayTexturesToUpdate.length;
 
-			// Subconscious processing — DISABLED: costs 4 subrequests/tenant.
-			// Re-enable after upgrading to Workers Paid ($5/mo → 1000 subrequests).
-			// Can still be triggered manually via mind_subconscious action=process.
+			// Subconscious processing (v2 tool dispatch)
+			try {
+				await executeTool("mind_subconscious", { action: "process" }, { storage, ai: env.AI });
+				console.log(`Daemon [${tenant}]: subconscious processed`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: subconscious error`, e);
+			}
 
-			// Novelty regeneration — DISABLED: costs 1-2 subrequests/tenant.
-			// Re-enable after upgrading to Workers Paid.
-			// Only triggers for observations unsurfaced >30 days; low urgency.
+			// Novelty regeneration — boost novelty_score for observations unsurfaced >30 days
+			try {
+				const noveltyTexturesToUpdate: { id: string; texture: Observation["texture"] }[] = [];
 
-			// Summary backfill — DISABLED: one-time task, likely completed.
-			// Costs N subrequests (one per observation). Re-run manually if needed.
+				for (const { observations } of territoryData) {
+					for (const o of observations) {
+						if (o.texture?.salience === "foundational") continue;
+
+						if (!o.texture?.novelty_score) {
+							if (!o.texture) continue;
+							o.texture.novelty_score = 0.5;
+							noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
+						} else if (o.texture.last_surfaced_at) {
+							const daysSinceSurfaced = (Date.now() - new Date(o.texture.last_surfaced_at).getTime()) / (1000 * 60 * 60 * 24);
+							if (daysSinceSurfaced >= 30 && o.texture.novelty_score < 0.8) {
+								const boost = Math.min(0.1 * Math.floor(daysSinceSurfaced / 30), 0.5);
+								o.texture.novelty_score = Math.min(o.texture.novelty_score + boost, 1.0);
+								noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
+							}
+						}
+					}
+				}
+
+				await storage.bulkReplaceTexture(noveltyTexturesToUpdate);
+				totalNoveltyChanges += noveltyTexturesToUpdate.length;
+				console.log(`Daemon [${tenant}]: ${noveltyTexturesToUpdate.length} novelty regenerations`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: novelty error`, e);
+			}
+
+			// One-time backfill: generate summaries for existing observations.
+			try {
+				const backfillDone = await storage.readBackfillFlag("v4");
+				if (!backfillDone) {
+					const backfillUpdates: { territory: string; obs: Observation }[] = [];
+
+					for (const { territory, observations } of territoryData) {
+						for (const obs of observations) {
+							if (!obs.summary) {
+								obs.summary = generateSummary(obs);
+								backfillUpdates.push({ territory, obs });
+							}
+						}
+					}
+
+					await Promise.all(backfillUpdates.map(({ territory, obs }) =>
+						storage.appendToTerritory(territory, obs)
+					));
+
+					await storage.writeBackfillFlag("v4", { completed: getTimestamp(), count: backfillUpdates.length });
+					console.log(`Daemon [${tenant}]: backfilled ${backfillUpdates.length} summaries`);
+				}
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: backfill error`, e);
+			}
 
 			// Generate territory overviews + iron-grip index (every cron cycle)
 			try {

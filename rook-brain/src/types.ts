@@ -2,7 +2,8 @@
 // Pure leaf node — no imports. All types used across the brain.
 
 export interface Env {
-	DATABASE_URL: string;     // Neon Postgres — primary store
+	DATABASE_URL: string;     // Neon Postgres — fallback for local dev
+	HYPERDRIVE?: Hyperdrive;  // Cloudflare Hyperdrive binding — production
 	API_KEY: string;
 	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
 }

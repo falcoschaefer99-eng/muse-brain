@@ -16,7 +16,7 @@
 		"wrangler": "^4.59.3"
 	},
 	"dependencies": {
-		"@neondatabase/serverless": "^1.0.2",
+		"postgres": "^3.4.8",
 		"zod": "^4.3.5"
 	}
 }

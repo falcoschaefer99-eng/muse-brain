@@ -1,6 +1,7 @@
 // ============ POSTGRES BRAIN STORAGE ============
 // Implements IBrainStorage against Neon serverless Postgres.
-// Uses neon() HTTP driver — stateless, Cloudflare Workers compatible.
+// Uses postgres.js via Cloudflare Hyperdrive — queries count against
+// CF-service subrequest limit (1000) instead of external limit (50).
 //
 // Tenant isolation: every query filters on tenant_id column.
 // No path traversal risk — SQL params are parameterized.
@@ -29,8 +30,7 @@
 //   territory_overviews(tenant_id, data JSONB, updated_at)  -- single row per tenant
 //   iron_grip_index(id, tenant_id, data JSONB)
 
-import { neon } from "@neondatabase/serverless";
-import type { NeonQueryFunction, NeonQueryFunctionInTransaction, NeonQueryInTransaction } from "@neondatabase/serverless";
+import postgres from "postgres";
 
 import type {
 	Observation,
@@ -165,7 +165,7 @@ function rowToRelation(row: Record<string, unknown>): Relation {
 // ============ POSTGRES BRAIN STORAGE ============
 
 export class PostgresBrainStorage implements IBrainStorage {
-	private sql: NeonQueryFunction<false, false>;
+	private sql: postgres.Sql;
 	private databaseUrl: string;
 
 	constructor(
@@ -177,7 +177,9 @@ export class PostgresBrainStorage implements IBrainStorage {
 			throw new Error("Invalid tenant ID");
 		}
 		this.databaseUrl = databaseUrl;
-		this.sql = neon(databaseUrl);
+		// prepare: false is REQUIRED for Hyperdrive — pooled connections don't
+		// support prepared statements across connection boundaries.
+		this.sql = postgres(databaseUrl, { prepare: false });
 	}
 
 	// ============ TENANT ============
@@ -281,24 +283,18 @@ export class PostgresBrainStorage implements IBrainStorage {
 	async writeTerritory(territory: string, observations: Observation[]): Promise<void> {
 		this.validateTerritory(territory);
 		// Overwrite = delete all for territory, then insert fresh.
-		// IMPORTANT: Must be atomic. The neon HTTP driver does NOT support multi-statement
-		// transactions via separate sql`` calls — each call is an independent HTTP request
-		// with auto-commit. Use sql.transaction() which sends all statements in a single
-		// HTTP request as a true atomic transaction.
-		//
-		// Large territories (500+ observations) are chunked at 100 per transaction to stay
-		// within HTTP request size limits. First chunk includes the DELETE.
+		// Chunked at 100 per transaction — first chunk includes the DELETE.
 		const CHUNK_SIZE = 100;
 		try {
 			if (observations.length === 0) {
 				// Simple case: just delete, no inserts needed.
-				await this.sql.transaction(txn => [
-					txn`
+				await this.sql.begin(async (sql) => {
+					await sql`
 						DELETE FROM observations
 						WHERE tenant_id = ${this.tenant}
 						  AND territory = ${territory}
-					`
-				]);
+					`;
+				});
 				return;
 			}
 
@@ -308,20 +304,20 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 
 			// First chunk: DELETE + first batch of INSERTs (atomic).
-			await this.sql.transaction(txn => [
-				txn`
+			await this.sql.begin(async (sql) => {
+				await sql`
 					DELETE FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND territory = ${territory}
-				`,
-				...this._buildInsertQueries(txn, chunks[0], territory)
-			]);
+				`;
+				await this._executeInsertQueries(sql, chunks[0], territory);
+			});
 
 			// Remaining chunks: INSERT only (DELETE already committed).
 			for (let i = 1; i < chunks.length; i++) {
-				await this.sql.transaction(txn =>
-					this._buildInsertQueries(txn, chunks[i], territory)
-				);
+				await this.sql.begin(async (sql) => {
+					await this._executeInsertQueries(sql, chunks[i], territory);
+				});
 			}
 		} catch (err) {
 			console.error("writeTerritory failed:", err instanceof Error ? err.message : "unknown error");
@@ -329,45 +325,47 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
-	/** Build INSERT query objects for use inside sql.transaction(). */
-	private _buildInsertQueries(
-		txn: NeonQueryFunctionInTransaction<false, false>,
+	/** Execute observation INSERTs within an open postgres.js transaction. */
+	private async _executeInsertQueries(
+		sql: postgres.TransactionSql,
 		observations: Observation[],
 		territory: string
-	): NeonQueryInTransaction[] {
-		return observations.map(obs => txn`
-			INSERT INTO observations (
-				id, tenant_id, content, territory, created_at, texture, context,
-				mood, last_accessed_at, access_count, links, summary, type, tags
-			) VALUES (
-				${obs.id},
-				${this.tenant},
-				${obs.content},
-				${territory},
-				${obs.created},
-				${JSON.stringify(obs.texture ?? {})},
-				${obs.context ?? null},
-				${obs.mood ?? null},
-				${obs.last_accessed ?? null},
-				${obs.access_count ?? 0},
-				${obs.links ?? null},
-				${obs.summary ?? null},
-				${obs.type ?? null},
-				${obs.tags ?? null}
-			)
-			ON CONFLICT (id) DO UPDATE SET
-				content        = EXCLUDED.content,
-				territory      = EXCLUDED.territory,
-				texture        = EXCLUDED.texture,
-				context        = EXCLUDED.context,
-				mood           = EXCLUDED.mood,
-				last_accessed_at = EXCLUDED.last_accessed_at,
-				access_count   = EXCLUDED.access_count,
-				links          = EXCLUDED.links,
-				summary        = EXCLUDED.summary,
-				type           = EXCLUDED.type,
-				tags           = EXCLUDED.tags
-		`);
+	): Promise<void> {
+		for (const obs of observations) {
+			await sql`
+				INSERT INTO observations (
+					id, tenant_id, content, territory, created_at, texture, context,
+					mood, last_accessed_at, access_count, links, summary, type, tags
+				) VALUES (
+					${obs.id},
+					${this.tenant},
+					${obs.content},
+					${territory},
+					${obs.created},
+					${JSON.stringify(obs.texture ?? {})},
+					${obs.context ?? null},
+					${obs.mood ?? null},
+					${obs.last_accessed ?? null},
+					${obs.access_count ?? 0},
+					${obs.links ?? null},
+					${obs.summary ?? null},
+					${obs.type ?? null},
+					${obs.tags ?? null}
+				)
+				ON CONFLICT (id) DO UPDATE SET
+					content        = EXCLUDED.content,
+					territory      = EXCLUDED.territory,
+					texture        = EXCLUDED.texture,
+					context        = EXCLUDED.context,
+					mood           = EXCLUDED.mood,
+					last_accessed_at = EXCLUDED.last_accessed_at,
+					access_count   = EXCLUDED.access_count,
+					links          = EXCLUDED.links,
+					summary        = EXCLUDED.summary,
+					type           = EXCLUDED.type,
+					tags           = EXCLUDED.tags
+			`;
+		}
 	}
 
 	async appendToTerritory(territory: string, observation: Observation): Promise<void> {
@@ -472,7 +470,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 		try {
 			// Build query with conditional clauses.
-			// neon() is a pure tagged template — no identifier escaping helper.
+			// postgres.js tagged templates have no identifier escaping helper.
 			// Territory and grip are pushed to SQL (indexed columns). ORDER BY and
 			// all other filters are applied in JS post-fetch. This avoids dynamic SQL
 			// concatenation risks and keeps the queries safe.
@@ -560,7 +558,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 				);
 			}
 
-			// JS-side sort (neon tagged templates have no identifier escaping for ORDER BY).
+			// JS-side sort (postgres.js tagged templates have no identifier escaping for ORDER BY).
 			// orderBy and orderDir are validated against the ObservationFilter type — safe.
 			filtered.sort((a, b) => {
 				let aVal: number | string;
@@ -889,21 +887,23 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeOpenLoops(loops: OpenLoop[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM open_loops WHERE tenant_id = ${this.tenant}`,
-				...loops.map(loop => txn`
-					INSERT INTO open_loops (id, tenant_id, content, status, territory, created_at, resolved_at, resolution_note)
-					VALUES (
-						${loop.id}, ${this.tenant}, ${loop.content}, ${loop.status},
-						${loop.territory}, ${loop.created},
-						${loop.resolved ?? null}, ${loop.resolution_note ?? null}
-					)
-					ON CONFLICT (id) DO UPDATE SET
-						content = EXCLUDED.content, status = EXCLUDED.status,
-						territory = EXCLUDED.territory, resolved_at = EXCLUDED.resolved_at,
-						resolution_note = EXCLUDED.resolution_note
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM open_loops WHERE tenant_id = ${this.tenant}`;
+				for (const loop of loops) {
+					await sql`
+						INSERT INTO open_loops (id, tenant_id, content, status, territory, created_at, resolved_at, resolution_note)
+						VALUES (
+							${loop.id}, ${this.tenant}, ${loop.content}, ${loop.status},
+							${loop.territory}, ${loop.created},
+							${loop.resolved ?? null}, ${loop.resolution_note ?? null}
+						)
+						ON CONFLICT (id) DO UPDATE SET
+							content = EXCLUDED.content, status = EXCLUDED.status,
+							territory = EXCLUDED.territory, resolved_at = EXCLUDED.resolved_at,
+							resolution_note = EXCLUDED.resolution_note
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeOpenLoops failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write open loops");
@@ -946,21 +946,23 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeLinks(links: Link[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM links WHERE tenant_id = ${this.tenant}`,
-				...links.map(link => txn`
-					INSERT INTO links (id, tenant_id, source_id, target_id, resonance_type, strength, origin, created_at, last_activated_at)
-					VALUES (
-						${link.id}, ${this.tenant}, ${link.source_id}, ${link.target_id},
-						${link.resonance_type}, ${link.strength}, ${link.origin},
-						${link.created}, ${link.last_activated}
-					)
-					ON CONFLICT (id) DO UPDATE SET
-						resonance_type = EXCLUDED.resonance_type,
-						strength = EXCLUDED.strength,
-						last_activated_at = EXCLUDED.last_activated_at
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM links WHERE tenant_id = ${this.tenant}`;
+				for (const link of links) {
+					await sql`
+						INSERT INTO links (id, tenant_id, source_id, target_id, resonance_type, strength, origin, created_at, last_activated_at)
+						VALUES (
+							${link.id}, ${this.tenant}, ${link.source_id}, ${link.target_id},
+							${link.resonance_type}, ${link.strength}, ${link.origin},
+							${link.created}, ${link.last_activated}
+						)
+						ON CONFLICT (id) DO UPDATE SET
+							resonance_type = EXCLUDED.resonance_type,
+							strength = EXCLUDED.strength,
+							last_activated_at = EXCLUDED.last_activated_at
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeLinks failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write links");
@@ -1010,20 +1012,22 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeLetters(letters: Letter[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM letters WHERE tenant_id = ${this.tenant}`,
-				...letters.map(letter => txn`
-					INSERT INTO letters (id, tenant_id, from_context, to_context, content, timestamp, read, charges)
-					VALUES (
-						${letter.id}, ${this.tenant}, ${letter.from_context}, ${letter.to_context},
-						${letter.content}, ${letter.timestamp}, ${letter.read},
-						${letter.charges ?? null}
-					)
-					ON CONFLICT (id) DO UPDATE SET
-						read = EXCLUDED.read,
-						charges = EXCLUDED.charges
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM letters WHERE tenant_id = ${this.tenant}`;
+				for (const letter of letters) {
+					await sql`
+						INSERT INTO letters (id, tenant_id, from_context, to_context, content, timestamp, read, charges)
+						VALUES (
+							${letter.id}, ${this.tenant}, ${letter.from_context}, ${letter.to_context},
+							${letter.content}, ${letter.timestamp}, ${letter.read},
+							${letter.charges ?? null}
+						)
+						ON CONFLICT (id) DO UPDATE SET
+							read = EXCLUDED.read,
+							charges = EXCLUDED.charges
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeLetters failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write letters");
@@ -1072,14 +1076,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeIdentityCores(cores: IdentityCore[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM identity_cores WHERE tenant_id = ${this.tenant}`,
-				...cores.map(core => txn`
-					INSERT INTO identity_cores (id, tenant_id, data)
-					VALUES (${core.id}, ${this.tenant}, ${JSON.stringify(core)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM identity_cores WHERE tenant_id = ${this.tenant}`;
+				for (const core of cores) {
+					await sql`
+						INSERT INTO identity_cores (id, tenant_id, data)
+						VALUES (${core.id}, ${this.tenant}, ${JSON.stringify(core)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeIdentityCores failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write identity cores");
@@ -1104,14 +1110,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeAnchors(anchors: Anchor[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM anchors WHERE tenant_id = ${this.tenant}`,
-				...anchors.map(anchor => txn`
-					INSERT INTO anchors (id, tenant_id, data)
-					VALUES (${anchor.id}, ${this.tenant}, ${JSON.stringify(anchor)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM anchors WHERE tenant_id = ${this.tenant}`;
+				for (const anchor of anchors) {
+					await sql`
+						INSERT INTO anchors (id, tenant_id, data)
+						VALUES (${anchor.id}, ${this.tenant}, ${JSON.stringify(anchor)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeAnchors failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write anchors");
@@ -1136,14 +1144,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeDesires(desires: Desire[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM desires WHERE tenant_id = ${this.tenant}`,
-				...desires.map(desire => txn`
-					INSERT INTO desires (id, tenant_id, data)
-					VALUES (${desire.id}, ${this.tenant}, ${JSON.stringify(desire)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM desires WHERE tenant_id = ${this.tenant}`;
+				for (const desire of desires) {
+					await sql`
+						INSERT INTO desires (id, tenant_id, data)
+						VALUES (${desire.id}, ${this.tenant}, ${JSON.stringify(desire)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeDesires failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write desires");
@@ -1226,14 +1236,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeRelationalState(states: RelationalState[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM relational_states WHERE tenant_id = ${this.tenant}`,
-				...states.map(state => txn`
-					INSERT INTO relational_states (id, tenant_id, data)
-					VALUES (${state.id}, ${this.tenant}, ${JSON.stringify(state)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM relational_states WHERE tenant_id = ${this.tenant}`;
+				for (const state of states) {
+					await sql`
+						INSERT INTO relational_states (id, tenant_id, data)
+						VALUES (${state.id}, ${this.tenant}, ${JSON.stringify(state)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeRelationalState failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write relational state");
@@ -1288,14 +1300,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeTriggers(triggers: TriggerCondition[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM triggers WHERE tenant_id = ${this.tenant}`,
-				...triggers.map(trigger => txn`
-					INSERT INTO triggers (id, tenant_id, data)
-					VALUES (${trigger.id}, ${this.tenant}, ${JSON.stringify(trigger)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM triggers WHERE tenant_id = ${this.tenant}`;
+				for (const trigger of triggers) {
+					await sql`
+						INSERT INTO triggers (id, tenant_id, data)
+						VALUES (${trigger.id}, ${this.tenant}, ${JSON.stringify(trigger)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeTriggers failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write triggers");
@@ -1429,14 +1443,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async writeIronGripIndex(entries: IronGripEntry[]): Promise<void> {
 		try {
-			await this.sql.transaction(txn => [
-				txn`DELETE FROM iron_grip_index WHERE tenant_id = ${this.tenant}`,
-				...entries.map(entry => txn`
-					INSERT INTO iron_grip_index (id, tenant_id, data)
-					VALUES (${entry.id}, ${this.tenant}, ${JSON.stringify(entry)})
-					ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
-				`)
-			]);
+			await this.sql.begin(async (sql) => {
+				await sql`DELETE FROM iron_grip_index WHERE tenant_id = ${this.tenant}`;
+				for (const entry of entries) {
+					await sql`
+						INSERT INTO iron_grip_index (id, tenant_id, data)
+						VALUES (${entry.id}, ${this.tenant}, ${JSON.stringify(entry)})
+						ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+					`;
+				}
+			});
 		} catch (err) {
 			console.error("writeIronGripIndex failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to write iron grip index");
