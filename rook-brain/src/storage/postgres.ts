@@ -50,7 +50,10 @@ import type {
 	IronGripEntry,
 	Entity,
 	Relation,
-	EntityFilter
+	EntityFilter,
+	DaemonProposal,
+	OrphanObservation,
+	DaemonConfig
 } from "../types";
 
 import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES, CIRCADIAN_PHASES } from "../constants";
@@ -416,12 +419,28 @@ export class PostgresBrainStorage implements IBrainStorage {
 	}
 
 	async readAllTerritories(): Promise<{ territory: string; observations: Observation[] }[]> {
-		return Promise.all(
-			Object.keys(TERRITORIES).map(async territory => ({
-				territory,
-				observations: await this.readTerritory(territory)
-			}))
-		);
+		// Single query across all territories instead of 16 individual SELECTs.
+		const rows = await this.sql`
+			SELECT id, content, territory, created_at, texture, context, mood,
+			       last_accessed_at, access_count, links, summary, type, tags
+			FROM observations
+			WHERE tenant_id = ${this.tenant}
+			ORDER BY territory, created_at ASC
+		`;
+
+		// Group rows by territory in JS.
+		const grouped = new Map<string, Observation[]>();
+		for (const row of rows) {
+			const t = row.territory as string;
+			if (!grouped.has(t)) grouped.set(t, []);
+			grouped.get(t)!.push(rowToObservation(row as Record<string, unknown>));
+		}
+
+		// Return all known territories, including those with 0 observations.
+		return Object.keys(TERRITORIES).map(territory => ({
+			territory,
+			observations: grouped.get(territory) ?? []
+		}));
 	}
 
 	async findObservation(id: string): Promise<{ observation: Observation; territory: string } | null> {
@@ -464,6 +483,8 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 			let rows: Record<string, unknown>[];
 
+			// ORDER BY created_at DESC ensures the most recent observations are
+			// always in the fetched batch. JS re-sorts for other orderings.
 			if (filter.territory && filter.grip) {
 				rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
@@ -472,6 +493,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					WHERE tenant_id = ${this.tenant}
 					  AND territory = ${filter.territory}
 					  AND (texture->>'grip') = ${filter.grip}
+					ORDER BY created_at DESC
 					LIMIT ${fetchLimit}
 				` as Record<string, unknown>[];
 			} else if (filter.territory) {
@@ -481,6 +503,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND territory = ${filter.territory}
+					ORDER BY created_at DESC
 					LIMIT ${fetchLimit}
 				` as Record<string, unknown>[];
 			} else if (filter.grip) {
@@ -490,6 +513,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND (texture->>'grip') = ${filter.grip}
+					ORDER BY created_at DESC
 					LIMIT ${fetchLimit}
 				` as Record<string, unknown>[];
 			} else {
@@ -498,6 +522,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					       last_accessed_at, access_count, links, summary, type, tags
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
+					ORDER BY created_at DESC
 					LIMIT ${fetchLimit}
 				` as Record<string, unknown>[];
 			}
@@ -592,6 +617,27 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	async bulkReplaceTexture(updates: { id: string; texture: Observation["texture"] }[]): Promise<void> {
+		if (!updates.length) return;
+		const ids = updates.map(u => u.id);
+		const textures = updates.map(u => JSON.stringify(u.texture));
+		try {
+			// Single unnest UPDATE — one subrequest for all observations instead of N.
+			await this.sql`
+				UPDATE observations
+				SET texture = updates.new_texture
+				FROM (
+					SELECT unnest(${ids}::text[]) AS id, unnest(${textures}::jsonb[]) AS new_texture
+				) AS updates
+				WHERE observations.id = updates.id
+				  AND observations.tenant_id = ${this.tenant}
+			`;
+		} catch (err) {
+			console.error("bulkReplaceTexture failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to bulk replace texture");
+		}
+	}
+
 	async updateObservationTexture(id: string, texture: Observation["texture"]): Promise<void> {
 		try {
 			await this.sql`
@@ -671,7 +717,24 @@ export class PostgresBrainStorage implements IBrainStorage {
 				throw new Error(`Invalid embedding for ${u.id}`);
 			}
 		}
-		await Promise.all(updates.map(u => this.updateObservationEmbedding(u.id, u.embedding)));
+		// Single unnest UPDATE — 1 subrequest instead of N.
+		const ids = updates.map(u => u.id);
+		const vectors = updates.map(u => '[' + u.embedding.join(',') + ']');
+		try {
+			await this.sql`
+				UPDATE observations
+				SET embedding = updates.vec::vector
+				FROM (
+					SELECT unnest(${ids}::text[]) AS id,
+					       unnest(${vectors}::text[]) AS vec
+				) AS updates
+				WHERE observations.id = updates.id
+				  AND observations.tenant_id = ${this.tenant}
+			`;
+		} catch (err) {
+			console.error("bulkUpdateEmbeddings failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to bulk update embeddings");
+		}
 	}
 
 	// ============ VECTOR SEARCH ============
@@ -1971,15 +2034,18 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 		if (pairs.length === 0) return;
 
+		const idsA = pairs.map(([a]) => a);
+		const idsB = pairs.map(([, b]) => b);
+
 		try {
-			await Promise.all(pairs.map(([id_a, id_b]) =>
-				this.sql`
-					INSERT INTO co_surfacing (tenant_id, obs_id_a, obs_id_b, count, last_co_surfaced)
-					VALUES (${this.tenant}, ${id_a}, ${id_b}, 1, NOW())
-					ON CONFLICT (tenant_id, obs_id_a, obs_id_b)
-					DO UPDATE SET count = co_surfacing.count + 1, last_co_surfaced = NOW()
-				`
-			));
+			// Single unnest INSERT — one subrequest for all pairs instead of N.
+			await this.sql`
+				INSERT INTO co_surfacing (tenant_id, obs_id_a, obs_id_b, count, last_co_surfaced)
+				SELECT ${this.tenant}, a, b, 1, NOW()
+				FROM unnest(${idsA}::text[], ${idsB}::text[]) AS t(a, b)
+				ON CONFLICT (tenant_id, obs_id_a, obs_id_b)
+				DO UPDATE SET count = co_surfacing.count + 1, last_co_surfaced = NOW()
+			`;
 		} catch (err) {
 			// Co-surfacing is best-effort — never fail the search for this.
 			console.error("recordCoSurfacing failed:", err instanceof Error ? err.message : "unknown error");
@@ -2003,6 +2069,426 @@ export class PostgresBrainStorage implements IBrainStorage {
 			// Surfacing effects are best-effort — never fail the search for this.
 			console.error("updateSurfacingEffects failed:", err instanceof Error ? err.message : "unknown error");
 		}
+	}
+
+	// ============ DAEMON PROPOSALS (Sprint 4) ============
+
+	async createProposal(proposal: Omit<DaemonProposal, 'id' | 'proposed_at'>): Promise<DaemonProposal> {
+		const id = `prop_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+		try {
+			const rows = await this.sql`
+				INSERT INTO daemon_proposals (
+					id, tenant_id, proposal_type, source_id, target_id,
+					similarity, resonance_type, confidence, rationale,
+					metadata, status, feedback_note, proposed_at
+				) VALUES (
+					${id},
+					${this.tenant},
+					${proposal.proposal_type},
+					${proposal.source_id},
+					${proposal.target_id},
+					${proposal.similarity ?? null},
+					${proposal.resonance_type ?? null},
+					${proposal.confidence},
+					${proposal.rationale ?? null},
+					${JSON.stringify(proposal.metadata ?? {})},
+					${proposal.status},
+					${proposal.feedback_note ?? null},
+					NOW()
+				)
+				RETURNING *
+			`;
+			return this._rowToProposal(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("createProposal failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to create proposal");
+		}
+	}
+
+	async listProposals(type?: string, status?: string, limit?: number): Promise<DaemonProposal[]> {
+		const cap = Math.min(limit ?? 50, 200);
+		try {
+			const rows = await this.sql`
+				SELECT * FROM daemon_proposals
+				WHERE tenant_id = ${this.tenant}
+				  AND (${type ?? null}::text IS NULL OR proposal_type = ${type ?? null})
+				  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+				ORDER BY proposed_at DESC
+				LIMIT ${cap}
+			`;
+			return rows.map(r => this._rowToProposal(r as Record<string, unknown>));
+		} catch (err) {
+			console.error("listProposals failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async getProposalById(id: string): Promise<DaemonProposal | null> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM daemon_proposals
+				WHERE id = ${id}
+				  AND tenant_id = ${this.tenant}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return this._rowToProposal(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("getProposalById failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async reviewProposal(id: string, status: 'accepted' | 'rejected', feedbackNote?: string): Promise<DaemonProposal> {
+		try {
+			const rows = await this.sql`
+				UPDATE daemon_proposals
+				SET status = ${status},
+				    reviewed_at = NOW(),
+				    feedback_note = ${feedbackNote ?? null}
+				WHERE id = ${id}
+				  AND tenant_id = ${this.tenant}
+				RETURNING *
+			`;
+			if (!rows.length) throw new Error("Proposal not found");
+			return this._rowToProposal(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("reviewProposal failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to review proposal");
+		}
+	}
+
+	async getProposalStats(): Promise<Record<string, { total: number; accepted: number; rejected: number; ratio: number }>> {
+		try {
+			const rows = await this.sql`
+				SELECT
+					proposal_type,
+					COUNT(*)::int                                                                AS total,
+					COUNT(*) FILTER (WHERE status = 'accepted')::int                           AS accepted,
+					COUNT(*) FILTER (WHERE status = 'rejected')::int                           AS rejected
+				FROM daemon_proposals
+				WHERE tenant_id = ${this.tenant}
+				GROUP BY proposal_type
+			`;
+			const result: Record<string, { total: number; accepted: number; rejected: number; ratio: number }> = {};
+			for (const row of rows) {
+				const total = row.total as number;
+				const accepted = row.accepted as number;
+				result[row.proposal_type as string] = {
+					total,
+					accepted,
+					rejected: row.rejected as number,
+					ratio: total > 0 ? accepted / total : 0
+				};
+			}
+			return result;
+		} catch (err) {
+			console.error("getProposalStats failed:", err instanceof Error ? err.message : "unknown error");
+			return {};
+		}
+	}
+
+	async proposalExists(type: string, sourceId: string, targetId: string): Promise<boolean> {
+		try {
+			const rows = await this.sql`
+				SELECT 1 FROM daemon_proposals
+				WHERE tenant_id = ${this.tenant}
+				  AND proposal_type = ${type}
+				  AND source_id = ${sourceId}
+				  AND target_id = ${targetId}
+				  AND status = 'pending'
+				LIMIT 1
+			`;
+			return rows.length > 0;
+		} catch (err) {
+			console.error("proposalExists failed:", err instanceof Error ? err.message : "unknown error");
+			return false;
+		}
+	}
+
+	// ============ ORPHAN MANAGEMENT (Sprint 4) ============
+
+	async markOrphan(observationId: string): Promise<void> {
+		try {
+			await this.sql`
+				INSERT INTO orphan_observations (observation_id, tenant_id, first_marked, rescue_attempts, status)
+				VALUES (${observationId}, ${this.tenant}, NOW(), 0, 'orphaned')
+				ON CONFLICT (tenant_id, observation_id) DO NOTHING
+			`;
+		} catch (err) {
+			console.error("markOrphan failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to mark orphan");
+		}
+	}
+
+	async listOrphans(status?: string, limit?: number): Promise<OrphanObservation[]> {
+		const cap = Math.min(limit ?? 50, 200);
+		try {
+			const rows = await this.sql`
+				SELECT * FROM orphan_observations
+				WHERE tenant_id = ${this.tenant}
+				  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+				ORDER BY first_marked ASC
+				LIMIT ${cap}
+			`;
+			return rows.map(r => this._rowToOrphan(r as Record<string, unknown>));
+		} catch (err) {
+			console.error("listOrphans failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async incrementRescueAttempt(observationId: string): Promise<void> {
+		try {
+			await this.sql`
+				UPDATE orphan_observations
+				SET rescue_attempts = rescue_attempts + 1,
+				    last_rescue_attempt = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND observation_id = ${observationId}
+			`;
+		} catch (err) {
+			console.error("incrementRescueAttempt failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to increment rescue attempt");
+		}
+	}
+
+	async updateOrphanStatus(observationId: string, status: 'rescued' | 'archived'): Promise<void> {
+		try {
+			await this.sql`
+				UPDATE orphan_observations
+				SET status = ${status}
+				WHERE tenant_id = ${this.tenant}
+				  AND observation_id = ${observationId}
+			`;
+		} catch (err) {
+			console.error("updateOrphanStatus failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update orphan status");
+		}
+	}
+
+	// ============ DAEMON CONFIG (Sprint 4) ============
+
+	async readDaemonConfig(): Promise<DaemonConfig> {
+		const defaults: DaemonConfig = {
+			tenant_id: this.tenant,
+			link_proposal_threshold: 0.75,
+			data: {}
+		};
+		try {
+			const rows = await this.sql`
+				SELECT * FROM daemon_config
+				WHERE tenant_id = ${this.tenant}
+				LIMIT 1
+			`;
+			if (!rows.length) return defaults;
+			const row = rows[0] as Record<string, unknown>;
+			return {
+				tenant_id: row.tenant_id as string,
+				link_proposal_threshold: (row.link_proposal_threshold as number) ?? 0.75,
+				last_threshold_update: row.last_threshold_update ? toISOString(row.last_threshold_update) : undefined,
+				data: (row.data as Record<string, unknown>) ?? {}
+			};
+		} catch (err) {
+			console.error("readDaemonConfig failed:", err instanceof Error ? err.message : "unknown error");
+			return defaults;
+		}
+	}
+
+	async updateProposalThreshold(threshold: number): Promise<void> {
+		try {
+			await this.sql`
+				INSERT INTO daemon_config (tenant_id, link_proposal_threshold, last_threshold_update, data)
+				VALUES (${this.tenant}, ${threshold}, NOW(), '{}')
+				ON CONFLICT (tenant_id)
+				DO UPDATE SET
+					link_proposal_threshold = ${threshold},
+					last_threshold_update   = NOW()
+			`;
+		} catch (err) {
+			console.error("updateProposalThreshold failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update proposal threshold");
+		}
+	}
+
+	// ============ HEALTH QUERIES (Sprint 4) ============
+
+	async getEmbeddingCoverage(): Promise<{ total: number; embedded: number }> {
+		try {
+			const rows = await this.sql`
+				SELECT
+					COUNT(*)::int                                    AS total,
+					COUNT(*) FILTER (WHERE embedding IS NOT NULL)::int AS embedded
+				FROM observations
+				WHERE tenant_id = ${this.tenant}
+			`;
+			const row = rows[0] as Record<string, unknown>;
+			return {
+				total: (row.total as number) ?? 0,
+				embedded: (row.embedded as number) ?? 0
+			};
+		} catch (err) {
+			console.error("getEmbeddingCoverage failed:", err instanceof Error ? err.message : "unknown error");
+			return { total: 0, embedded: 0 };
+		}
+	}
+
+	async getOrphanStats(): Promise<{ orphaned: number; rescued: number; archived: number; oldest_days: number }> {
+		try {
+			const rows = await this.sql`
+				SELECT
+					COUNT(*) FILTER (WHERE status = 'orphaned')::int  AS orphaned,
+					COUNT(*) FILTER (WHERE status = 'rescued')::int   AS rescued,
+					COUNT(*) FILTER (WHERE status = 'archived')::int  AS archived,
+					EXTRACT(EPOCH FROM (NOW() - MIN(first_marked))) / 86400 AS oldest_days
+				FROM orphan_observations
+				WHERE tenant_id = ${this.tenant}
+			`;
+			const row = rows[0] as Record<string, unknown>;
+			return {
+				orphaned: (row.orphaned as number) ?? 0,
+				rescued: (row.rescued as number) ?? 0,
+				archived: (row.archived as number) ?? 0,
+				oldest_days: row.oldest_days ? Math.round((row.oldest_days as number)) : 0
+			};
+		} catch (err) {
+			console.error("getOrphanStats failed:", err instanceof Error ? err.message : "unknown error");
+			return { orphaned: 0, rescued: 0, archived: 0, oldest_days: 0 };
+		}
+	}
+
+	async getTopCoSurfacingPairs(limit?: number): Promise<Array<{ obs_id_a: string; obs_id_b: string; count: number }>> {
+		const cap = Math.min(limit ?? 20, 100);
+		try {
+			const rows = await this.sql`
+				SELECT obs_id_a, obs_id_b, count
+				FROM co_surfacing
+				WHERE tenant_id = ${this.tenant}
+				ORDER BY count DESC
+				LIMIT ${cap}
+			`;
+			return rows.map(r => ({
+				obs_id_a: r.obs_id_a as string,
+				obs_id_b: r.obs_id_b as string,
+				count: r.count as number
+			}));
+		} catch (err) {
+			console.error("getTopCoSurfacingPairs failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	// ============ FIND SIMILAR UNLINKED (Sprint 4) ============
+
+	async findSimilarUnlinked(sourceId: string, limit: number): Promise<Array<{ observation: Observation; territory: string; similarity: number }>> {
+		try {
+			const rows = await this.sql`
+				WITH source AS (
+					SELECT embedding
+					FROM observations
+					WHERE tenant_id = ${this.tenant}
+					  AND id = ${sourceId}
+					  AND embedding IS NOT NULL
+				),
+				already_linked AS (
+					SELECT target_id AS excluded_id FROM links
+					WHERE tenant_id = ${this.tenant} AND source_id = ${sourceId}
+					UNION
+					SELECT source_id AS excluded_id FROM links
+					WHERE tenant_id = ${this.tenant} AND target_id = ${sourceId}
+				),
+				pending_proposals AS (
+					SELECT target_id AS excluded_id FROM daemon_proposals
+					WHERE tenant_id = ${this.tenant}
+					  AND source_id = ${sourceId}
+					  AND status = 'pending'
+				)
+				SELECT o.id, o.content, o.territory, o.created_at, o.texture,
+				       o.context, o.mood, o.last_accessed_at, o.access_count,
+				       o.links, o.summary, o.type, o.tags, o.entity_id,
+				       1 - (source.embedding <=> o.embedding) AS similarity
+				FROM source
+				CROSS JOIN LATERAL (
+					SELECT *
+					FROM observations
+					WHERE tenant_id = ${this.tenant}
+					  AND id != ${sourceId}
+					  AND embedding IS NOT NULL
+					  AND NOT EXISTS (SELECT 1 FROM already_linked WHERE excluded_id = observations.id)
+					  AND NOT EXISTS (SELECT 1 FROM pending_proposals WHERE excluded_id = observations.id)
+					ORDER BY source.embedding <=> embedding
+					LIMIT ${limit}
+				) AS o
+				ORDER BY similarity DESC
+			`;
+			return rows.map(row => ({
+				observation: rowToObservation(row as Record<string, unknown>),
+				territory: row.territory as string,
+				similarity: row.similarity as number
+			}));
+		} catch (err) {
+			console.error("findSimilarUnlinked failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async findOrphanCandidates(cutoffDate: string, limit: number): Promise<Observation[]> {
+		try {
+			const rows = await this.sql`
+				SELECT o.*
+				FROM observations o
+				LEFT JOIN links l1 ON l1.source_id = o.id AND l1.tenant_id = o.tenant_id
+				LEFT JOIN links l2 ON l2.target_id = o.id AND l2.tenant_id = o.tenant_id
+				WHERE o.tenant_id = ${this.tenant}
+				  AND o.entity_id IS NULL
+				  AND o.access_count <= 1
+				  AND o.created_at < ${cutoffDate}::timestamptz
+				  AND l1.source_id IS NULL
+				  AND l2.target_id IS NULL
+				  AND NOT EXISTS (
+						SELECT 1 FROM orphan_observations oo
+						WHERE oo.observation_id = o.id AND oo.tenant_id = o.tenant_id
+				  )
+				ORDER BY o.created_at ASC
+				LIMIT ${limit}
+			`;
+			return rows.map(r => rowToObservation(r as Record<string, unknown>));
+		} catch (err) {
+			console.error("findOrphanCandidates failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	// ============ ROW MAPPERS (Sprint 4) ============
+
+	private _rowToProposal(row: Record<string, unknown>): DaemonProposal {
+		return {
+			id: row.id as string,
+			tenant_id: row.tenant_id as string,
+			proposal_type: row.proposal_type as 'link' | 'orphan_rescue',
+			source_id: row.source_id as string,
+			target_id: row.target_id as string,
+			similarity: row.similarity as number | undefined,
+			resonance_type: row.resonance_type as string | undefined,
+			confidence: row.confidence as number,
+			rationale: row.rationale as string | undefined,
+			metadata: (row.metadata as Record<string, unknown>) ?? {},
+			status: row.status as 'pending' | 'accepted' | 'rejected',
+			feedback_note: row.feedback_note as string | undefined,
+			proposed_at: toISOString(row.proposed_at) || new Date().toISOString(),
+			reviewed_at: toISOString(row.reviewed_at)
+		};
+	}
+
+	private _rowToOrphan(row: Record<string, unknown>): OrphanObservation {
+		return {
+			observation_id: row.observation_id as string,
+			tenant_id: row.tenant_id as string,
+			first_marked: toISOString(row.first_marked) || new Date().toISOString(),
+			rescue_attempts: (row.rescue_attempts as number) ?? 0,
+			last_rescue_attempt: toISOString(row.last_rescue_attempt),
+			status: row.status as 'orphaned' | 'rescued' | 'archived'
+		};
 	}
 }
 

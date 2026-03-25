@@ -2,8 +2,7 @@
 // Pure leaf node — no imports. All types used across the brain.
 
 export interface Env {
-	BRAIN_STORAGE: R2Bucket;  // R2 — retained during migration period
-	DATABASE_URL: string;     // Neon Postgres — primary store post-migration
+	DATABASE_URL: string;     // Neon Postgres — primary store
 	API_KEY: string;
 	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
 }
@@ -288,4 +287,39 @@ export interface EntityFilter {
 	salience?: string;
 	tags?: string[];
 	limit?: number;
+}
+
+// --- Daemon Intelligence (Brain v5 Sprint 4) ---
+
+export interface DaemonProposal {
+	id: string;
+	tenant_id: string;
+	proposal_type: 'link' | 'orphan_rescue';
+	source_id: string;
+	target_id: string;
+	similarity?: number;
+	resonance_type?: string;
+	confidence: number;
+	rationale?: string;
+	metadata: Record<string, unknown>;
+	status: 'pending' | 'accepted' | 'rejected';
+	feedback_note?: string;
+	proposed_at: string;
+	reviewed_at?: string;
+}
+
+export interface OrphanObservation {
+	observation_id: string;
+	tenant_id: string;
+	first_marked: string;
+	rescue_attempts: number;
+	last_rescue_attempt?: string;
+	status: 'orphaned' | 'rescued' | 'archived';
+}
+
+export interface DaemonConfig {
+	tenant_id: string;
+	link_proposal_threshold: number;
+	last_threshold_update?: string;
+	data: Record<string, unknown>;
 }

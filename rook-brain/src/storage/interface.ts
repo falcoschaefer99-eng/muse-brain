@@ -23,7 +23,10 @@ import type {
 	IronGripEntry,
 	Entity,
 	Relation,
-	EntityFilter
+	EntityFilter,
+	DaemonProposal,
+	OrphanObservation,
+	DaemonConfig
 } from "../types";
 
 // ============ FILTER / QUERY TYPES ============
@@ -169,6 +172,9 @@ export interface IBrainStorage {
 
 	/** Batch-update texture dimensions for multiple observations (decay daemon). */
 	bulkUpdateTexture(updates: TextureUpdate[]): Promise<void>;
+
+	/** Batch full-replace texture for multiple observations in a single query (unnest). */
+	bulkReplaceTexture(updates: { id: string; texture: Observation["texture"] }[]): Promise<void>;
 
 	/** Overwrite the full texture for a single observation by ID (safe, no destructive territory rewrite). */
 	updateObservationTexture(id: string, texture: Observation["texture"]): Promise<void>;
@@ -324,4 +330,46 @@ export interface IBrainStorage {
 	 * Returns minimal rows — only id and entity_tags. Used by the backfill action in mind_entity.
 	 */
 	queryEntityTagsForBackfill(): Promise<Array<{ id: string; entity_tags: string[] }>>;
+
+	// --- Daemon Proposals ---
+
+	createProposal(proposal: Omit<DaemonProposal, 'id' | 'proposed_at'>): Promise<DaemonProposal>;
+	listProposals(type?: string, status?: string, limit?: number): Promise<DaemonProposal[]>;
+	getProposalById(id: string): Promise<DaemonProposal | null>;
+	reviewProposal(id: string, status: 'accepted' | 'rejected', feedbackNote?: string): Promise<DaemonProposal>;
+	getProposalStats(): Promise<Record<string, { total: number; accepted: number; rejected: number; ratio: number }>>;
+	proposalExists(type: string, sourceId: string, targetId: string): Promise<boolean>;
+
+	// --- Orphan Management ---
+
+	markOrphan(observationId: string): Promise<void>;
+	listOrphans(status?: string, limit?: number): Promise<OrphanObservation[]>;
+	incrementRescueAttempt(observationId: string): Promise<void>;
+	updateOrphanStatus(observationId: string, status: 'rescued' | 'archived'): Promise<void>;
+
+	// --- Daemon Config ---
+
+	readDaemonConfig(): Promise<DaemonConfig>;
+	updateProposalThreshold(threshold: number): Promise<void>;
+
+	// --- Health Queries ---
+
+	getEmbeddingCoverage(): Promise<{ total: number; embedded: number }>;
+	getOrphanStats(): Promise<{ orphaned: number; rescued: number; archived: number; oldest_days: number }>;
+	getTopCoSurfacingPairs(limit?: number): Promise<Array<{ obs_id_a: string; obs_id_b: string; count: number }>>;
+
+	// --- Daemon: find similar unlinked (for proposal generation) ---
+
+	/**
+	 * Vector similarity search excluding observations already linked to sourceId
+	 * and excluding observations with an existing pending proposal from sourceId.
+	 */
+	findSimilarUnlinked(sourceId: string, limit: number): Promise<Array<{ observation: Observation; territory: string; similarity: number }>>;
+
+	/**
+	 * Return observations that are orphan candidates: no entity_id, access_count <= 1,
+	 * created before the cutoff, and not already in orphan_observations.
+	 * All filtering is done in SQL — no links loaded into JS memory.
+	 */
+	findOrphanCandidates(cutoffDate: string, limit: number): Promise<Observation[]>;
 }

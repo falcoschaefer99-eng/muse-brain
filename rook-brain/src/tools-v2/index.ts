@@ -1,6 +1,6 @@
 // ============ TOOLS V2 — BARREL ============
 // Aggregates all TOOL_DEFS and dispatches executeTool(name, args, context).
-// 11 files → ~30 tools (collapsed from ~50 old tools via action dispatch pattern).
+// 13 files → ~32 tools (collapsed from ~50 old tools via action dispatch pattern).
 
 import type { ToolContext } from "./context";
 
@@ -15,6 +15,8 @@ import { TOOL_DEFS as safetyDefs, handleTool as handleSafety } from "./safety";
 import { TOOL_DEFS as territoryDefs, handleTool as handleTerritory } from "./territory";
 import { TOOL_DEFS as searchDefs, handleTool as handleSearch } from "./search";
 import { TOOL_DEFS as entityDefs, handleTool as handleEntity } from "./entity";
+import { TOOL_DEFS as proposeDefs, handleTool as handlePropose } from "./propose";
+import { TOOL_DEFS as healthDefs, handleTool as handleHealth } from "./health";
 
 // ============ AGGREGATED TOOL DEFINITIONS ============
 
@@ -29,7 +31,9 @@ export const TOOL_DEFS = [
 	...safetyDefs,
 	...territoryDefs,
 	...searchDefs,
-	...entityDefs
+	...entityDefs,
+	...proposeDefs,
+	...healthDefs
 ];
 
 // ============ TOOL DISPATCH TABLE ============
@@ -80,7 +84,11 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 	mind_search: handleSearch,
 
 	// Entity
-	mind_entity: handleEntity
+	mind_entity: handleEntity,
+
+	// Daemon Intelligence (Sprint 4)
+	mind_propose: handlePropose,
+	mind_health: handleHealth
 };
 
 // ============ EXECUTE TOOL ============

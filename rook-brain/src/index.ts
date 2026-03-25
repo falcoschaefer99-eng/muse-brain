@@ -35,6 +35,7 @@ import { createStorage } from "./storage/index";
 import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
 import { ALLOWED_TENANTS } from "./constants";
+import { runDaemonTasks } from "./daemon/index";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -239,6 +240,19 @@ export default {
 			const storage = createStorage({ backend: 'postgres', databaseUrl: env.DATABASE_URL }, tenant);
 			let decayChanges = 0;
 
+			// Sprint 4: Daemon Intelligence tasks run FIRST (before decay pass).
+			// Proposals need to see pre-decay charge phases — the decay pass promotes
+			// active → processing, narrowing the proposal candidate pool.
+			try {
+				const daemonResults = await runDaemonTasks(storage);
+				for (const r of daemonResults) {
+					const errSuffix = r.error ? ` (error: ${r.error})` : "";
+					console.log(`Daemon [${tenant}] ${r.task}: ${r.changes} changes, ${r.proposals_created} proposals${errSuffix}`);
+				}
+			} catch (e) {
+				console.error(`Daemon [${tenant}] Sprint 4 error:`, e);
+			}
+
 			// Parallel read of all territories
 			const territoryData = await storage.readAllTerritories();
 
@@ -281,80 +295,20 @@ export default {
 				}
 			}
 
-			// Individual UPDATE per changed observation — no destructive territory rewrites.
-			await Promise.all(decayTexturesToUpdate.map(({ id, texture }) =>
-				storage.updateObservationTexture(id, texture)
-			));
+			// Batch UPDATE via unnest — single subrequest instead of N individual UPDATEs.
+			await storage.bulkReplaceTexture(decayTexturesToUpdate);
 			decayChanges = decayTexturesToUpdate.length;
 
-			// Subconscious processing (v2 tool dispatch)
-			try {
-				await executeTool("mind_subconscious", { action: "process" }, { storage, ai: env.AI });
-				console.log(`Daemon [${tenant}]: subconscious processed`);
-			} catch (e) {
-				console.error(`Daemon [${tenant}]: subconscious error`, e);
-			}
+			// Subconscious processing — DISABLED: costs 4 subrequests/tenant.
+			// Re-enable after upgrading to Workers Paid ($5/mo → 1000 subrequests).
+			// Can still be triggered manually via mind_subconscious action=process.
 
-			// Novelty regeneration (inlined)
-			try {
-				const noveltyTexturesToUpdate: { id: string; texture: Observation["texture"] }[] = [];
+			// Novelty regeneration — DISABLED: costs 1-2 subrequests/tenant.
+			// Re-enable after upgrading to Workers Paid.
+			// Only triggers for observations unsurfaced >30 days; low urgency.
 
-				for (const { observations } of territoryData) {
-					for (const o of observations) {
-						if (o.texture?.salience === "foundational") continue;
-
-						if (!o.texture?.novelty_score) {
-							// Backfill: no novelty_score set yet
-							if (!o.texture) continue;
-							o.texture.novelty_score = 0.5;
-							noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
-						} else if (o.texture.last_surfaced_at) {
-							const daysSinceSurfaced = (Date.now() - new Date(o.texture.last_surfaced_at).getTime()) / (1000 * 60 * 60 * 24);
-							if (daysSinceSurfaced >= 30 && o.texture.novelty_score < 0.8) {
-								const boost = Math.min(0.1 * Math.floor(daysSinceSurfaced / 30), 0.5);
-								o.texture.novelty_score = Math.min(o.texture.novelty_score + boost, 1.0);
-								noveltyTexturesToUpdate.push({ id: o.id, texture: o.texture });
-							}
-						}
-					}
-				}
-
-				await Promise.all(noveltyTexturesToUpdate.map(({ id, texture }) =>
-					storage.updateObservationTexture(id, texture)
-				));
-
-				totalNoveltyChanges += noveltyTexturesToUpdate.length;
-				console.log(`Daemon [${tenant}]: ${noveltyTexturesToUpdate.length} novelty regenerations`);
-			} catch (e) {
-				console.error(`Daemon [${tenant}]: novelty error`, e);
-			}
-
-			// One-time backfill: generate summaries for existing observations.
-			// Uses individual upserts (appendToTerritory ON CONFLICT) — no destructive territory rewrites.
-			try {
-				const backfillDone = await storage.readBackfillFlag("v4");
-				if (!backfillDone) {
-					const backfillUpdates: { territory: string; obs: Observation }[] = [];
-
-					for (const { territory, observations } of territoryData) {
-						for (const obs of observations) {
-							if (!obs.summary) {
-								obs.summary = generateSummary(obs);
-								backfillUpdates.push({ territory, obs });
-							}
-						}
-					}
-
-					await Promise.all(backfillUpdates.map(({ territory, obs }) =>
-						storage.appendToTerritory(territory, obs)
-					));
-
-					await storage.writeBackfillFlag("v4", { completed: getTimestamp(), count: backfillUpdates.length });
-					console.log(`Daemon [${tenant}]: backfilled ${backfillUpdates.length} summaries`);
-				}
-			} catch (e) {
-				console.error(`Daemon [${tenant}]: backfill error`, e);
-			}
+			// Summary backfill — DISABLED: one-time task, likely completed.
+			// Costs N subrequests (one per observation). Re-run manually if needed.
 
 			// Generate territory overviews + iron-grip index (every cron cycle)
 			try {
