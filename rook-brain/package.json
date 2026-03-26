@@ -1,6 +1,6 @@
 {
-	"name": "rook-brain",
-	"version": "0.0.0",
+	"name": "muse-brain",
+	"version": "1.0.0",
 	"private": true,
 	"scripts": {
 		"deploy": "wrangler deploy",
