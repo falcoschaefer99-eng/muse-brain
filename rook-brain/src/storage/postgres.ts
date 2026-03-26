@@ -1352,7 +1352,16 @@ export class PostgresBrainStorage implements IBrainStorage {
 				WHERE tenant_id = ${this.tenant}
 				LIMIT 1
 			`;
-			return rows.length ? (rows[0].data as ConsentState) : defaultConsent;
+			if (!rows.length) return defaultConsent;
+			// Defensive: handle double-serialized JSONB (string instead of object)
+			let raw = rows[0].data;
+			if (typeof raw === "string") raw = JSON.parse(raw);
+			return {
+				user_consent: Array.isArray(raw.user_consent) ? raw.user_consent : [],
+				ai_boundaries: raw.ai_boundaries ?? defaultConsent.ai_boundaries,
+				relationship_level: raw.relationship_level ?? "stranger",
+				log: Array.isArray(raw.log) ? raw.log : []
+			};
 		} catch (err) {
 			console.error("readConsent failed:", err instanceof Error ? err.message : "unknown error");
 			return defaultConsent;
@@ -1363,7 +1372,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 		try {
 			await this.sql`
 				INSERT INTO consent (tenant_id, data, updated_at)
-				VALUES (${this.tenant}, ${JSON.stringify(consent)}, NOW())
+				VALUES (${this.tenant}, ${this.sql.json(consent)}, NOW())
 				ON CONFLICT (tenant_id)
 				DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
 			`;
