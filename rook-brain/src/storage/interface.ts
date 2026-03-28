@@ -24,6 +24,10 @@ import type {
 	Entity,
 	Relation,
 	EntityFilter,
+	ProjectDossier,
+	ProjectDossierFilter,
+	AgentCapabilityManifest,
+	AgentCapabilityManifestFilter,
 	DaemonProposal,
 	OrphanObservation,
 	DaemonConfig,
@@ -321,6 +325,26 @@ export interface IBrainStorage {
 	listEntities(filter?: EntityFilter): Promise<Entity[]>;
 	updateEntity(id: string, updates: Partial<Pick<Entity, 'name' | 'entity_type' | 'tags' | 'salience' | 'primary_context'>>): Promise<Entity>;
 
+	// --- Project Dossiers ---
+
+	createProjectDossier(dossier: Omit<ProjectDossier, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<ProjectDossier>;
+	getProjectDossier(projectEntityId: string): Promise<ProjectDossier | null>;
+	listProjectDossiers(filter?: ProjectDossierFilter): Promise<ProjectDossier[]>;
+	updateProjectDossier(
+		projectEntityId: string,
+		updates: Partial<Pick<ProjectDossier, 'lifecycle_status' | 'summary' | 'goals' | 'constraints' | 'decisions' | 'open_questions' | 'next_actions' | 'metadata' | 'last_active_at'>>
+	): Promise<ProjectDossier>;
+
+	// --- Agent Capability Manifests ---
+
+	createAgentCapabilityManifest(manifest: Omit<AgentCapabilityManifest, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<AgentCapabilityManifest>;
+	getAgentCapabilityManifest(agentEntityId: string): Promise<AgentCapabilityManifest | null>;
+	listAgentCapabilityManifests(filter?: AgentCapabilityManifestFilter): Promise<AgentCapabilityManifest[]>;
+	updateAgentCapabilityManifest(
+		agentEntityId: string,
+		updates: Partial<Pick<AgentCapabilityManifest, 'version' | 'delegation_mode' | 'router_agent_entity_id' | 'supports_streaming' | 'accepted_output_modes' | 'protocols' | 'skills' | 'metadata'>>
+	): Promise<AgentCapabilityManifest>;
+
 	// --- Relations ---
 
 	createRelation(relation: Omit<Relation, 'id' | 'created_at' | 'updated_at'>): Promise<Relation>;
@@ -330,6 +354,8 @@ export interface IBrainStorage {
 
 	linkObservationToEntity(observationId: string, entityId: string): Promise<void>;
 	getEntityObservations(entityId: string, limit?: number): Promise<{ observation: Observation; territory: string }[]>;
+	/** Batch-fetch observations for multiple entity IDs in a single query. */
+	batchGetEntityObservations(entityIds: string[], limitPerEntity?: number): Promise<Map<string, { observation: Observation; territory: string }[]>>;
 
 	/**
 	 * Backfill helper: return all observations that have entity_tags set but no entity_id yet.
@@ -345,6 +371,8 @@ export interface IBrainStorage {
 	reviewProposal(id: string, status: 'accepted' | 'rejected', feedbackNote?: string): Promise<DaemonProposal>;
 	getProposalStats(): Promise<Record<string, { total: number; accepted: number; rejected: number; ratio: number }>>;
 	proposalExists(type: string, sourceId: string, targetId: string): Promise<boolean>;
+	/** Batch-check whether proposals exist for multiple (type, source, target) triples. Returns a Set of keys that exist. */
+	batchProposalExists(checks: Array<{ type: string; sourceId: string; targetId: string }>): Promise<Set<string>>;
 
 	// --- Orphan Management ---
 
@@ -425,12 +453,21 @@ export interface IBrainStorage {
 	/** Create a new task. */
 	createTask(task: Omit<Task, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<Task>;
 
-	/** List tasks with optional status and priority filters. */
-	listTasks(status?: string, priority?: string, limit?: number): Promise<Task[]>;
+	/** List tasks with optional status and priority filters. When includeAssigned is true, also returns tasks assigned to this tenant from other tenants. */
+	listTasks(status?: string, priority?: string, limit?: number, includeAssigned?: boolean): Promise<Task[]>;
 
-	/** Update task fields (status, priority, description, etc). */
-	updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'estimated_effort' | 'scheduled_wake' | 'completion_note' | 'completed_at'>>): Promise<Task>;
+	/** List tasks created or updated since the provided timestamp. */
+	listTaskChangesSince(since: string, limit?: number, includeAssigned?: boolean): Promise<Task[]>;
 
-	/** Get a single task by ID. */
-	getTask(id: string): Promise<Task | null>;
+	/** Update task fields (status, priority, description, etc). When includeAssigned is true, also allows updating tasks assigned to this tenant from other tenants. */
+	updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'estimated_effort' | 'scheduled_wake' | 'completion_note' | 'completed_at'>>, includeAssigned?: boolean): Promise<Task>;
+
+	/** Bulk-open due scheduled tasks in wake-time order. Returns number of tasks advanced to open. */
+	openDueScheduledTasks(nowIso?: string, limit?: number): Promise<number>;
+
+	/** Get a single task by ID. When includeAssigned is true, also returns tasks assigned to this tenant from other tenants. */
+	getTask(id: string, includeAssigned?: boolean): Promise<Task | null>;
+
+	/** Get the most recent wake log entry, newest first. */
+	readLatestWakeLog(): Promise<WakeLogEntry | null>;
 }

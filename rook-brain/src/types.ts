@@ -293,6 +293,80 @@ export interface EntityFilter {
 	limit?: number;
 }
 
+export interface ProjectDossier {
+	id: string;
+	tenant_id: string;
+	project_entity_id: string;
+	lifecycle_status: 'active' | 'paused' | 'archived';
+	summary?: string;
+	goals: string[];
+	constraints: string[];
+	decisions: string[];
+	open_questions: string[];
+	next_actions: string[];
+	metadata: Record<string, unknown>;
+	last_active_at?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ProjectDossierFilter {
+	lifecycle_status?: 'active' | 'paused' | 'archived';
+	updated_after?: string;
+	limit?: number;
+}
+
+export interface AgentSkillDescriptor {
+	name: string;
+	description?: string;
+	tags?: string[];
+}
+
+export interface AgentCapabilityManifest {
+	id: string;
+	tenant_id: string;
+	agent_entity_id: string;
+	version: string;
+	delegation_mode: 'auto' | 'explicit' | 'router';
+	router_agent_entity_id?: string | null;
+	supports_streaming: boolean;
+	accepted_output_modes: string[];
+	protocols: string[];
+	skills: AgentSkillDescriptor[];
+	metadata: Record<string, unknown>;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AgentCapabilityManifestFilter {
+	delegation_mode?: 'auto' | 'explicit' | 'router';
+	limit?: number;
+}
+
+export interface A2ATaskMessagePart {
+	type: string;
+	text?: string;
+	data?: Record<string, unknown>;
+}
+
+export interface A2ATaskEnvelope {
+	id: string;
+	task_type: string;
+	from_agent_entity_id?: string;
+	to_agent_entity_id?: string;
+	session_id?: string;
+	correlation_id?: string;
+	message: {
+		role: string;
+		parts: A2ATaskMessagePart[];
+	};
+	accepted_output_modes: string[];
+	history_length?: number;
+	status?: 'queued' | 'running' | 'completed' | 'failed' | 'blocked';
+	metadata?: Record<string, unknown>;
+	created_at?: string;
+}
+
 // --- Daemon Intelligence (Brain v5 Sprint 4) ---
 
 export interface DaemonProposal {
@@ -368,11 +442,20 @@ export interface DispatchFeedback {
 	tenant_id: string;
 	agent_entity_id?: string;
 	task_type: string;
+	domain?: string;
+	environment?: string;
+	session_id?: string;
 	dispatched_at: string;
 	outcome?: 'effective' | 'partial' | 'ineffective' | 'redirected';
 	findings_count: number;
 	findings_acted: number;
 	confidence_avg?: number;
+	predicted_confidence?: number;
+	outcome_score?: number;
+	revision_cost?: number;
+	needed_rescue?: boolean;
+	rescue_agent_id?: string;
+	time_to_usable_ms?: number;
 	notes?: string;
 	reviewed_at?: string;
 }
@@ -385,6 +468,10 @@ export interface DispatchStat {
 	ineffective: number;
 	redirected: number;
 	avg_confidence: number;
+	avg_predicted_confidence: number;
+	avg_outcome_score: number;
+	avg_revision_cost: number;
+	rescue_rate: number;
 }
 
 export interface Task {

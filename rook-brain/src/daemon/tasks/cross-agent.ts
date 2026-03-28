@@ -20,17 +20,21 @@ export async function runCrossAgentTask(storage: IBrainStorage): Promise<DaemonT
 	}
 
 	const cutoffDate = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-	const agentIds = new Set(agentEntities.map(e => e.id));
+	const agentIdSet = new Set(agentEntities.map(e => e.id));
+	const agentIdList = agentEntities.map(e => e.id);
+
+	// Batch-fetch all agent observations in a single query (N agents → 1 DB call)
+	const allEntityObs = await storage.batchGetEntityObservations(agentIdList, 100);
 
 	// Map: entity_id → [ { agent_id, agent_name, obs_id } ]
 	const entityToAgentObs = new Map<string, Array<{ agent_id: string; agent_name: string; obs_id: string }>>();
 
 	for (const agent of agentEntities) {
-		const entityObs = await storage.getEntityObservations(agent.id, 100);
+		const entityObs = allEntityObs.get(agent.id) ?? [];
 
 		for (const { observation: obs } of entityObs) {
 			// Skip if the observation is about an agent entity itself
-			if (!obs.entity_id || agentIds.has(obs.entity_id)) continue;
+			if (!obs.entity_id || agentIdSet.has(obs.entity_id)) continue;
 
 			// Only consider recent observations
 			if (obs.created < cutoffDate) continue;
@@ -40,6 +44,16 @@ export async function runCrossAgentTask(storage: IBrainStorage): Promise<DaemonT
 			entityToAgentObs.set(obs.entity_id, existing);
 		}
 	}
+
+	// Collect all entity IDs that have 2+ agent convergence, then batch-check proposals
+	const convergentEntityIds: string[] = [];
+	for (const [targetEntityId, agentObsList] of entityToAgentObs) {
+		const uniqueAgents = new Set(agentObsList.map(e => e.agent_id));
+		if (uniqueAgents.size >= 2) convergentEntityIds.push(targetEntityId);
+	}
+
+	const crossAgentChecks = convergentEntityIds.map(id => ({ type: "cross_agent", sourceId: id, targetId: id }));
+	const existingCrossAgent = await storage.batchProposalExists(crossAgentChecks);
 
 	// Find entities that 2+ different agents have observations about
 	for (const [targetEntityId, agentObsList] of entityToAgentObs) {
@@ -57,10 +71,8 @@ export async function runCrossAgentTask(storage: IBrainStorage): Promise<DaemonT
 		const agentNames = agents.map(([, v]) => v.agent_name).join(", ");
 		const sourceObsIds = agents.map(([, v]) => v.obs_id);
 
-		// Check if a cross_agent proposal already exists for this entity pair
-		// Use targetEntityId as both source and target to represent "about this entity"
-		const exists = await storage.proposalExists("cross_agent", targetEntityId, targetEntityId);
-		if (exists) continue;
+		// Check if a cross_agent proposal already exists for this entity (batch result)
+		if (existingCrossAgent.has(`cross_agent:${targetEntityId}:${targetEntityId}`)) continue;
 
 		// Create consolidation candidate
 		await storage.createConsolidationCandidate({

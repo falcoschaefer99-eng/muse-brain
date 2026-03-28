@@ -51,6 +51,10 @@ import type {
 	Entity,
 	Relation,
 	EntityFilter,
+	ProjectDossier,
+	ProjectDossierFilter,
+	AgentCapabilityManifest,
+	AgentCapabilityManifestFilter,
 	DaemonProposal,
 	OrphanObservation,
 	DaemonConfig,
@@ -82,6 +86,10 @@ function toISOString(val: unknown): string | undefined {
 	if (!val) return undefined;
 	if (val instanceof Date) return val.toISOString();
 	return String(val);
+}
+
+function toStringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function rowToObservation(row: Record<string, unknown>): Observation {
@@ -168,6 +176,54 @@ function rowToRelation(row: Record<string, unknown>): Relation {
 		context: row.context as string | undefined,
 		created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at as string,
 		updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at as string,
+	};
+}
+
+function rowToProjectDossier(row: Record<string, unknown>): ProjectDossier {
+	return {
+		id: row.id as string,
+		tenant_id: row.tenant_id as string,
+		project_entity_id: row.project_entity_id as string,
+		lifecycle_status: (row.lifecycle_status as ProjectDossier["lifecycle_status"]) ?? "active",
+		summary: row.summary as string | undefined,
+		goals: toStringList(row.goals),
+		constraints: toStringList(row.constraints),
+		decisions: toStringList(row.decisions),
+		open_questions: toStringList(row.open_questions),
+		next_actions: toStringList(row.next_actions),
+		metadata: (row.metadata as Record<string, unknown>) ?? {},
+		last_active_at: toISOString(row.last_active_at),
+		created_at: toISOString(row.created_at) || new Date().toISOString(),
+		updated_at: toISOString(row.updated_at) || new Date().toISOString()
+	};
+}
+
+function rowToAgentCapabilityManifest(row: Record<string, unknown>): AgentCapabilityManifest {
+	const toSkillList = (value: unknown): AgentCapabilityManifest["skills"] =>
+		Array.isArray(value)
+			? value
+				.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+				.map(item => ({
+					name: typeof item.name === "string" ? item.name : "unnamed",
+					description: typeof item.description === "string" ? item.description : undefined,
+					tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string") : []
+				}))
+			: [];
+
+	return {
+		id: row.id as string,
+		tenant_id: row.tenant_id as string,
+		agent_entity_id: row.agent_entity_id as string,
+		version: (row.version as string) ?? "1.0.0",
+		delegation_mode: (row.delegation_mode as AgentCapabilityManifest["delegation_mode"]) ?? "explicit",
+		router_agent_entity_id: row.router_agent_entity_id as string | null | undefined,
+		supports_streaming: Boolean(row.supports_streaming),
+		accepted_output_modes: toStringList(row.accepted_output_modes),
+		protocols: toStringList(row.protocols),
+		skills: toSkillList(row.skills),
+		metadata: (row.metadata as Record<string, unknown>) ?? {},
+		created_at: toISOString(row.created_at) || new Date().toISOString(),
+		updated_at: toISOString(row.updated_at) || new Date().toISOString()
 	};
 }
 
@@ -1205,6 +1261,21 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	async readLatestWakeLog(): Promise<WakeLogEntry | null> {
+		try {
+			const rows = await this.sql`
+				SELECT data FROM wake_log
+				WHERE tenant_id = ${this.tenant}
+				ORDER BY created_at DESC
+				LIMIT 1
+			`;
+			return rows.length ? rows[0].data as WakeLogEntry : null;
+		} catch (err) {
+			console.error("readLatestWakeLog failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
 	// ============ CONVERSATION CONTEXT ============
 
 	async readConversationContext(): Promise<unknown> {
@@ -1614,6 +1685,263 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	private async assertProjectEntity(projectEntityId: string): Promise<Entity> {
+		const entity = await this.findEntityById(projectEntityId);
+		if (!entity) throw new Error("Project entity not found");
+		if (entity.entity_type !== "project") throw new Error("Entity is not a project");
+		if (entity.tenant_id !== this.tenant) throw new Error("Project entity belongs to a different tenant");
+		return entity;
+	}
+
+	private async assertAgentEntity(agentEntityId: string): Promise<Entity> {
+		const entity = await this.findEntityById(agentEntityId);
+		if (!entity) throw new Error("Agent entity not found");
+		if (entity.entity_type !== "agent") throw new Error("Entity is not an agent");
+		if (entity.tenant_id !== this.tenant) throw new Error("Agent entity belongs to a different tenant");
+		return entity;
+	}
+
+	// ============ PROJECT DOSSIERS (Phase 1) ============
+
+	async createProjectDossier(dossier: Omit<ProjectDossier, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<ProjectDossier> {
+		await this.assertProjectEntity(dossier.project_entity_id);
+		const id = generateId("dossier");
+
+		try {
+			const rows = await this.sql`
+				INSERT INTO project_dossiers (
+					id, tenant_id, project_entity_id, lifecycle_status, summary,
+					goals, constraints, decisions, open_questions, next_actions,
+					metadata, last_active_at, created_at, updated_at
+				)
+				VALUES (
+					${id},
+					${this.tenant},
+					${dossier.project_entity_id},
+					${dossier.lifecycle_status ?? 'active'},
+					${dossier.summary ?? null},
+					${this.sql.json(dossier.goals ?? [])},
+					${this.sql.json(dossier.constraints ?? [])},
+					${this.sql.json(dossier.decisions ?? [])},
+					${this.sql.json(dossier.open_questions ?? [])},
+					${this.sql.json(dossier.next_actions ?? [])},
+					${this.sql.json((dossier.metadata ?? {}) as any)},
+					${dossier.last_active_at ?? null},
+					NOW(),
+					NOW()
+				)
+				RETURNING *
+			`;
+			return rowToProjectDossier(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "unknown error";
+			if (msg.includes("unique") || msg.includes("duplicate")) {
+				throw new Error("Project dossier already exists for this project");
+			}
+			console.error("createProjectDossier failed:", msg);
+			throw new Error("Failed to create project dossier");
+		}
+	}
+
+	async getProjectDossier(projectEntityId: string): Promise<ProjectDossier | null> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM project_dossiers
+				WHERE tenant_id = ${this.tenant}
+				  AND project_entity_id = ${projectEntityId}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return rowToProjectDossier(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("getProjectDossier failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async listProjectDossiers(filter?: ProjectDossierFilter): Promise<ProjectDossier[]> {
+		const cap = Math.min(filter?.limit ?? 50, 200);
+		const lifecycleStatus = filter?.lifecycle_status ?? null;
+		const updatedAfter = filter?.updated_after ?? null;
+
+		try {
+			const rows = await this.sql`
+				SELECT * FROM project_dossiers
+				WHERE tenant_id = ${this.tenant}
+				  AND (${lifecycleStatus}::text IS NULL OR lifecycle_status = ${lifecycleStatus})
+				  AND (
+					${updatedAfter}::timestamptz IS NULL
+					OR updated_at >= ${updatedAfter}::timestamptz
+					OR last_active_at >= ${updatedAfter}::timestamptz
+				  )
+				ORDER BY updated_at DESC, last_active_at DESC NULLS LAST
+				LIMIT ${cap}
+			`;
+			return rows.map(row => rowToProjectDossier(row as Record<string, unknown>));
+		} catch (err) {
+			console.error("listProjectDossiers failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async updateProjectDossier(
+		projectEntityId: string,
+		updates: Partial<Pick<ProjectDossier, 'lifecycle_status' | 'summary' | 'goals' | 'constraints' | 'decisions' | 'open_questions' | 'next_actions' | 'metadata' | 'last_active_at'>>
+	): Promise<ProjectDossier> {
+		const current = await this.getProjectDossier(projectEntityId);
+		if (!current) throw new Error("Project dossier not found");
+
+		const lifecycle_status = updates.lifecycle_status ?? current.lifecycle_status;
+		const summary = updates.summary !== undefined ? updates.summary : current.summary;
+		const goals = updates.goals ?? current.goals;
+		const constraints = updates.constraints ?? current.constraints;
+		const decisions = updates.decisions ?? current.decisions;
+		const open_questions = updates.open_questions ?? current.open_questions;
+		const next_actions = updates.next_actions ?? current.next_actions;
+		const metadata = updates.metadata ?? current.metadata;
+		const last_active_at = updates.last_active_at !== undefined ? updates.last_active_at : current.last_active_at;
+
+		try {
+			const rows = await this.sql`
+				UPDATE project_dossiers SET
+					lifecycle_status = ${lifecycle_status},
+					summary = ${summary ?? null},
+					goals = ${this.sql.json(goals)},
+					constraints = ${this.sql.json(constraints)},
+					decisions = ${this.sql.json(decisions)},
+					open_questions = ${this.sql.json(open_questions)},
+					next_actions = ${this.sql.json(next_actions)},
+					metadata = ${this.sql.json(metadata as any)},
+					last_active_at = ${last_active_at ?? null},
+					updated_at = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND project_entity_id = ${projectEntityId}
+				RETURNING *
+			`;
+			if (!rows.length) throw new Error("Project dossier not found after update");
+			return rowToProjectDossier(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("updateProjectDossier failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update project dossier");
+		}
+	}
+
+	// ============ AGENT CAPABILITY MANIFESTS (Phase 2A) ============
+
+	async createAgentCapabilityManifest(manifest: Omit<AgentCapabilityManifest, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<AgentCapabilityManifest> {
+		await this.assertAgentEntity(manifest.agent_entity_id);
+		if (manifest.router_agent_entity_id) await this.assertAgentEntity(manifest.router_agent_entity_id);
+		const id = generateId("agentcard");
+
+		try {
+			const rows = await this.sql`
+				INSERT INTO agent_capability_manifests (
+					id, tenant_id, agent_entity_id, version, delegation_mode, router_agent_entity_id,
+					supports_streaming, accepted_output_modes, protocols, skills, metadata, created_at, updated_at
+				) VALUES (
+					${id},
+					${this.tenant},
+					${manifest.agent_entity_id},
+					${manifest.version ?? '1.0.0'},
+					${manifest.delegation_mode ?? 'explicit'},
+					${manifest.router_agent_entity_id ?? null},
+					${manifest.supports_streaming ?? false},
+					${manifest.accepted_output_modes ?? []},
+					${manifest.protocols ?? []},
+					${this.sql.json(manifest.skills as any ?? [])},
+					${this.sql.json((manifest.metadata ?? {}) as any)},
+					NOW(),
+					NOW()
+				)
+				RETURNING *
+			`;
+			return rowToAgentCapabilityManifest(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "unknown error";
+			if (msg.includes("unique") || msg.includes("duplicate")) {
+				throw new Error("Agent capability manifest already exists for this agent");
+			}
+			console.error("createAgentCapabilityManifest failed:", msg);
+			throw new Error("Failed to create agent capability manifest");
+		}
+	}
+
+	async getAgentCapabilityManifest(agentEntityId: string): Promise<AgentCapabilityManifest | null> {
+		try {
+			const rows = await this.sql`
+				SELECT * FROM agent_capability_manifests
+				WHERE tenant_id = ${this.tenant}
+				  AND agent_entity_id = ${agentEntityId}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return rowToAgentCapabilityManifest(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("getAgentCapabilityManifest failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async listAgentCapabilityManifests(filter?: AgentCapabilityManifestFilter): Promise<AgentCapabilityManifest[]> {
+		const cap = Math.min(filter?.limit ?? 50, 200);
+		const delegationMode = filter?.delegation_mode ?? null;
+
+		try {
+			const rows = await this.sql`
+				SELECT * FROM agent_capability_manifests
+				WHERE tenant_id = ${this.tenant}
+				  AND (${delegationMode}::text IS NULL OR delegation_mode = ${delegationMode})
+				ORDER BY updated_at DESC
+				LIMIT ${cap}
+			`;
+			return rows.map(row => rowToAgentCapabilityManifest(row as Record<string, unknown>));
+		} catch (err) {
+			console.error("listAgentCapabilityManifests failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
+	async updateAgentCapabilityManifest(
+		agentEntityId: string,
+		updates: Partial<Pick<AgentCapabilityManifest, 'version' | 'delegation_mode' | 'router_agent_entity_id' | 'supports_streaming' | 'accepted_output_modes' | 'protocols' | 'skills' | 'metadata'>>
+	): Promise<AgentCapabilityManifest> {
+		const current = await this.getAgentCapabilityManifest(agentEntityId);
+		if (!current) throw new Error("Agent capability manifest not found");
+
+		const version = updates.version ?? current.version;
+		const delegation_mode = updates.delegation_mode ?? current.delegation_mode;
+		const router_agent_entity_id = updates.router_agent_entity_id !== undefined ? updates.router_agent_entity_id : current.router_agent_entity_id;
+		const supports_streaming = updates.supports_streaming ?? current.supports_streaming;
+		const accepted_output_modes = updates.accepted_output_modes ?? current.accepted_output_modes;
+		const protocols = updates.protocols ?? current.protocols;
+		const skills = updates.skills ?? current.skills;
+		const metadata = updates.metadata ?? current.metadata;
+		if (router_agent_entity_id) await this.assertAgentEntity(router_agent_entity_id);
+
+		try {
+			const rows = await this.sql`
+				UPDATE agent_capability_manifests SET
+					version = ${version},
+					delegation_mode = ${delegation_mode},
+					router_agent_entity_id = ${router_agent_entity_id ?? null},
+					supports_streaming = ${supports_streaming},
+					accepted_output_modes = ${accepted_output_modes},
+					protocols = ${protocols},
+					skills = ${this.sql.json(skills as any)},
+					metadata = ${this.sql.json(metadata as any)},
+					updated_at = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND agent_entity_id = ${agentEntityId}
+				RETURNING *
+			`;
+			if (!rows.length) throw new Error("Agent capability manifest not found after update");
+			return rowToAgentCapabilityManifest(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("updateAgentCapabilityManifest failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update agent capability manifest");
+		}
+	}
+
 	// ============ RELATIONS (Sprint 3) ============
 
 	async createRelation(relation: Omit<Relation, 'id' | 'created_at' | 'updated_at'>): Promise<Relation> {
@@ -1697,6 +2025,43 @@ export class PostgresBrainStorage implements IBrainStorage {
 		} catch (err) {
 			console.error("getEntityObservations failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to get entity observations");
+		}
+	}
+
+	async batchGetEntityObservations(entityIds: string[], limitPerEntity?: number): Promise<Map<string, { observation: Observation; territory: string }[]>> {
+		if (entityIds.length === 0) return new Map();
+		const cap = limitPerEntity ?? 200;
+		try {
+			// Single query: fetch all matching observations, then partition in JS
+			const rows = await this.sql`
+				SELECT id, content, territory, created_at, texture, context, mood,
+				       last_accessed_at, access_count, links, summary, type, tags, entity_id
+				FROM observations
+				WHERE entity_id = ANY(${entityIds})
+				  AND tenant_id = ${this.tenant}
+				ORDER BY entity_id, created_at DESC
+			`;
+
+			const result = new Map<string, { observation: Observation; territory: string }[]>();
+			for (const entityId of entityIds) {
+				result.set(entityId, []);
+			}
+
+			for (const row of rows) {
+				const entityId = row.entity_id as string;
+				const existing = result.get(entityId);
+				if (existing && existing.length < cap) {
+					existing.push({
+						observation: rowToObservation(row as Record<string, unknown>),
+						territory: row.territory as string
+					});
+				}
+			}
+
+			return result;
+		} catch (err) {
+			console.error("batchGetEntityObservations failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to batch get entity observations");
 		}
 	}
 
@@ -2248,6 +2613,34 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	async batchProposalExists(checks: Array<{ type: string; sourceId: string; targetId: string }>): Promise<Set<string>> {
+		if (checks.length === 0) return new Set();
+		try {
+			const types = checks.map(c => c.type);
+			const sources = checks.map(c => c.sourceId);
+			const targets = checks.map(c => c.targetId);
+
+			const rows = await this.sql`
+				SELECT proposal_type, source_id, target_id
+				FROM daemon_proposals
+				WHERE tenant_id = ${this.tenant}
+				  AND status = 'pending'
+				  AND (proposal_type, source_id, target_id) IN (
+				      SELECT unnest(${types}::text[]), unnest(${sources}::text[]), unnest(${targets}::text[])
+				  )
+			`;
+
+			const existingKeys = new Set<string>();
+			for (const row of rows) {
+				existingKeys.add(`${row.proposal_type}:${row.source_id}:${row.target_id}`);
+			}
+			return existingKeys;
+		} catch (err) {
+			console.error("batchProposalExists failed:", err instanceof Error ? err.message : "unknown error");
+			return new Set();
+		}
+	}
+
 	// ============ ORPHAN MANAGEMENT (Sprint 4) ============
 
 	async markOrphan(observationId: string): Promise<void> {
@@ -2749,17 +3142,28 @@ export class PostgresBrainStorage implements IBrainStorage {
 			const rows = await this.sql`
 				INSERT INTO dispatch_feedback (
 					id, tenant_id, agent_entity_id, task_type, dispatched_at,
-					outcome, findings_count, findings_acted, confidence_avg, notes, reviewed_at
+					domain, environment, session_id, outcome, findings_count, findings_acted,
+					confidence_avg, predicted_confidence, outcome_score, revision_cost,
+					needed_rescue, rescue_agent_id, time_to_usable_ms, notes, reviewed_at
 				) VALUES (
 					${id},
 					${this.tenant},
 					${entry.agent_entity_id ?? null},
 					${entry.task_type},
 					NOW(),
+					${entry.domain ?? null},
+					${entry.environment ?? null},
+					${entry.session_id ?? null},
 					${entry.outcome ?? null},
 					${entry.findings_count ?? 0},
 					${entry.findings_acted ?? 0},
 					${entry.confidence_avg ?? null},
+					${entry.predicted_confidence ?? null},
+					${entry.outcome_score ?? null},
+					${entry.revision_cost ?? null},
+					${entry.needed_rescue ?? false},
+					${entry.rescue_agent_id ?? null},
+					${entry.time_to_usable_ms ?? null},
 					${entry.notes ?? null},
 					${entry.reviewed_at ?? null}
 				)
@@ -2782,7 +3186,11 @@ export class PostgresBrainStorage implements IBrainStorage {
 					COUNT(*) FILTER (WHERE outcome = 'partial')::int                 AS partial,
 					COUNT(*) FILTER (WHERE outcome = 'ineffective')::int             AS ineffective,
 					COUNT(*) FILTER (WHERE outcome = 'redirected')::int              AS redirected,
-					COALESCE(AVG(confidence_avg), 0)::real                           AS avg_confidence
+					COALESCE(AVG(confidence_avg), 0)::real                           AS avg_confidence,
+					COALESCE(AVG(predicted_confidence), 0)::real                     AS avg_predicted_confidence,
+					COALESCE(AVG(outcome_score), 0)::real                            AS avg_outcome_score,
+					COALESCE(AVG(revision_cost), 0)::real                            AS avg_revision_cost,
+					COALESCE(AVG(CASE WHEN needed_rescue THEN 1 ELSE 0 END), 0)::real AS rescue_rate
 				FROM dispatch_feedback
 				WHERE tenant_id = ${this.tenant}
 				  AND (${agentEntityId ?? null}::text IS NULL OR agent_entity_id = ${agentEntityId ?? null})
@@ -2796,7 +3204,11 @@ export class PostgresBrainStorage implements IBrainStorage {
 				partial: r.partial as number,
 				ineffective: r.ineffective as number,
 				redirected: r.redirected as number,
-				avg_confidence: r.avg_confidence as number
+				avg_confidence: r.avg_confidence as number,
+				avg_predicted_confidence: r.avg_predicted_confidence as number,
+				avg_outcome_score: r.avg_outcome_score as number,
+				avg_revision_cost: r.avg_revision_cost as number,
+				rescue_rate: r.rescue_rate as number
 			}));
 		} catch (err) {
 			console.error("getDispatchStats failed:", err instanceof Error ? err.message : "unknown error");
@@ -2843,17 +3255,45 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
-	async listTasks(status?: string, priority?: string, limit?: number): Promise<Task[]> {
+	async listTasks(status?: string, priority?: string, limit?: number, includeAssigned?: boolean): Promise<Task[]> {
 		const cap = Math.min(limit ?? 50, 200);
+		const orderScheduled = status === 'scheduled';
 		try {
-			const rows = await this.sql`
-				SELECT * FROM tasks
-				WHERE tenant_id = ${this.tenant}
-				  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
-				  AND (${priority ?? null}::text IS NULL OR priority = ${priority ?? null})
-				ORDER BY created_at DESC
-				LIMIT ${cap}
-			`;
+			const rows = includeAssigned
+				? orderScheduled
+					? await this.sql`
+						SELECT * FROM tasks
+						WHERE (tenant_id = ${this.tenant} OR assigned_tenant = ${this.tenant})
+						  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+						  AND (${priority ?? null}::text IS NULL OR priority = ${priority ?? null})
+						ORDER BY scheduled_wake ASC NULLS LAST, created_at DESC
+						LIMIT ${cap}
+					`
+					: await this.sql`
+						SELECT * FROM tasks
+						WHERE (tenant_id = ${this.tenant} OR assigned_tenant = ${this.tenant})
+						  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+						  AND (${priority ?? null}::text IS NULL OR priority = ${priority ?? null})
+						ORDER BY created_at DESC
+						LIMIT ${cap}
+					`
+				: orderScheduled
+					? await this.sql`
+						SELECT * FROM tasks
+						WHERE tenant_id = ${this.tenant}
+						  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+						  AND (${priority ?? null}::text IS NULL OR priority = ${priority ?? null})
+						ORDER BY scheduled_wake ASC NULLS LAST, created_at DESC
+						LIMIT ${cap}
+					`
+					: await this.sql`
+						SELECT * FROM tasks
+						WHERE tenant_id = ${this.tenant}
+						  AND (${status ?? null}::text IS NULL OR status = ${status ?? null})
+						  AND (${priority ?? null}::text IS NULL OR priority = ${priority ?? null})
+						ORDER BY created_at DESC
+						LIMIT ${cap}
+					`;
 			return rows.map(r => this._rowToTask(r as Record<string, unknown>));
 		} catch (err) {
 			console.error("listTasks failed:", err instanceof Error ? err.message : "unknown error");
@@ -2861,51 +3301,129 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
-	async updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'estimated_effort' | 'scheduled_wake' | 'completion_note' | 'completed_at'>>): Promise<Task> {
-		const current = await this.getTask(id);
-		if (!current) throw new Error("Task not found");
+	async listTaskChangesSince(since: string, limit?: number, includeAssigned?: boolean): Promise<Task[]> {
+		const cap = Math.min(limit ?? 50, 200);
+		try {
+			const rows = includeAssigned
+				? await this.sql`
+					SELECT * FROM tasks
+					WHERE (tenant_id = ${this.tenant} OR assigned_tenant = ${this.tenant})
+					  AND updated_at >= ${since}::timestamptz
+					ORDER BY updated_at DESC, created_at DESC
+					LIMIT ${cap}
+				`
+				: await this.sql`
+					SELECT * FROM tasks
+					WHERE tenant_id = ${this.tenant}
+					  AND updated_at >= ${since}::timestamptz
+					ORDER BY updated_at DESC, created_at DESC
+					LIMIT ${cap}
+				`;
+			return rows.map(r => this._rowToTask(r as Record<string, unknown>));
+		} catch (err) {
+			console.error("listTaskChangesSince failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
 
-		const title = updates.title ?? current.title;
-		const description = updates.description !== undefined ? updates.description : current.description;
-		const status = updates.status ?? current.status;
-		const priority = updates.priority ?? current.priority;
-		const estimated_effort = updates.estimated_effort !== undefined ? updates.estimated_effort : current.estimated_effort;
-		const scheduled_wake = updates.scheduled_wake !== undefined ? updates.scheduled_wake : current.scheduled_wake;
-		const completion_note = updates.completion_note !== undefined ? updates.completion_note : current.completion_note;
-		const completed_at = updates.completed_at !== undefined ? updates.completed_at : current.completed_at;
-
+	async openDueScheduledTasks(nowIso?: string, limit?: number): Promise<number> {
+		const now = nowIso ?? getTimestamp();
+		const cap = Math.min(limit ?? 200, 500);
 		try {
 			const rows = await this.sql`
-				UPDATE tasks SET
-					title            = ${title},
-					description      = ${description ?? null},
-					status           = ${status},
-					priority         = ${priority},
-					estimated_effort = ${estimated_effort ?? null},
-					scheduled_wake   = ${scheduled_wake ?? null},
-					completion_note  = ${completion_note ?? null},
-					completed_at     = ${completed_at ?? null},
-					updated_at       = NOW()
-				WHERE id = ${id}
-				  AND tenant_id = ${this.tenant}
-				RETURNING *
+				WITH due AS (
+					SELECT id
+					FROM tasks
+					WHERE tenant_id = ${this.tenant}
+					  AND status = 'scheduled'
+					  AND scheduled_wake IS NOT NULL
+					  AND scheduled_wake <= ${now}::timestamptz
+					ORDER BY scheduled_wake ASC, created_at ASC
+					LIMIT ${cap}
+				)
+				UPDATE tasks t
+				SET status = 'open', updated_at = NOW()
+				FROM due
+				WHERE t.id = due.id
+				RETURNING t.id
 			`;
-			if (!rows.length) throw new Error("Task not found after update");
+			return rows.length;
+		} catch (err) {
+			console.error("openDueScheduledTasks failed:", err instanceof Error ? err.message : "unknown error");
+			return 0;
+		}
+	}
+
+	async updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'estimated_effort' | 'scheduled_wake' | 'completion_note' | 'completed_at'>>, includeAssigned?: boolean): Promise<Task> {
+		if (Object.keys(updates).length === 0) throw new Error("No fields to update");
+
+		const title = updates.title ?? null;
+		const description = updates.description ?? null;
+		const status = updates.status ?? null;
+		const priority = updates.priority ?? null;
+		const estimated_effort = updates.estimated_effort ?? null;
+		const scheduled_wake = updates.scheduled_wake ?? null;
+		const completion_note = updates.completion_note ?? null;
+		const completed_at = updates.completed_at ?? null;
+
+		try {
+			const rows = includeAssigned
+				? await this.sql`
+					UPDATE tasks SET
+						title            = COALESCE(${title}, title),
+						description      = COALESCE(${description}, description),
+						status           = COALESCE(${status}, status),
+						priority         = COALESCE(${priority}, priority),
+						estimated_effort = COALESCE(${estimated_effort}, estimated_effort),
+						scheduled_wake   = COALESCE(${scheduled_wake}, scheduled_wake),
+						completion_note  = COALESCE(${completion_note}, completion_note),
+						completed_at     = COALESCE(${completed_at}, completed_at),
+						updated_at       = NOW()
+					WHERE id = ${id}
+					  AND (tenant_id = ${this.tenant} OR assigned_tenant = ${this.tenant})
+					RETURNING *
+				`
+				: await this.sql`
+					UPDATE tasks SET
+						title            = COALESCE(${title}, title),
+						description      = COALESCE(${description}, description),
+						status           = COALESCE(${status}, status),
+						priority         = COALESCE(${priority}, priority),
+						estimated_effort = COALESCE(${estimated_effort}, estimated_effort),
+						scheduled_wake   = COALESCE(${scheduled_wake}, scheduled_wake),
+						completion_note  = COALESCE(${completion_note}, completion_note),
+						completed_at     = COALESCE(${completed_at}, completed_at),
+						updated_at       = NOW()
+					WHERE id = ${id}
+					  AND tenant_id = ${this.tenant}
+					RETURNING *
+				`;
+			if (!rows.length) throw new Error("Task not found");
 			return this._rowToTask(rows[0] as Record<string, unknown>);
 		} catch (err) {
 			console.error("updateTask failed:", err instanceof Error ? err.message : "unknown error");
+			if (err instanceof Error && ["Task not found", "No fields to update"].includes(err.message)) {
+				throw err;
+			}
 			throw new Error("Failed to update task");
 		}
 	}
 
-	async getTask(id: string): Promise<Task | null> {
+	async getTask(id: string, includeAssigned?: boolean): Promise<Task | null> {
 		try {
-			const rows = await this.sql`
-				SELECT * FROM tasks
-				WHERE id = ${id}
-				  AND tenant_id = ${this.tenant}
-				LIMIT 1
-			`;
+			const rows = includeAssigned
+				? await this.sql`
+					SELECT * FROM tasks
+					WHERE id = ${id}
+					  AND (tenant_id = ${this.tenant} OR assigned_tenant = ${this.tenant})
+					LIMIT 1
+				`
+				: await this.sql`
+					SELECT * FROM tasks
+					WHERE id = ${id}
+					  AND tenant_id = ${this.tenant}
+					LIMIT 1
+				`;
 			if (!rows.length) return null;
 			return this._rowToTask(rows[0] as Record<string, unknown>);
 		} catch (err) {
@@ -2991,11 +3509,20 @@ export class PostgresBrainStorage implements IBrainStorage {
 			tenant_id: row.tenant_id as string,
 			agent_entity_id: row.agent_entity_id as string | undefined,
 			task_type: row.task_type as string,
+			domain: row.domain as string | undefined,
+			environment: row.environment as string | undefined,
+			session_id: row.session_id as string | undefined,
 			dispatched_at: toISOString(row.dispatched_at) || new Date().toISOString(),
 			outcome: row.outcome as DispatchFeedback["outcome"],
 			findings_count: (row.findings_count as number) ?? 0,
 			findings_acted: (row.findings_acted as number) ?? 0,
 			confidence_avg: row.confidence_avg as number | undefined,
+			predicted_confidence: row.predicted_confidence as number | undefined,
+			outcome_score: row.outcome_score as number | undefined,
+			revision_cost: row.revision_cost as number | undefined,
+			needed_rescue: row.needed_rescue as boolean | undefined,
+			rescue_agent_id: row.rescue_agent_id as string | undefined,
+			time_to_usable_ms: row.time_to_usable_ms as number | undefined,
 			notes: row.notes as string | undefined,
 			reviewed_at: toISOString(row.reviewed_at)
 		};

@@ -1,7 +1,7 @@
 // ============ WAKE TOOLS (v2) ============
 // mind_wake (depth: quick/full/orientation), mind_wake_log (action: log/read)
 
-import type { Observation, Letter, OpenLoop, BrainState, SubconsciousState } from "../types";
+import type { Observation, Letter, OpenLoop, BrainState, SubconsciousState, Task, WakeLogEntry, ProjectDossier } from "../types";
 import { TERRITORIES } from "../constants";
 import {
 	getTimestamp,
@@ -156,135 +156,149 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					storage.readBrainState(),
 					storage.readSubconscious()
 				]);
-				results.wake = await runQuickWake(storage, letters, loops, state, subconscious);
+				results.wake = await finalizeWakePayload(
+					storage,
+					await runQuickWake(storage, letters, loops, state, subconscious),
+					loops,
+					"full"
+				);
 
 				return results;
 			}
 
 			// Default: depth === "quick"
-			const [overviews, ironIndex, letters, loops, state, subconscious] = await Promise.all([
+			const [overviews, ironIndex, letters, loops, state, subconscious, openTasks, inProgressTasks, scheduledTasks] = await Promise.all([
 				storage.readOverviews(),
 				storage.readIronGripIndex(),
 				storage.readLetters(),
 				storage.readOpenLoops(),
 				storage.readBrainState(),
-				storage.readSubconscious()
+				storage.readSubconscious(),
+				storage.listTasks('open', undefined, 200, true),
+				storage.listTasks('in_progress', undefined, 200, true),
+				storage.listTasks('scheduled', undefined, 200, true)
 			]);
+			const now = Date.now();
+			const pendingTasks = collectPendingTasks(openTasks, inProgressTasks, scheduledTasks, now);
+
+			let quickWake: any;
 
 			// Graceful degradation: fall back to full read if no overviews yet
 			if (overviews.length === 0) {
-				return runQuickWake(storage, letters, loops, state, subconscious);
-			}
+				quickWake = await runQuickWake(storage, letters, loops, state, subconscious, pendingTasks);
+			} else {
+				const cutoff48h = now - (48 * 60 * 60 * 1000);
 
-			const now = Date.now();
-			const cutoff48h = now - (48 * 60 * 60 * 1000);
+				const territories: Record<string, number> = {};
+				let totalObs = 0;
+				const territoriesWithRecent: string[] = [];
 
-			const territories: Record<string, number> = {};
-			let totalObs = 0;
-			const territoriesWithRecent: string[] = [];
+				for (const ov of overviews) {
+					territories[ov.territory] = ov.observation_count;
+					totalObs += ov.observation_count;
+					if (ov.recent_count > 0) territoriesWithRecent.push(ov.territory);
+				}
 
-			for (const ov of overviews) {
-				territories[ov.territory] = ov.observation_count;
-				totalObs += ov.observation_count;
-				if (ov.recent_count > 0) territoriesWithRecent.push(ov.territory);
-			}
+				// All territories active → fall back to full read
+				if (territoriesWithRecent.length === overviews.length) {
+					quickWake = await runQuickWake(storage, letters, loops, state, subconscious, pendingTasks);
+				} else {
+					// Load only territories with recent activity
+					const recentTerritoryData = await Promise.all(
+						territoriesWithRecent.map(async t => ({
+							territory: t,
+							observations: await storage.readTerritory(t)
+						}))
+					);
 
-			// All territories active → fall back to full read
-			if (territoriesWithRecent.length === overviews.length) {
-				return runQuickWake(storage, letters, loops, state, subconscious);
-			}
-
-			// Load only territories with recent activity
-			const recentTerritoryData = await Promise.all(
-				territoriesWithRecent.map(async t => ({
-					territory: t,
-					observations: await storage.readTerritory(t)
-				}))
-			);
-
-			const recent: any[] = [];
-			for (const { territory, observations } of recentTerritoryData) {
-				for (const obs of observations) {
-					try {
-						const created = new Date(obs.created).getTime();
-						if (created > cutoff48h) {
-							recent.push({
-								id: obs.id,
-								territory,
-								glimpse: obs.content.slice(0, 120) + (obs.content.length > 120 ? "..." : ""),
-								charge: obs.texture?.charge || [],
-								somatic: obs.texture?.somatic,
-								grip: obs.texture?.grip,
-								created: obs.created
-							});
+					const recent: any[] = [];
+					for (const { territory, observations } of recentTerritoryData) {
+						for (const obs of observations) {
+							try {
+								const created = new Date(obs.created).getTime();
+								if (created > cutoff48h) {
+									recent.push({
+										id: obs.id,
+										territory,
+										glimpse: obs.content.slice(0, 120) + (obs.content.length > 120 ? "..." : ""),
+										charge: obs.texture?.charge || [],
+										somatic: obs.texture?.somatic,
+										grip: obs.texture?.grip,
+										created: obs.created
+									});
+								}
+							} catch { /* skip invalid date */ }
 						}
-					} catch { /* skip invalid date */ }
-				}
-			}
-			recent.sort((a, b) => (b.created || "") > (a.created || "") ? 1 : -1);
-
-			// Iron grip from pre-computed index
-			const sortedIron = [...ironIndex].sort((a, b) => b.pull - a.pull);
-			const topPulls = sortedIron.slice(0, 5).map(entry => ({
-				id: entry.id,
-				territory: entry.territory,
-				summary: entry.summary,
-				pull: entry.pull,
-				charge: entry.charges
-			}));
-
-			const recentCharges: Record<string, number> = {};
-			const recentSomatic: Record<string, number> = {};
-			for (const r of recent) {
-				for (const c of r.charge || []) { recentCharges[c] = (recentCharges[c] || 0) + 1; }
-				if (r.somatic) { recentSomatic[r.somatic] = (recentSomatic[r.somatic] || 0) + 1; }
-			}
-
-			const activeLoops = loops.filter(l => !["resolved", "abandoned"].includes(l.status));
-			const burning = activeLoops.filter(l => l.status === "burning");
-			const nagging = activeLoops.filter(l => l.status === "nagging");
-
-			return {
-				timestamp: getTimestamp(),
-				state: {
-					mood: state.current_mood,
-					energy: state.energy_level,
-					momentum: state.momentum?.current_charges || [],
-					momentum_intensity: state.momentum?.intensity || 0
-				},
-				circadian: getCurrentCircadianPhase(),
-				recent: {
-					count: recent.length,
-					observations: recent.slice(0, 10),
-					patterns: {
-						charges: Object.entries(recentCharges).sort((a, b) => b[1] - a[1]).slice(0, 5),
-						somatic: Object.entries(recentSomatic).sort((a, b) => b[1] - a[1]).slice(0, 3)
 					}
-				},
-				pulling: topPulls,
-				loops: {
-					burning: burning.length,
-					nagging: nagging.length,
-					items: [...burning, ...nagging].slice(0, 5).map(l => ({
-						id: l.id,
-						status: l.status,
-						content: l.content.slice(0, 80)
-					}))
-				},
-				unread_letters: letters.filter(l => !l.read && l.to_context === "chat").length,
-				subconscious: subconscious ? {
-					hot_entities: subconscious.hot_entities?.slice(0, 3) ?? [],
-					mood_inference: subconscious.mood_inference,
-					orphan_count: subconscious.orphans?.length || 0
-				} : null,
-				territories,
-				summary: {
-					total_observations: totalObs,
-					iron_grip_total: ironIndex.length,
-					hint: "Use mind_pull(id) for full content. mind_link action=chain for cascades.",
-					loading: "tiered"
+					recent.sort((a, b) => (b.created || "") > (a.created || "") ? 1 : -1);
+
+					// Iron grip from pre-computed index
+					const sortedIron = [...ironIndex].sort((a, b) => b.pull - a.pull);
+					const topPulls = sortedIron.slice(0, 5).map(entry => ({
+						id: entry.id,
+						territory: entry.territory,
+						summary: entry.summary,
+						pull: entry.pull,
+						charge: entry.charges
+					}));
+
+					const recentCharges: Record<string, number> = {};
+					const recentSomatic: Record<string, number> = {};
+					for (const r of recent) {
+						for (const c of r.charge || []) { recentCharges[c] = (recentCharges[c] || 0) + 1; }
+						if (r.somatic) { recentSomatic[r.somatic] = (recentSomatic[r.somatic] || 0) + 1; }
+					}
+
+					const activeLoops = loops.filter(l => !["resolved", "abandoned"].includes(l.status));
+					const burning = activeLoops.filter(l => l.status === "burning");
+					const nagging = activeLoops.filter(l => l.status === "nagging");
+
+					quickWake = {
+						timestamp: getTimestamp(),
+						state: {
+							mood: state.current_mood,
+							energy: state.energy_level,
+							momentum: state.momentum?.current_charges || [],
+							momentum_intensity: state.momentum?.intensity || 0
+						},
+						circadian: getCurrentCircadianPhase(),
+						recent: {
+							count: recent.length,
+							observations: recent.slice(0, 10),
+							patterns: {
+								charges: Object.entries(recentCharges).sort((a, b) => b[1] - a[1]).slice(0, 5),
+								somatic: Object.entries(recentSomatic).sort((a, b) => b[1] - a[1]).slice(0, 3)
+							}
+						},
+						pulling: topPulls,
+						loops: {
+							burning: burning.length,
+							nagging: nagging.length,
+							items: [...burning, ...nagging].slice(0, 5).map(l => ({
+								id: l.id,
+								status: l.status,
+								content: l.content.slice(0, 80)
+							}))
+						},
+						unread_letters: letters.filter(l => !l.read && l.to_context === "chat").length,
+						subconscious: subconscious ? {
+							hot_entities: subconscious.hot_entities?.slice(0, 3) ?? [],
+							mood_inference: subconscious.mood_inference,
+							orphan_count: subconscious.orphans?.length || 0
+						} : null,
+						territories,
+						tasks: summarizePendingTasks(pendingTasks),
+						summary: {
+							total_observations: totalObs,
+							iron_grip_total: ironIndex.length,
+							hint: "Use mind_pull(id) for full content. mind_link action=chain for cascades.",
+							loading: "tiered"
+						}
+					};
 				}
-			};
+			}
+
+			return finalizeWakePayload(storage, quickWake, loops, "quick");
 		}
 
 		case "mind_wake_log": {
@@ -331,9 +345,23 @@ async function runQuickWake(
 	letters: Letter[],
 	loops: OpenLoop[],
 	state: BrainState,
-	subconscious: SubconsciousState | null
+	subconscious: SubconsciousState | null,
+	preloadedPendingTasks?: Task[]
 ): Promise<any> {
-	const territoryData = await storage.readAllTerritories();
+	const pendingTaskPromise = preloadedPendingTasks
+		? Promise.resolve(preloadedPendingTasks)
+		: Promise.all([
+			storage.listTasks('open', undefined, 200, true),
+			storage.listTasks('in_progress', undefined, 200, true),
+			storage.listTasks('scheduled', undefined, 200, true)
+		]).then(([openTasks, inProgressTasks, scheduledTasks]) =>
+			collectPendingTasks(openTasks, inProgressTasks, scheduledTasks, Date.now())
+		);
+
+	const [territoryData, pendingTasks] = await Promise.all([
+		storage.readAllTerritories(),
+		pendingTaskPromise
+	]);
 
 	const now = Date.now();
 	const cutoff48h = now - (48 * 60 * 60 * 1000);
@@ -442,10 +470,184 @@ async function runQuickWake(
 			orphan_count: subconscious.orphans?.length || 0
 		} : null,
 		territories,
+		tasks: summarizePendingTasks(pendingTasks),
 		summary: {
 			total_observations: totalObs,
 			iron_grip_total: ironGrip.length,
 			hint: "Use mind_pull(id) for full content. mind_link action=chain for cascades."
 		}
+	};
+}
+
+type WakeLoopSnapshot = {
+	id: string;
+	status: string;
+	resolved?: string;
+};
+
+type StoredWakeSnapshot = {
+	loops: WakeLoopSnapshot[];
+};
+
+async function finalizeWakePayload(
+	storage: IBrainStorage,
+	payload: any,
+	loops: OpenLoop[],
+	depth: "quick" | "full"
+): Promise<any> {
+	const delta = await buildWakeDelta(storage, loops);
+	const finalized = {
+		...payload,
+		delta
+	};
+
+	const wakeLog: WakeLogEntry = {
+		id: generateId("wake"),
+		timestamp: finalized.timestamp ?? getTimestamp(),
+		summary: `auto ${depth} wake`,
+		actions: [],
+		iron_pulls: Array.isArray(finalized.pulling) ? finalized.pulling.map((item: any) => item.id).filter(Boolean) : [],
+		phase: getCurrentCircadianPhase().phase,
+		kind: "auto",
+		depth,
+		snapshot: createWakeSnapshot(loops)
+	};
+
+	await storage.appendWakeLog(wakeLog);
+	return finalized;
+}
+
+async function buildWakeDelta(storage: IBrainStorage, loops: OpenLoop[]): Promise<any> {
+	const previousWake = await storage.readLatestWakeLog();
+	const since = typeof previousWake?.timestamp === "string" ? previousWake.timestamp : null;
+
+	if (!since) {
+		return {
+			since: null,
+			tasks: { changed: 0, items: [] },
+			loops: { changed: 0, items: [] },
+			projects: { changed: 0, items: [] }
+		};
+	}
+
+	const [taskChanges, projectChanges] = await Promise.all([
+		storage.listTaskChangesSince(since, 20, true),
+		storage.listProjectDossiers({ updated_after: since, limit: 20 })
+	]);
+
+	const loopChanges = diffLoopSnapshots(previousWake, loops);
+	const projectItems = await hydrateProjectDelta(storage, projectChanges);
+
+	return {
+		since,
+		tasks: {
+			changed: taskChanges.length,
+			items: taskChanges.slice(0, 5).map(task => ({
+				id: task.id,
+				title: task.title,
+				status: task.status,
+				priority: task.priority,
+				assigned_tenant: task.assigned_tenant,
+				updated_at: task.updated_at
+			}))
+		},
+		loops: {
+			changed: loopChanges.length,
+			items: loopChanges.slice(0, 5)
+		},
+		projects: {
+			changed: projectItems.length,
+			items: projectItems.slice(0, 5)
+		}
+	};
+}
+
+function createWakeSnapshot(loops: OpenLoop[]): StoredWakeSnapshot {
+	return {
+		loops: loops.map(loop => ({
+			id: loop.id,
+			status: loop.status,
+			resolved: loop.resolved
+		}))
+	};
+}
+
+function diffLoopSnapshots(previousWake: WakeLogEntry | null, loops: OpenLoop[]) {
+	const previousSnapshot = extractWakeSnapshot(previousWake);
+	if (!previousSnapshot) return [];
+
+	const previousById = new Map(previousSnapshot.loops.map(loop => [loop.id, loop]));
+	const changes = loops.filter(loop => {
+		const previous = previousById.get(loop.id);
+		if (!previous) return true;
+		return previous.status !== loop.status || previous.resolved !== loop.resolved;
+	});
+
+	return changes.map(loop => ({
+		id: loop.id,
+		status: loop.status,
+		resolved: loop.resolved,
+		content: loop.content.slice(0, 80)
+	}));
+}
+
+function extractWakeSnapshot(wake: WakeLogEntry | null): StoredWakeSnapshot | null {
+	const snapshot = wake?.snapshot as StoredWakeSnapshot | undefined;
+	if (!snapshot || !Array.isArray(snapshot.loops)) return null;
+	return {
+		loops: snapshot.loops
+			.filter((loop): loop is WakeLoopSnapshot => !!loop && typeof loop.id === "string" && typeof loop.status === "string")
+			.map(loop => ({ id: loop.id, status: loop.status, resolved: loop.resolved }))
+	};
+}
+
+async function hydrateProjectDelta(storage: IBrainStorage, dossiers: ProjectDossier[]) {
+	const projects = await Promise.all(dossiers.map(async dossier => {
+		const entity = await storage.findEntityById(dossier.project_entity_id);
+		if (!entity) return null;
+		return {
+			project_entity_id: dossier.project_entity_id,
+			name: entity.name,
+			lifecycle_status: dossier.lifecycle_status,
+			summary: dossier.summary,
+			last_active_at: dossier.last_active_at,
+			updated_at: dossier.updated_at
+		};
+	}));
+
+	return projects.filter((project): project is NonNullable<typeof project> => project != null);
+}
+
+function collectPendingTasks(openTasks: Task[], inProgressTasks: Task[], scheduledTasks: Task[], nowMs: number): Task[] {
+	const uniquePending = new Map<string, Task>();
+
+	for (const task of [...openTasks, ...inProgressTasks]) {
+		uniquePending.set(task.id, task);
+	}
+
+	for (const task of scheduledTasks) {
+		if (task.scheduled_wake != null && new Date(task.scheduled_wake).getTime() <= nowMs) {
+			uniquePending.set(task.id, task);
+		}
+	}
+
+	return Array.from(uniquePending.values()).sort((a, b) => {
+		const aStamp = a.status === 'scheduled' ? (a.scheduled_wake ?? a.created_at ?? "") : (a.updated_at ?? a.created_at ?? "");
+		const bStamp = b.status === 'scheduled' ? (b.scheduled_wake ?? b.created_at ?? "") : (b.updated_at ?? b.created_at ?? "");
+		return bStamp > aStamp ? 1 : -1;
+	});
+}
+
+function summarizePendingTasks(pendingTasks: Task[]) {
+	return {
+		pending: pendingTasks.length,
+		items: pendingTasks.slice(0, 5).map(task => ({
+			id: task.id,
+			title: task.title,
+			status: task.status,
+			priority: task.priority,
+			assigned_tenant: task.assigned_tenant,
+			scheduled_wake: task.scheduled_wake
+		}))
 	};
 }

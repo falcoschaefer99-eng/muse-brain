@@ -1,6 +1,6 @@
 // ============ HEALTH TOOL (v2) ============
 // mind_health — system health and daemon intelligence diagnostics.
-// section=all|proposals|orphans|embeddings|cascade
+// section=all|proposals|orphans|embeddings|cascade|dispatch
 
 import type { ToolContext } from "./context";
 
@@ -13,7 +13,7 @@ export const TOOL_DEFS = [
 			properties: {
 				section: {
 					type: "string",
-					enum: ["all", "proposals", "orphans", "embeddings", "cascade"],
+					enum: ["all", "proposals", "orphans", "embeddings", "cascade", "dispatch"],
 					default: "all",
 					description: "Which section of health data to return"
 				}
@@ -34,7 +34,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				proposals: section === "all" || section === "proposals",
 				orphans: section === "all" || section === "orphans",
 				embeddings: section === "all" || section === "embeddings",
-				cascade: section === "all" || section === "cascade"
+				cascade: section === "all" || section === "cascade",
+				dispatch: section === "all" || section === "dispatch"
 			};
 
 			const result: Record<string, unknown> = {};
@@ -91,6 +92,16 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					storage.getTopCascadePairs(10).then(pairs => {
 						result.cascade = {
 							top_pairs: pairs
+						};
+					})
+				);
+			}
+
+			if (include.dispatch) {
+				tasks.push(
+					storage.getDispatchStats().then(stats => {
+						result.dispatch = {
+							by_task_type: stats
 						};
 					})
 				);

@@ -3,6 +3,50 @@
 All notable changes to MUSE Brain are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Sprint 7 closeout and the architecture lock for the next shared-core slice.
+
+### Added
+- **`mind_task` (v2)** — task create/list/get/update/complete tool with cross-tenant delegation and scheduled wake support.
+- **Task scheduling daemon** — `task-scheduling` advances overdue scheduled tasks to open so they surface in wake.
+- **Targeted task unit tests** — `test/tasks-v2.spec.ts` covers scheduled task creation/validation, delegated completion, assignee restrictions, context-created tasks, and scheduler ordering.
+- **Node-only unit test config** — `vitest.unit.config.mts` for pure tool/unit runs outside the Workers/Hyperdrive harness.
+- **Architecture docs for the next slice** — post-Sprint-7 roadmap + dispatch learning layer decisions.
+- **`project_dossiers` schema** — additive companion table keyed to `entity_type='project'` with lifecycle state, summary, goals, constraints, decisions, open questions, next actions, metadata, and last-active tracking.
+- **`mind_project` (v2)** — project dossier create/get/update/list tool layered on top of canonical project entities.
+- **Wake delta MVP** — quick/full wake now compute deltas for task changes, loop changes, and recent project activity since the previous wake.
+- **Project dossier + wake delta tests** — `test/project-dossiers.spec.ts` and `test/wake-delta.spec.ts`.
+- **Dispatch calibration schema foundation** — additive `008_dispatch_calibration_and_agent_manifests.sql` expands `dispatch_feedback` with outcome scoring, rescue signals, environment/domain tagging, and time-to-usable telemetry.
+- **`agent_capability_manifests` schema** — additive companion table for canonical agent entities with delegation mode, routing, protocols, output modes, skill descriptors, and metadata.
+- **`mind_agent` (v2)** — agent capability manifest create/get/list/update tool for canonical agent entities.
+- **Dispatch diagnostics in `mind_health`** — `section=dispatch` surfaces calibration stats by task type.
+- **Phase 2A unit tests** — `test/phase2a-calibration.spec.ts`.
+- **Pre-deploy hardening migration** — `009_predeploy_perf_and_integrity.sql` adds wake/task hot-path indexes plus router-agent foreign-key integrity for manifests.
+- **Shared tool sanitizers** — `src/tools-v2/utils.ts` centralizes text/list/metadata/timestamp normalization across the new v2 tools.
+
+### Changed
+- **Cross-tenant task lifecycle** — assignees can now get/update/complete delegated tasks through storage paths that explicitly allow assigned-task access.
+- **Delegated task safety** — assignees cannot mutate owner metadata (`title`, `description`, `priority`, `estimated_effort`, `scheduled_wake`) and must use `action=complete` for completion.
+- **Completion notification semantics** — delegated completion treats handoff letters as best-effort; task completion succeeds even if letter delivery fails, returning `notification_error`.
+- **Scheduled task semantics** — creating a task with `scheduled_wake` now creates `status='scheduled'`; blank or invalid timestamps are rejected and normalized to ISO.
+- **Wake task surfacing** — wake now includes `open`, `in_progress`, and due `scheduled` tasks, including tasks assigned to the current tenant, while avoiding fallback task refetches.
+- **`mind_context create_tasks` hygiene** — open threads are trimmed, blank entries are skipped, and the response reports `blank_threads_skipped`.
+- **Scheduler hardening** — scheduled tasks are processed in numeric wake-time order rather than brittle string ordering.
+- **Error clarity** — task update paths now surface actual validation/storage failures instead of collapsing everything to “not found”.
+- **Wake logging** — `mind_wake` now appends lightweight automatic wake entries with loop snapshots so loop delta can be computed without storing stale wake-state tables.
+- **Wake cursoring** — storage now exposes targeted latest-wake lookup plus task/project change queries instead of depending on full wake-log scans.
+- **Dispatch stats** — aggregated dispatch health now includes predicted confidence, outcome score, revision cost, and rescue rate.
+- **Wake-delta query shape** — project dossier recency filtering now uses index-friendly `updated_at OR last_active_at` checks instead of `GREATEST(...)`, and task deltas key off `updated_at` for hot-path wake performance.
+- **Tool-layer validation hardening** — task status/priority, project lifecycle status, router consistency, and manifest/project metadata size are now validated before storage/DB constraint failures.
+- **Helper cleanup** — duplicated normalization helpers were extracted, the dead `cleanOptionalText` alias was removed, and project updates now reject no-op writes before auto-stamping `last_active_at`.
+- **Unit coverage sweep** — added explicit tests for `get` paths, duplicate-create guards, first/empty wake delta cases, dangling-entity filtering, router consistency, metadata limits, and task enum validation.
+
+### Developer Notes
+- Verification command: `npx vitest run --config vitest.unit.config.mts test/tasks-v2.spec.ts test/project-dossiers.spec.ts test/wake-delta.spec.ts test/phase2a-calibration.spec.ts`
+- Current unit status: 30 tests passing across task delegation closeout + project dossiers / wake delta + Phase 2A foundation + pre-deploy hardening
+- `npx tsc --noEmit` still reports only the pre-existing `TransactionSql` / `ConsentState` issues in `src/storage/postgres.ts`
+
 ## [1.1.0] — 2026-03-26
 
 The emotional processing circle. Paradox system, charge processing, observation versioning, timeline, and cross-tenant daemon intelligence.

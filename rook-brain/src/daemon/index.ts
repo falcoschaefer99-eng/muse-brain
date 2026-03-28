@@ -1,6 +1,6 @@
-// ============ DAEMON ORCHESTRATOR (Sprint 4 + Sprint 6) ============
+// ============ DAEMON ORCHESTRATOR (Sprint 4 + Sprint 6 + Sprint 7) ============
 // Runs all daemon intelligence tasks in order.
-// Execution order: proposals → learning → cascade → orphans → kit-hygiene → cross-agent → cross-tenant → paradox-detection.
+// Execution order: proposals → learning → cascade → orphans → kit-hygiene → cross-agent → cross-tenant → paradox-detection → task-scheduling.
 // Proposals first — it's the primary feature and uses the fewest subrequests.
 // Each task is isolated — failures don't cascade.
 
@@ -16,6 +16,7 @@ import { runKitHygieneTask } from "./tasks/kit-hygiene";
 import { runCrossAgentTask } from "./tasks/cross-agent";
 import { runCrossTenantTask } from "./tasks/cross-tenant";
 import { runParadoxDetectionTask } from "./tasks/paradox-detection";
+import { runTaskSchedulingTask } from "./tasks/task-scheduling";
 
 export async function runDaemonTasks(
 	storage: IBrainStorage,
@@ -121,6 +122,19 @@ export async function runDaemonTasks(
 	} catch (err) {
 		results.push({
 			task: "paradox-detection",
+			changes: 0,
+			proposals_created: 0,
+			error: err instanceof Error ? err.message : "unknown error"
+		});
+	}
+
+	// 9. Task scheduling — advance scheduled tasks to open when their scheduled_wake passes
+	try {
+		const result = await runTaskSchedulingTask(storage);
+		results.push(result);
+	} catch (err) {
+		results.push({
+			task: "task-scheduling",
 			changes: 0,
 			proposals_created: 0,
 			error: err instanceof Error ? err.message : "unknown error"

@@ -31,12 +31,20 @@ export async function runKitHygieneTask(storage: IBrainStorage): Promise<DaemonT
 		recentConsolidations.filter(p => p.proposed_at >= cutoffDate).map(p => p.source_id)
 	);
 
+	const agentIds = agentEntities.map(a => a.id);
+
+	// Batch-fetch all agent observations in a single query (N agents → 1 DB call)
+	const allEntityObs = await storage.batchGetEntityObservations(agentIds, 200);
+
+	// Batch-check all consolidation proposals upfront (all share the same source=target=agent.id pattern)
+	const consolidationChecks = agentIds.map(id => ({ type: "consolidation", sourceId: id, targetId: id }));
+	const existingConsolidations = await storage.batchProposalExists(consolidationChecks);
+
 	// Global cap on findSimilarUnlinked calls — 200 agents × 30 obs would blow the 1000 subrequest limit
 	let vectorQueriesRemaining = 30;
 
 	for (const agent of agentEntities) {
-		// Get this agent's observations
-		const entityObs = await storage.getEntityObservations(agent.id, 200);
+		const entityObs = allEntityObs.get(agent.id) ?? [];
 
 		if (entityObs.length === 0) continue;
 
@@ -49,10 +57,11 @@ export async function runKitHygieneTask(storage: IBrainStorage): Promise<DaemonT
 			if (obs.texture?.charge_phase === "metabolized") metabolizedCount++;
 		}
 
+		const consolidationKey = `consolidation:${agent.id}:${agent.id}`;
+
 		// (a) High metabolized count → propose archival consolidation
 		if (metabolizedCount > METABOLIZED_THRESHOLD) {
-			const exists = await storage.proposalExists("consolidation", agent.id, agent.id);
-			if (!exists) {
+			if (!existingConsolidations.has(consolidationKey)) {
 				await storage.createProposal({
 					tenant_id: storage.getTenant(),
 					proposal_type: "consolidation",
@@ -72,8 +81,7 @@ export async function runKitHygieneTask(storage: IBrainStorage): Promise<DaemonT
 			const hasRecentConsolidation = consolidatedSourceIds.has(agent.id);
 
 			if (!hasRecentConsolidation) {
-				const exists = await storage.proposalExists("consolidation", agent.id, agent.id);
-				if (!exists) {
+				if (!existingConsolidations.has(consolidationKey)) {
 					await storage.createProposal({
 						tenant_id: storage.getTenant(),
 						proposal_type: "consolidation",

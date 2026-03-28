@@ -1,6 +1,6 @@
 // ============ TOOLS V2 — BARREL ============
 // Aggregates all TOOL_DEFS and dispatches executeTool(name, args, context).
-// 13 files → ~32 tools (collapsed from ~50 old tools via action dispatch pattern).
+// 15 files → ~34 tools (collapsed from ~50 old tools via action dispatch pattern).
 
 import type { ToolContext } from "./context";
 
@@ -15,9 +15,12 @@ import { TOOL_DEFS as safetyDefs, handleTool as handleSafety } from "./safety";
 import { TOOL_DEFS as territoryDefs, handleTool as handleTerritory } from "./territory";
 import { TOOL_DEFS as searchDefs, handleTool as handleSearch } from "./search";
 import { TOOL_DEFS as entityDefs, handleTool as handleEntity } from "./entity";
+import { TOOL_DEFS as projectDefs, handleTool as handleProject } from "./projects";
+import { TOOL_DEFS as agentDefs, handleTool as handleAgent } from "./agents";
 import { TOOL_DEFS as proposeDefs, handleTool as handlePropose } from "./propose";
 import { TOOL_DEFS as healthDefs, handleTool as handleHealth } from "./health";
 import { TOOL_DEFS as timelineDefs, handleTool as handleTimeline } from "./timeline";
+import { TOOL_DEFS as tasksDefs, handleTool as handleTasks } from "./tasks";
 
 // ============ AGGREGATED TOOL DEFINITIONS ============
 
@@ -33,9 +36,12 @@ export const TOOL_DEFS = [
 	...territoryDefs,
 	...searchDefs,
 	...entityDefs,
+	...projectDefs,
+	...agentDefs,
 	...proposeDefs,
 	...healthDefs,
-	...timelineDefs
+	...timelineDefs,
+	...tasksDefs
 ];
 
 // ============ TOOL DISPATCH TABLE ============
@@ -87,13 +93,18 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 
 	// Entity
 	mind_entity: handleEntity,
+	mind_project: handleProject,
+	mind_agent: handleAgent,
 
 	// Daemon Intelligence (Sprint 4)
 	mind_propose: handlePropose,
 	mind_health: handleHealth,
 
 	// Timeline (Sprint 6)
-	mind_timeline: handleTimeline
+	mind_timeline: handleTimeline,
+
+	// Tasks (Sprint 7)
+	mind_task: handleTasks
 };
 
 // ============ EXECUTE TOOL ============

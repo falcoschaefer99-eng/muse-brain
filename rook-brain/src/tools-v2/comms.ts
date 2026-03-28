@@ -6,6 +6,9 @@ import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
 
+const MAX_LETTER_CONTENT_LENGTH = 4000;
+const MAX_CONTEXT_OPEN_THREAD_TASKS = 20;
+
 export const TOOL_DEFS = [
 	{
 		name: "mind_letter",
@@ -23,6 +26,7 @@ export const TOOL_DEFS = [
 				to: { type: "string", description: "[write] Recipient brain/tenant for cross-brain letters (e.g., 'rainer', 'rook')" },
 				content: { type: "string", description: "[write] Letter content" },
 				charges: { type: "array", items: { type: "string" }, description: "[write] Emotional charges" },
+				letter_type: { type: "string", enum: ["personal", "handoff", "proposal"], description: "[write] Letter type — personal (default), handoff (task delegation), proposal (suggestion)" },
 				// read params
 				context: { type: "string", default: "chat", description: "[read] Which context to read letters for" },
 				unread_only: { type: "boolean", default: true, description: "[read] Only show unread letters" }
@@ -46,7 +50,8 @@ export const TOOL_DEFS = [
 				partner: { type: "string", description: "[set] Who this conversation was with", default: "Falco" },
 				key_points: { type: "array", items: { type: "string" }, description: "[set] Key points from the conversation" },
 				emotional_state: { type: "string", description: "[set] Emotional state at end of conversation" },
-				open_threads: { type: "array", items: { type: "string" }, description: "[set] Unresolved threads to pick up next time" }
+				open_threads: { type: "array", items: { type: "string" }, description: "[set] Unresolved threads to pick up next time" },
+				create_tasks: { type: "boolean", default: false, description: "[set] Auto-create tasks from open_threads" }
 			},
 			required: ["action"]
 		}
@@ -63,6 +68,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				if (!args.to_context || !args.content) {
 					return { error: "to_context and content are required for action=write" };
 				}
+				if (typeof args.content !== "string") {
+					return { error: "content must be a string" };
+				}
+				if (!args.content.trim()) {
+					return { error: "content cannot be blank" };
+				}
+				if (args.content.length > MAX_LETTER_CONTENT_LENGTH) {
+					return { error: `content too long (max ${MAX_LETTER_CONTENT_LENGTH} chars)` };
+				}
 
 				const letter: Letter = {
 					id: generateId("letter"),
@@ -71,7 +85,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					content: args.content,
 					timestamp: getTimestamp(),
 					read: false,
-					charges: toStringArray(args.charges)
+					charges: toStringArray(args.charges),
+					letter_type: args.letter_type || undefined
 				};
 
 				// Cross-brain delivery
@@ -115,7 +130,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						from: l.from_context,
 						content: l.content,
 						timestamp: l.timestamp,
-						charges: l.charges
+						charges: l.charges,
+						letter_type: l.letter_type
 					}))
 				};
 			}
@@ -141,6 +157,35 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				};
 
 				await storage.writeConversationContext(context);
+
+				if (args.create_tasks && context.open_threads.length > 0) {
+					const validThreads = context.open_threads
+						.map(thread => thread.trim())
+						.filter(thread => thread.length > 0);
+					const threadsForTasks = validThreads.slice(0, MAX_CONTEXT_OPEN_THREAD_TASKS);
+
+					const tasks = [];
+					for (const thread of threadsForTasks) {
+						const task = await storage.createTask({
+							title: thread,
+							status: "open",
+							priority: "normal",
+							source: "mind_context",
+							linked_observation_ids: [],
+							linked_entity_ids: []
+						});
+						tasks.push(task);
+					}
+					return {
+						saved: true,
+						timestamp: context.timestamp,
+						note: "Context saved. Next session will know where we left off.",
+						tasks_created: tasks.length,
+						task_ids: tasks.map(t => t.id),
+						blank_threads_skipped: context.open_threads.length - validThreads.length,
+						thread_limit_applied: Math.max(0, validThreads.length - threadsForTasks.length)
+					};
+				}
 
 				return {
 					saved: true,
