@@ -56,6 +56,9 @@ Sprint 7 closeout and the architecture lock for the next shared-core slice.
 - **Context confidence + extraction tests** — `test/context-confidence-and-facts.spec.ts` covers threshold filtering, shadow diagnostics, and fact-candidate write caps.
 
 ### Changed
+- **Runtime trigger readability hardening** — extracted shared boolean parsing, promoted trigger summary assembly into a named helper, and rewrote autonomous prompt assembly in ordered append style (no positional splice edits).
+- **Context-policy safety notes** — runtime prompt builder now documents that context policy values must be server-derived; `shadow_mode=true` remains intentionally fixed during rollout.
+- **`mind_query` confidence-parameter clarity** — confidence controls are now explicitly documented as hybrid-query-only, and non-hybrid responses include a notice when those params are provided.
 - **Cross-tenant task lifecycle** — assignees can now get/update/complete delegated tasks through storage paths that explicitly allow assigned-task access.
 - **Delegated task safety** — assignees cannot mutate owner metadata (`title`, `description`, `priority`, `estimated_effort`, `scheduled_wake`) and must use `action=complete` for completion.
 - **Completion notification semantics** — delegated completion treats handoff letters as best-effort; task completion succeeds even if letter delivery fails, returning `notification_error`.

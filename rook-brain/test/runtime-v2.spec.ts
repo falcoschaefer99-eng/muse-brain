@@ -137,6 +137,26 @@ describe('runtime v2 tool', () => {
 		expect(storage.createAgentRuntimeRun).not.toHaveBeenCalled();
 	});
 
+	it('rejects invalid completed_at and next_wake_at timestamps in log_run', async () => {
+		const storage = {
+			getTenant: () => 'rainer',
+			createAgentRuntimeRun: vi.fn()
+		};
+
+		const badCompleted = await handleRuntimeTool('mind_runtime', {
+			action: 'log_run',
+			completed_at: 'definitely-not-a-time'
+		}, { storage: storage as any });
+		expect(badCompleted.error).toMatch(/completed_at must be a valid timestamp/i);
+
+		const badNextWake = await handleRuntimeTool('mind_runtime', {
+			action: 'log_run',
+			next_wake_at: 'also-not-a-time'
+		}, { storage: storage as any });
+		expect(badNextWake.error).toMatch(/next_wake_at must be a valid timestamp/i);
+		expect(storage.createAgentRuntimeRun).not.toHaveBeenCalled();
+	});
+
 	it('bridges duty trigger events by opening due tasks and logging a run', async () => {
 		const openDueScheduledTasks = vi.fn(async () => 3);
 		const listTasks = vi.fn(async () => [

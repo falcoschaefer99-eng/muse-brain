@@ -118,15 +118,15 @@ export const TOOL_DEFS = [
 				limit: { type: "number", default: 10, description: "Max results" },
 				full: { type: "boolean", default: false, description: "Include full content in results" },
 				entity: { type: "string", description: "Filter by entity name or ID" },
-				confidence_threshold: { type: "number", description: "Optional confidence gate (0.0-1.0) for hybrid results before prompt injection" },
-				shadow_mode: { type: "boolean", default: false, description: "If true, report confidence filtering effects without dropping results" },
-				recency_boost_days: { type: "number", description: "Recency boost window in days for confidence scoring (default 3)" },
-				recency_boost: { type: "number", description: "Confidence boost for recent items (0.0-0.5, default 0.15)" },
-				max_context_items: { type: "number", description: "Hard cap for returned context rows after filtering (default uses limit, max 20)" }
+				confidence_threshold: { type: "number", description: "Optional confidence gate (0.0-1.0) for hybrid query results before prompt injection (query path only)" },
+				shadow_mode: { type: "boolean", default: false, description: "If true, report confidence filtering effects without dropping results (query path only)" },
+				recency_boost_days: { type: "number", description: "Recency boost window in days for confidence scoring (query path only, default 3)" },
+				recency_boost: { type: "number", description: "Confidence boost for recent items (query path only, 0.0-0.5, default 0.15)" },
+				max_context_items: { type: "number", description: "Hard cap for returned context rows after confidence filtering (query path only, default uses limit, max 20)" }
+				}
 			}
-		}
-	},
-	{
+		},
+		{
 		name: "mind_pull",
 		description: "Get full content of a specific observation by ID. Updates access count. Set process=true to record an engagement in the processing log and advance charge_phase when threshold is met.",
 		inputSchema: {
@@ -389,6 +389,11 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return { error: "max_context_items must be an integer between 1 and 20" };
 			}
 			const maxContextItems = Math.min(parsedMaxContextItems ?? Math.min(limit, 20), limit);
+			const confidenceControlsProvided = args.confidence_threshold !== undefined
+				|| args.shadow_mode !== undefined
+				|| args.recency_boost_days !== undefined
+				|| args.recency_boost !== undefined
+				|| args.max_context_items !== undefined;
 
 			// ---- Hybrid search path: activated when free-text query is present ----
 			if (args.query && typeof args.query === 'string' && args.query.trim()) {
@@ -563,6 +568,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					type: args.type,
 					sort_by: sortBy
 				},
+				...(confidenceControlsProvided
+					? { confidence_notice: "confidence_threshold/shadow_mode/recency/max_context_items are applied only when query is provided (hybrid mode)." }
+					: {}),
 				count: topHits.length,
 				total_matching: hits.length,
 				observations: topHits.map(h => {

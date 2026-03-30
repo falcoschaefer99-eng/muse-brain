@@ -129,6 +129,26 @@ describe('context confidence gating', () => {
 		expect(result.total_matches).toBe(1);
 		expect(result.results[0].confidence).toBe(0.75);
 	});
+
+	it('falls back to findEntityByName when findEntityById misses before hybrid search', async () => {
+		const storage = {
+			hybridSearch: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null),
+			findEntityByName: vi.fn(async () => ({ id: 'entity_project_atlas', name: 'Project Atlas' }))
+		};
+
+		const result = await handleSearchTool('mind_search', {
+			query: 'atlas retention policy',
+			entity: 'Project Atlas'
+		}, { storage: storage as any });
+
+		expect(result.total_matches).toBe(0);
+		expect(storage.findEntityById).toHaveBeenCalledWith('Project Atlas');
+		expect(storage.findEntityByName).toHaveBeenCalledWith('Project Atlas');
+		expect(storage.hybridSearch).toHaveBeenCalledWith(expect.objectContaining({
+			entity_id: 'entity_project_atlas'
+		}));
+	});
 });
 
 describe('productivity fact extraction on mind_context', () => {

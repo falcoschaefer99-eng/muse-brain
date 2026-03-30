@@ -222,9 +222,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					if (args.execution_mode !== undefined && !executionMode) {
 						return { error: `execution_mode must be one of: ${EXECUTION_MODES.join(", ")}` };
 					}
-					if (args.require_priority_clear_for_impulse !== undefined && typeof args.require_priority_clear_for_impulse !== "boolean") {
-						return { error: "require_priority_clear_for_impulse must be a boolean" };
-					}
+					const requirePriorityClear = parseOptionalBooleanOrError(args.require_priority_clear_for_impulse, "require_priority_clear_for_impulse");
+					if ("error" in requirePriorityClear) return requirePriorityClear;
 					const dailyWakeBudget = parseOptionalBoundedIntOrError(args.daily_wake_budget, "daily_wake_budget", 1, 48);
 					if ("error" in dailyWakeBudget) return dailyWakeBudget;
 					const impulseWakeBudget = parseOptionalBoundedIntOrError(args.impulse_wake_budget, "impulse_wake_budget", 0, 24);
@@ -256,7 +255,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						max_tool_calls_per_run: maxToolCalls.value ?? base.max_tool_calls_per_run,
 						max_parallel_delegations: maxParallelDelegations.value ?? base.max_parallel_delegations,
 						require_priority_clear_for_impulse:
-							args.require_priority_clear_for_impulse ?? base.require_priority_clear_for_impulse,
+							requirePriorityClear.value ?? base.require_priority_clear_for_impulse,
 						updated_by: cleanText(args.updated_by) ?? base.updated_by,
 						metadata: args.metadata !== undefined
 							? { ...(base.metadata ?? {}), ...metadataResult.value }
@@ -304,22 +303,18 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					if ("error" in limit) return limit;
 					const previewLimit = parseBoundedIntOrError(args.preview_limit, "preview_limit", 0, 100, 20);
 					if ("error" in previewLimit) return previewLimit;
-					if (args.include_assigned !== undefined && typeof args.include_assigned !== "boolean") {
-						return { error: "include_assigned must be a boolean" };
-					}
-					if (args.auto_claim_task !== undefined && typeof args.auto_claim_task !== "boolean") {
-						return { error: "auto_claim_task must be a boolean" };
-					}
-					if (args.emit_skill_candidate !== undefined && typeof args.emit_skill_candidate !== "boolean") {
-						return { error: "emit_skill_candidate must be a boolean" };
-					}
-					if (args.enforce_policy !== undefined && typeof args.enforce_policy !== "boolean") {
-						return { error: "enforce_policy must be a boolean" };
-					}
-					const includeAssigned = args.include_assigned ?? true;
-					const autoClaimTask = args.auto_claim_task ?? false;
-					const emitSkillCandidate = args.emit_skill_candidate ?? false;
-					const enforcePolicy = args.enforce_policy ?? true;
+					const includeAssignedParsed = parseOptionalBooleanOrError(args.include_assigned, "include_assigned");
+					if ("error" in includeAssignedParsed) return includeAssignedParsed;
+					const autoClaimTaskParsed = parseOptionalBooleanOrError(args.auto_claim_task, "auto_claim_task");
+					if ("error" in autoClaimTaskParsed) return autoClaimTaskParsed;
+					const emitSkillCandidateParsed = parseOptionalBooleanOrError(args.emit_skill_candidate, "emit_skill_candidate");
+					if ("error" in emitSkillCandidateParsed) return emitSkillCandidateParsed;
+					const enforcePolicyParsed = parseOptionalBooleanOrError(args.enforce_policy, "enforce_policy");
+					if ("error" in enforcePolicyParsed) return enforcePolicyParsed;
+					const includeAssigned = includeAssignedParsed.value ?? true;
+					const autoClaimTask = autoClaimTaskParsed.value ?? false;
+					const emitSkillCandidate = emitSkillCandidateParsed.value ?? false;
+					const enforcePolicy = enforcePolicyParsed.value ?? true;
 
 					const metadataResult = normalizeMetadata(args.metadata);
 					if (metadataResult.error) return { error: metadataResult.error };
@@ -380,13 +375,16 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					const selectedTask = claimedTask ?? recommendedTask;
 					const contextRetrievalPolicy = buildContextRetrievalPolicy(policy, wakeKind);
 
-					const summary = cleanText(args.summary) ?? (
-						deferred
-							? `Impulse wake deferred: ${deferReasons.join("; ")}.`
-							: wakeKind === "impulse"
-								? `Impulse wake admitted (${policy.execution_mode} mode, ${usage.impulse_runs + 1}/${policy.impulse_wake_budget} impulse wakes today).`
-								: `Duty wake admitted (${effectiveTriggerMode}) and opened ${dueOpened} due scheduled task${dueOpened === 1 ? "" : "s"}${claimedTask ? `; claimed ${claimedTask.id}` : ""}.`
-					);
+					const summary = cleanText(args.summary) ?? buildTriggerSummary({
+						deferred,
+						deferReasons,
+						wakeKind,
+						policy,
+						usage,
+						effectiveTriggerMode,
+						dueOpened,
+						claimedTask
+					});
 					const completedAt = new Date().toISOString();
 
 					const run = await storage.createAgentRuntimeRun({
@@ -644,6 +642,38 @@ function buildImpulseDeferReasons(
 	return reasons;
 }
 
+function buildTriggerSummary(params: {
+	deferred: boolean;
+	deferReasons: string[];
+	wakeKind: WakeKind;
+	policy: AgentRuntimePolicy;
+	usage: AgentRuntimeUsage;
+	effectiveTriggerMode: AgentRuntimeSession["trigger_mode"];
+	dueOpened: number;
+	claimedTask?: Task;
+}): string {
+	const {
+		deferred,
+		deferReasons,
+		wakeKind,
+		policy,
+		usage,
+		effectiveTriggerMode,
+		dueOpened,
+		claimedTask
+	} = params;
+
+	if (deferred) {
+		return `Impulse wake deferred: ${deferReasons.join("; ")}.`;
+	}
+
+	if (wakeKind === "impulse") {
+		return `Impulse wake admitted (${policy.execution_mode} mode, ${usage.impulse_runs + 1}/${policy.impulse_wake_budget} impulse wakes today).`;
+	}
+
+	return `Duty wake admitted (${effectiveTriggerMode}) and opened ${dueOpened} due scheduled task${dueOpened === 1 ? "" : "s"}${claimedTask ? `; claimed ${claimedTask.id}` : ""}.`;
+}
+
 function validatePolicy(
 	policy: Omit<AgentRuntimePolicy, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>
 ): { ok: true } | { error: string } {
@@ -688,6 +718,10 @@ function pickRecommendedTask(tasks: Task[], agentTenant: string): Task | undefin
 	return scored[0]?.task;
 }
 
+/**
+ * Build runner prompt from server-owned policy values only.
+ * `contextPolicy` MUST be derived by `buildContextRetrievalPolicy` (never passed through from user input).
+ */
 function buildAutonomousTaskPrompt(
 	task: Task,
 	agentTenant: string,
@@ -696,11 +730,20 @@ function buildAutonomousTaskPrompt(
 	contextPolicy?: ContextRetrievalPolicy
 ): string {
 	const delegated = isDelegatedTaskForAgent(task, agentTenant);
-	const lines = [
+	const lines: string[] = [
 		`Autonomous wake kind: ${wakeKind}.`,
 		`Task ID: ${task.id}`,
 		`Title: ${task.title}`,
 		`Priority: ${task.priority}`,
+	];
+
+	if (task.description) {
+		lines.push(`Description: ${task.description}`);
+	}
+	if (task.estimated_effort) {
+		lines.push(`Estimated effort: ${task.estimated_effort}`);
+	}
+	lines.push(
 		delegated
 			? `Delegation: assigned to ${agentTenant} by ${task.tenant_id}.`
 			: `Ownership: local task for ${agentTenant}.`,
@@ -710,7 +753,7 @@ function buildAutonomousTaskPrompt(
 		"2) Keep tool usage lean; avoid side quests.",
 		"3) Mark completion with mind_task action=complete using the same task id.",
 		"4) Include a concise completion_note with concrete outcomes."
-	];
+	);
 
 	if (policy) {
 		lines.push(
@@ -726,13 +769,6 @@ function buildAutonomousTaskPrompt(
 		);
 	}
 
-	if (task.description) {
-		lines.splice(4, 0, `Description: ${task.description}`);
-	}
-	if (task.estimated_effort) {
-		lines.splice(5, 0, `Estimated effort: ${task.estimated_effort}`);
-	}
-
 	return lines.join("\n");
 }
 
@@ -746,6 +782,7 @@ function buildContextRetrievalPolicy(policy: AgentRuntimePolicy, wakeKind: WakeK
 	const wakeBonus = wakeKind === "duty" ? 0.02 : 0;
 	return {
 		confidence_threshold: Math.min(0.95, Math.round((base.confidence_threshold + wakeBonus) * 100) / 100),
+		// Intentional for phase rollout: shadow first, then flip to strict filtering after confidence diagnostics settle.
 		shadow_mode: true,
 		max_context_items: base.max_context_items,
 		recency_boost_days: CONFIDENCE_DEFAULTS.recency_boost_days,
@@ -901,5 +938,14 @@ function parseOptionalBoundedIntOrError(
 	}
 	if (!Number.isInteger(value)) return { error: `${field} must be an integer` };
 	if (value < min || value > max) return { error: `${field} must be between ${min} and ${max}` };
+	return { value };
+}
+
+function parseOptionalBooleanOrError(
+	value: unknown,
+	field: string
+): { value?: boolean } | { error: string } {
+	if (value === undefined) return {};
+	if (typeof value !== "boolean") return { error: `${field} must be a boolean` };
 	return { value };
 }
