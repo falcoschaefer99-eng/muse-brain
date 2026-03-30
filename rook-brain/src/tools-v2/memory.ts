@@ -18,6 +18,14 @@ import {
 } from "../helpers";
 import type { ToolContext } from "./context";
 import { createEmbeddingProvider } from "../embedding/index";
+import {
+	parseConfidenceThreshold,
+	parseOptionalPositiveInt,
+	applyConfidenceScoring,
+	filterAndCapByConfidence,
+	fireAndForgetSideEffects,
+	CONFIDENCE_DEFAULTS
+} from "./confidence-utils";
 
 // ============ HELPERS ============
 
@@ -109,7 +117,12 @@ export const TOOL_DEFS = [
 				// Output
 				limit: { type: "number", default: 10, description: "Max results" },
 				full: { type: "boolean", default: false, description: "Include full content in results" },
-				entity: { type: "string", description: "Filter by entity name or ID" }
+				entity: { type: "string", description: "Filter by entity name or ID" },
+				confidence_threshold: { type: "number", description: "Optional confidence gate (0.0-1.0) for hybrid results before prompt injection" },
+				shadow_mode: { type: "boolean", default: false, description: "If true, report confidence filtering effects without dropping results" },
+				recency_boost_days: { type: "number", description: "Recency boost window in days for confidence scoring (default 3)" },
+				recency_boost: { type: "number", description: "Confidence boost for recent items (0.0-0.5, default 0.15)" },
+				max_context_items: { type: "number", description: "Hard cap for returned context rows after filtering (default uses limit, max 20)" }
 			}
 		}
 	},
@@ -354,6 +367,28 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 		case "mind_query": {
 			const limit = Math.min(args.limit || 10, 50);
+			const confidenceThreshold = parseConfidenceThreshold(args.confidence_threshold);
+			if (args.confidence_threshold !== undefined && confidenceThreshold === undefined) {
+				return { error: "confidence_threshold must be a number between 0 and 1" };
+			}
+			if (args.shadow_mode !== undefined && typeof args.shadow_mode !== "boolean") {
+				return { error: "shadow_mode must be a boolean" };
+			}
+			const shadowMode = args.shadow_mode === true;
+			const parsedRecencyBoostDays = parseOptionalPositiveInt(args.recency_boost_days, 1, 30);
+			if (args.recency_boost_days !== undefined && parsedRecencyBoostDays === undefined) {
+				return { error: "recency_boost_days must be an integer between 1 and 30" };
+			}
+			const recencyBoostDays = parsedRecencyBoostDays ?? CONFIDENCE_DEFAULTS.recency_boost_days;
+			if (args.recency_boost !== undefined && (typeof args.recency_boost !== "number" || !Number.isFinite(args.recency_boost) || args.recency_boost < 0 || args.recency_boost > 0.5)) {
+				return { error: "recency_boost must be a number between 0 and 0.5" };
+			}
+			const recencyBoost = args.recency_boost ?? CONFIDENCE_DEFAULTS.recency_boost;
+			const parsedMaxContextItems = parseOptionalPositiveInt(args.max_context_items, 1, 20);
+			if (args.max_context_items !== undefined && parsedMaxContextItems === undefined) {
+				return { error: "max_context_items must be an integer between 1 and 20" };
+			}
+			const maxContextItems = Math.min(parsedMaxContextItems ?? Math.min(limit, 20), limit);
 
 			// ---- Hybrid search path: activated when free-text query is present ----
 			if (args.query && typeof args.query === 'string' && args.query.trim()) {
@@ -403,17 +438,13 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					entity_id: entityId
 				});
 
-				// Fire-and-forget side effects.
-				if (hybridResults.length > 0) {
-					const returnedIds = hybridResults.map(r => r.observation.id);
-					if (context.waitUntil) {
-						context.waitUntil(
-							Promise.all([
-								storage.recordMemoryCascade(returnedIds),
-								storage.updateSurfacingEffects(returnedIds)
-							]).catch(err => console.error("mind_query hybrid side effects failed:", err instanceof Error ? err.message : "unknown error"))
-						);
-					}
+				const confidenceScored = applyConfidenceScoring(hybridResults, recencyBoostDays, recencyBoost);
+				const { filtered: finalResults, belowThresholdCount, preCapCount } = filterAndCapByConfidence(
+					confidenceScored, confidenceThreshold, shadowMode, maxContextItems
+				);
+
+				if (finalResults.length > 0) {
+					fireAndForgetSideEffects(context, finalResults.map(r => r.observation.id), "mind_query hybrid");
 				}
 
 				return {
@@ -423,13 +454,24 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						territory: args.territory,
 						grip: args.grip
 					},
-					count: hybridResults.length,
-					observations: hybridResults.map(r => {
+					confidence: {
+						threshold: confidenceThreshold ?? null,
+						shadow_mode: shadowMode,
+						recency_boost_days: recencyBoostDays,
+						recency_boost: recencyBoost,
+						below_threshold: belowThresholdCount,
+						pre_cap_count: preCapCount,
+						max_context_items: maxContextItems
+					},
+					count: finalResults.length,
+					observations: finalResults.map(r => {
 						const base: any = {
 							id: r.observation.id,
 							territory: r.territory,
 							essence: extractEssence(r.observation),
 							score: Math.round(r.score * 100) / 100,
+							confidence: Math.round(r.confidence * 100) / 100,
+							recency_boost_applied: Math.round(r.recency_boost_applied * 100) / 100,
 							match_in: r.match_sources,
 							charge: r.observation.texture?.charge || [],
 							grip: r.observation.texture?.grip,

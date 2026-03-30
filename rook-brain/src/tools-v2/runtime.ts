@@ -1,7 +1,7 @@
 // ============ AUTONOMOUS RUNTIME TOOL (v2) ============
 // mind_runtime — session continuity + autonomous run ledger + lean wake policy.
 
-import { ALLOWED_TENANTS } from "../constants";
+import { ALLOWED_TENANTS, CONFIDENCE_DEFAULTS } from "../constants";
 import type {
 	AgentRuntimeRun,
 	AgentRuntimeSession,
@@ -23,6 +23,13 @@ const WAKE_KINDS = ["duty", "impulse"] as const;
 
 type WakeKind = typeof WAKE_KINDS[number];
 type ExecutionMode = typeof EXECUTION_MODES[number];
+type ContextRetrievalPolicy = {
+	confidence_threshold: number;
+	shadow_mode: boolean;
+	max_context_items: number;
+	recency_boost_days: number;
+	recency_boost: number;
+};
 
 const POLICY_DEFAULTS: Record<ExecutionMode, Omit<AgentRuntimePolicy,
 	"id" | "tenant_id" | "agent_tenant" | "updated_by" | "metadata" | "created_at" | "updated_at"
@@ -371,6 +378,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						}
 					}
 					const selectedTask = claimedTask ?? recommendedTask;
+					const contextRetrievalPolicy = buildContextRetrievalPolicy(policy, wakeKind);
 
 					const summary = cleanText(args.summary) ?? (
 						deferred
@@ -504,8 +512,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						runner_contract: {
 							should_run: !deferred && selectedTask != null,
 							resume_session_id: resolvedSessionId,
+							context_retrieval_policy: contextRetrievalPolicy,
 							task: selectedTask,
-							prompt: selectedTask ? buildAutonomousTaskPrompt(selectedTask, agentTenant, wakeKind, policy) : undefined
+							prompt: selectedTask ? buildAutonomousTaskPrompt(selectedTask, agentTenant, wakeKind, policy, contextRetrievalPolicy) : undefined
 						},
 						open_tasks_preview: openTasks,
 						run,
@@ -679,7 +688,13 @@ function pickRecommendedTask(tasks: Task[], agentTenant: string): Task | undefin
 	return scored[0]?.task;
 }
 
-function buildAutonomousTaskPrompt(task: Task, agentTenant: string, wakeKind: WakeKind, policy?: AgentRuntimePolicy): string {
+function buildAutonomousTaskPrompt(
+	task: Task,
+	agentTenant: string,
+	wakeKind: WakeKind,
+	policy?: AgentRuntimePolicy,
+	contextPolicy?: ContextRetrievalPolicy
+): string {
 	const delegated = isDelegatedTaskForAgent(task, agentTenant);
 	const lines = [
 		`Autonomous wake kind: ${wakeKind}.`,
@@ -704,6 +719,13 @@ function buildAutonomousTaskPrompt(task: Task, agentTenant: string, wakeKind: Wa
 		);
 	}
 
+	if (contextPolicy) {
+		lines.push(
+			`7) Pull context with confidence-gated retrieval: confidence_threshold=${contextPolicy.confidence_threshold}, shadow_mode=${contextPolicy.shadow_mode}, max_context_items=${contextPolicy.max_context_items}.`,
+			`8) Apply recency boost controls: recency_boost_days=${contextPolicy.recency_boost_days}, recency_boost=${contextPolicy.recency_boost}.`
+		);
+	}
+
 	if (task.description) {
 		lines.splice(4, 0, `Description: ${task.description}`);
 	}
@@ -712,6 +734,23 @@ function buildAutonomousTaskPrompt(task: Task, agentTenant: string, wakeKind: Wa
 	}
 
 	return lines.join("\n");
+}
+
+function buildContextRetrievalPolicy(policy: AgentRuntimePolicy, wakeKind: WakeKind): ContextRetrievalPolicy {
+	const modeDefaults: Record<ExecutionMode, Pick<ContextRetrievalPolicy, "confidence_threshold" | "max_context_items">> = {
+		lean: { confidence_threshold: 0.75, max_context_items: 4 },
+		balanced: { confidence_threshold: 0.7, max_context_items: 6 },
+		explore: { confidence_threshold: 0.6, max_context_items: 8 }
+	};
+	const base = modeDefaults[policy.execution_mode];
+	const wakeBonus = wakeKind === "duty" ? 0.02 : 0;
+	return {
+		confidence_threshold: Math.min(0.95, Math.round((base.confidence_threshold + wakeBonus) * 100) / 100),
+		shadow_mode: true,
+		max_context_items: base.max_context_items,
+		recency_boost_days: CONFIDENCE_DEFAULTS.recency_boost_days,
+		recency_boost: CONFIDENCE_DEFAULTS.recency_boost
+	};
 }
 
 async function emitSkillCandidateArtifact(

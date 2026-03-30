@@ -50,6 +50,10 @@ Sprint 7 closeout and the architecture lock for the next shared-core slice.
 - **Skill proposal taxonomy expanded** — `mind_propose action=list` now supports `skill_recapture`, `skill_supersession`, and `skill_promotion`.
 - **Captured-skill browse index** — `014_captured_skill_registry_perf.sql` adds `(tenant_id, created_at DESC)` index for no-filter registry listing.
 - **Skill-health unit coverage** — `test/skill-health-daemon.spec.ts` validates proposal generation + dedupe and fresh-candidate suppression.
+- **Confidence-gated context retrieval (productivity lane)** — `mind_query` and `mind_search` now support optional `confidence_threshold`, `shadow_mode`, recency boost controls, and hard `max_context_items` caps to reduce low-signal prompt injection.
+- **Runner context policy wiring** — `mind_runtime action=trigger` now emits `runner_contract.context_retrieval_policy` and includes confidence/recent-boost retrieval directives in autonomous prompts.
+- **Productivity fact extraction on context set** — `mind_context action=set` gains optional `extract_facts` with `extraction_mode=shadow|write`; write mode persists bounded `fact_candidate` observations in `craft` for review.
+- **Context confidence + extraction tests** — `test/context-confidence-and-facts.spec.ts` covers threshold filtering, shadow diagnostics, and fact-candidate write caps.
 
 ### Changed
 - **Cross-tenant task lifecycle** — assignees can now get/update/complete delegated tasks through storage paths that explicitly allow assigned-task access.

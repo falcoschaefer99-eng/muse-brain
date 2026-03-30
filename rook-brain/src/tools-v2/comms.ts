@@ -1,13 +1,93 @@
 // ============ COMMS TOOLS (v2) ============
 // mind_letter (action: write/read), mind_context (action: set/get)
 
-import type { Letter } from "../types";
+import type { Letter, Observation } from "../types";
 import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
+import { cleanText } from "./utils";
 
 const MAX_LETTER_CONTENT_LENGTH = 4000;
 const MAX_CONTEXT_OPEN_THREAD_TASKS = 20;
+const MAX_FACT_CANDIDATES = 10;
+const MAX_SUMMARY_LENGTH = 10_000;
+const MAX_ARRAY_ITEM_LENGTH = 2_000;
+const MAX_ARRAY_ITEMS = 50;
+const MAX_FACT_CONTENT_LENGTH = 2_000;
+
+const RE_DECISION = /(decided|decision|we will|we're going to|chosen)/i;
+const RE_DEADLINE = /(deadline|due|by\s+\d{4}-\d{2}-\d{2}|tomorrow|next week|next sprint)/i;
+const RE_GOAL = /(goal|target|objective|aim)/i;
+const RE_PREFERENCE = /(prefer|preference|likes|dislikes)/i;
+const RE_ASSIGNMENT = /(assigned|owner|responsible|take care of|will handle)/i;
+
+type ExtractedFactType = "decision" | "deadline" | "goal" | "preference" | "assignment";
+
+interface ExtractedFact {
+	fact: string;
+	fact_type: ExtractedFactType;
+	confidence: number;
+	source: "summary" | "key_point" | "open_thread";
+}
+
+function splitSentences(text: string): string[] {
+	return text
+		.split(/[\n.!?]+/)
+		.map(s => s.trim())
+		.filter(Boolean);
+}
+
+function classifyProductivityFact(line: string): { type: ExtractedFactType; confidence: number } | null {
+	const text = line.trim();
+	if (!text) return null;
+	if (RE_DECISION.test(text)) return { type: "decision", confidence: 0.86 };
+	if (RE_DEADLINE.test(text)) return { type: "deadline", confidence: 0.82 };
+	if (RE_GOAL.test(text)) return { type: "goal", confidence: 0.78 };
+	if (RE_PREFERENCE.test(text)) return { type: "preference", confidence: 0.76 };
+	if (RE_ASSIGNMENT.test(text)) return { type: "assignment", confidence: 0.8 };
+	return null;
+}
+
+function extractProductivityFacts(
+	summary: string,
+	keyPoints: string[],
+	openThreads: string[],
+	maxFacts: number
+): ExtractedFact[] {
+	const collected: ExtractedFact[] = [];
+	const dedupe = new Set<string>();
+
+	const addLine = (line: string, source: ExtractedFact["source"]) => {
+		if (collected.length >= maxFacts) return;
+		const clean = line.trim();
+		if (!clean) return;
+		const classification = classifyProductivityFact(clean);
+		if (!classification) return;
+		const key = `${classification.type}:${clean.toLowerCase()}`;
+		if (dedupe.has(key)) return;
+		dedupe.add(key);
+		collected.push({
+			fact: clean,
+			fact_type: classification.type,
+			confidence: classification.confidence,
+			source
+		});
+	};
+
+	for (const sentence of splitSentences(summary)) addLine(sentence, "summary");
+	for (const kp of keyPoints) addLine(kp, "key_point");
+	for (const thread of openThreads) addLine(thread, "open_thread");
+
+	return collected.slice(0, maxFacts);
+}
+
+function parseOptionalPositiveInt(value: unknown, min: number, max: number): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+	if (!Number.isInteger(value)) return undefined;
+	if (value < min || value > max) return undefined;
+	return value;
+}
 
 export const TOOL_DEFS = [
 	{
@@ -36,7 +116,7 @@ export const TOOL_DEFS = [
 	},
 	{
 		name: "mind_context",
-		description: "Set or get conversation context for cross-session continuity. action=set saves context. action=get retrieves last saved context.",
+		description: "Set or get conversation context for cross-session continuity. action=set saves context. action=get retrieves last saved context. Optional productivity fact extraction can emit reviewable fact candidates.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -51,7 +131,10 @@ export const TOOL_DEFS = [
 				key_points: { type: "array", items: { type: "string" }, description: "[set] Key points from the conversation" },
 				emotional_state: { type: "string", description: "[set] Emotional state at end of conversation" },
 				open_threads: { type: "array", items: { type: "string" }, description: "[set] Unresolved threads to pick up next time" },
-				create_tasks: { type: "boolean", default: false, description: "[set] Auto-create tasks from open_threads" }
+				create_tasks: { type: "boolean", default: false, description: "[set] Auto-create tasks from open_threads" },
+				extract_facts: { type: "boolean", default: false, description: "[set] Extract productivity fact candidates from summary/key_points/open_threads" },
+				extraction_mode: { type: "string", enum: ["shadow", "write"], default: "shadow", description: "[set+extract_facts] shadow=preview only, write=persist fact_candidate observations in craft" },
+				max_fact_candidates: { type: "number", description: "[set+extract_facts] Max extracted fact candidates (default 5, max 10)" }
 			},
 			required: ["action"]
 		}
@@ -106,9 +189,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			if (action === "read") {
 				const letters = await storage.readLetters();
-				const context = args.context || "chat";
+				const recipientContext = args.context || "chat";
 
-				let relevant = letters.filter(l => l.to_context === context);
+				let relevant = letters.filter(l => l.to_context === recipientContext);
 				if (args.unread_only !== false) {
 					relevant = relevant.filter(l => !l.read);
 				}
@@ -123,7 +206,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				}
 
 				return {
-					context,
+					context: recipientContext,
 					count: relevant.length,
 					letters: relevant.map(l => ({
 						id: l.id,
@@ -143,8 +226,42 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			const action = args.action;
 
 			if (action === "set") {
+				if (typeof args.summary !== "string") {
+					return { error: "summary is required for action=set" };
+				}
+				if (args.summary.length > MAX_SUMMARY_LENGTH) {
+					return { error: `summary too long (max ${MAX_SUMMARY_LENGTH} chars)` };
+				}
+				if (args.key_points !== undefined) {
+					const kpArr = toStringArray(args.key_points);
+					if (kpArr.length > MAX_ARRAY_ITEMS) {
+						return { error: `key_points too many items (max ${MAX_ARRAY_ITEMS})` };
+					}
+					if (kpArr.some(item => item.length > MAX_ARRAY_ITEM_LENGTH)) {
+						return { error: `key_points item too long (max ${MAX_ARRAY_ITEM_LENGTH} chars each)` };
+					}
+				}
+				if (args.open_threads !== undefined) {
+					const otArr = toStringArray(args.open_threads);
+					if (otArr.length > MAX_ARRAY_ITEMS) {
+						return { error: `open_threads too many items (max ${MAX_ARRAY_ITEMS})` };
+					}
+					if (otArr.some(item => item.length > MAX_ARRAY_ITEM_LENGTH)) {
+						return { error: `open_threads item too long (max ${MAX_ARRAY_ITEM_LENGTH} chars each)` };
+					}
+				}
 				if (!args.summary) {
 					return { error: "summary is required for action=set" };
+				}
+				if (args.extract_facts !== undefined && typeof args.extract_facts !== "boolean") {
+					return { error: "extract_facts must be a boolean" };
+				}
+				if (args.extraction_mode !== undefined && !["shadow", "write"].includes(args.extraction_mode)) {
+					return { error: "extraction_mode must be shadow or write" };
+				}
+				const parsedMaxFacts = parseOptionalPositiveInt(args.max_fact_candidates, 1, MAX_FACT_CANDIDATES);
+				if (args.max_fact_candidates !== undefined && parsedMaxFacts === undefined) {
+					return { error: `max_fact_candidates must be an integer between 1 and ${MAX_FACT_CANDIDATES}` };
 				}
 
 				const context = {
@@ -157,6 +274,12 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				};
 
 				await storage.writeConversationContext(context);
+
+				const response: Record<string, unknown> = {
+					saved: true,
+					timestamp: context.timestamp,
+					note: "Context saved. Next session will know where we left off."
+				};
 
 				if (args.create_tasks && context.open_threads.length > 0) {
 					const validThreads = context.open_threads
@@ -176,22 +299,61 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						});
 						tasks.push(task);
 					}
-					return {
-						saved: true,
-						timestamp: context.timestamp,
-						note: "Context saved. Next session will know where we left off.",
-						tasks_created: tasks.length,
-						task_ids: tasks.map(t => t.id),
-						blank_threads_skipped: context.open_threads.length - validThreads.length,
-						thread_limit_applied: Math.max(0, validThreads.length - threadsForTasks.length)
+					response.tasks_created = tasks.length;
+					response.task_ids = tasks.map(t => t.id);
+					response.blank_threads_skipped = context.open_threads.length - validThreads.length;
+					response.thread_limit_applied = Math.max(0, validThreads.length - threadsForTasks.length);
+				}
+
+				if (args.extract_facts === true) {
+					const extractionMode = args.extraction_mode ?? "shadow";
+					const maxFacts = parsedMaxFacts ?? 5;
+					const factCandidates = extractProductivityFacts(
+						context.summary,
+						context.key_points,
+						context.open_threads,
+						maxFacts
+					);
+
+					const storedIds: string[] = [];
+					if (extractionMode === "write" && factCandidates.length > 0) {
+						const observations: Observation[] = [];
+						for (const fact of factCandidates) {
+							const cleanedContent = cleanText(fact.fact);
+							if (!cleanedContent || cleanedContent.length > MAX_FACT_CONTENT_LENGTH) continue;
+							const observation: Observation = {
+								id: generateId("obs"),
+								content: cleanedContent,
+								territory: "craft",
+								created: getTimestamp(),
+								texture: {
+									salience: "background",
+									vividness: "soft",
+									charge: [],
+									grip: "dormant",
+									charge_phase: "fresh"
+								},
+								context: `Auto-extracted productivity fact candidate (${fact.fact_type}) from ${fact.source}; confidence=${Math.round(fact.confidence * 100) / 100}`,
+								access_count: 0,
+								type: "fact_candidate",
+								tags: ["fact-candidate", "auto-extracted", "productivity"]
+							};
+							observations.push(observation);
+							storedIds.push(observation.id);
+						}
+						await Promise.all(observations.map(obs => storage.appendToTerritory("craft", obs)));
+					}
+
+					response.fact_extraction = {
+						mode: extractionMode,
+						candidates: factCandidates,
+						candidate_count: factCandidates.length,
+						stored_count: storedIds.length,
+						stored_ids: storedIds
 					};
 				}
 
-				return {
-					saved: true,
-					timestamp: context.timestamp,
-					note: "Context saved. Next session will know where we left off."
-				};
+				return response;
 			}
 
 			if (action === "get") {

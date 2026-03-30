@@ -144,3 +144,8 @@ export const DREAM_GRIP_WEIGHT: Record<string, number> = {
 	strong: 0.3,
 	iron: 0.1,
 };
+
+export const CONFIDENCE_DEFAULTS = {
+	recency_boost_days: 3,
+	recency_boost: 0.15
+};

@@ -6,6 +6,14 @@ import { TERRITORIES } from "../constants";
 import { extractEssence, getCurrentCircadianPhase } from "../helpers";
 import type { ToolContext } from "./context";
 import { createEmbeddingProvider } from "../embedding/index";
+import {
+	parseConfidenceThreshold,
+	parseOptionalPositiveInt,
+	applyConfidenceScoring,
+	filterAndCapByConfidence,
+	fireAndForgetSideEffects,
+	CONFIDENCE_DEFAULTS
+} from "./confidence-utils";
 
 export const TOOL_DEFS = [
 	{
@@ -18,7 +26,12 @@ export const TOOL_DEFS = [
 				territory: { type: "string", enum: [...Object.keys(TERRITORIES), "all"], default: "all", description: "Filter to one territory or 'all'" },
 				limit: { type: "number", default: 10, description: "Max results" },
 				grip_filter: { type: "string", enum: ["iron", "strong", "present", "loose", "dormant"], description: "Optional: only return observations at this grip level or stronger" },
-				entity: { type: "string", description: "Filter by entity name or ID" }
+				entity: { type: "string", description: "Filter by entity name or ID" },
+				confidence_threshold: { type: "number", description: "Optional confidence gate (0.0-1.0) before returning context rows" },
+				shadow_mode: { type: "boolean", default: false, description: "If true, report threshold effects without dropping rows" },
+				recency_boost_days: { type: "number", description: "Recency boost window in days (default 3)" },
+				recency_boost: { type: "number", description: "Confidence boost for recent rows (0.0-0.5, default 0.15)" },
+				max_context_items: { type: "number", description: "Hard cap for returned context rows after filtering (default uses limit, max 20)" }
 			},
 			required: ["query"]
 		}
@@ -34,6 +47,28 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			}
 
 			const limit = Math.min(args.limit || 10, 50);
+			const confidenceThreshold = parseConfidenceThreshold(args.confidence_threshold);
+			if (args.confidence_threshold !== undefined && confidenceThreshold === undefined) {
+				return { error: "confidence_threshold must be a number between 0 and 1" };
+			}
+			if (args.shadow_mode !== undefined && typeof args.shadow_mode !== "boolean") {
+				return { error: "shadow_mode must be a boolean" };
+			}
+			const shadowMode = args.shadow_mode === true;
+			const parsedRecencyBoostDays = parseOptionalPositiveInt(args.recency_boost_days, 1, 30);
+			if (args.recency_boost_days !== undefined && parsedRecencyBoostDays === undefined) {
+				return { error: "recency_boost_days must be an integer between 1 and 30" };
+			}
+			const recencyBoostDays = parsedRecencyBoostDays ?? CONFIDENCE_DEFAULTS.recency_boost_days;
+			if (args.recency_boost !== undefined && (typeof args.recency_boost !== "number" || !Number.isFinite(args.recency_boost) || args.recency_boost < 0 || args.recency_boost > 0.5)) {
+				return { error: "recency_boost must be a number between 0 and 0.5" };
+			}
+			const recencyBoost = args.recency_boost ?? CONFIDENCE_DEFAULTS.recency_boost;
+			const parsedMaxContextItems = parseOptionalPositiveInt(args.max_context_items, 1, 20);
+			if (args.max_context_items !== undefined && parsedMaxContextItems === undefined) {
+				return { error: "max_context_items must be an integer between 1 and 20" };
+			}
+			const maxContextItems = Math.min(parsedMaxContextItems ?? Math.min(limit, 20), limit);
 			const territory = (!args.territory || args.territory === "all") ? undefined : args.territory;
 
 			// Optional grip filter — translate to array for hybridSearch
@@ -81,34 +116,41 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				entity_id: entityId
 			});
 
-			// Fire-and-forget side effects.
-			if (hybridResults.length > 0) {
-				const returnedIds = hybridResults.map(r => r.observation.id);
-				if (context.waitUntil) {
-					context.waitUntil(
-						Promise.all([
-							context.storage.recordMemoryCascade(returnedIds),
-							context.storage.updateSurfacingEffects(returnedIds)
-						]).catch(err => console.error("hybridSearch side effects failed:", err instanceof Error ? err.message : "unknown error"))
-					);
-				}
+			const confidenceScored = applyConfidenceScoring(hybridResults, recencyBoostDays, recencyBoost);
+			const { filtered: finalResults, belowThresholdCount, preCapCount } = filterAndCapByConfidence(
+				confidenceScored, confidenceThreshold, shadowMode, maxContextItems
+			);
+
+			if (finalResults.length > 0) {
+				fireAndForgetSideEffects(context, finalResults.map(r => r.observation.id), "hybridSearch");
 			}
 
-			const finalResults = hybridResults.map(r => ({
+			const mappedResults = finalResults.map(r => ({
 				id: r.observation.id,
 				territory: r.territory,
 				essence: extractEssence(r.observation),
 				charge: r.observation.texture?.charge || [],
 				grip: r.observation.texture?.grip,
 				match_in: r.match_sources,
-				score: Math.round(r.score * 100) / 100
+				score: Math.round(r.score * 100) / 100,
+				confidence: Math.round(r.confidence * 100) / 100,
+				recency_boost_applied: Math.round(r.recency_boost_applied * 100) / 100
 			}));
 
 			return {
 				query,
 				scope: args.territory || "all territories",
-				results: finalResults,
-				total_matches: finalResults.length,
+				confidence: {
+					threshold: confidenceThreshold ?? null,
+					shadow_mode: shadowMode,
+					recency_boost_days: recencyBoostDays,
+					recency_boost: recencyBoost,
+					below_threshold: belowThresholdCount,
+					pre_cap_count: preCapCount,
+					max_context_items: maxContextItems
+				},
+				results: mappedResults,
+				total_matches: mappedResults.length,
 				hint: "Use mind_pull(id) for full content"
 			};
 		}

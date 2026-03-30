@@ -195,9 +195,19 @@ describe('runtime v2 tool', () => {
 		expect(result.due_opened).toBe(3);
 		expect(result.runner_contract?.should_run).toBe(true);
 		expect(result.runner_contract?.task?.id).toBe('task_2');
+		expect(result.runner_contract?.context_retrieval_policy).toEqual(expect.objectContaining({
+			confidence_threshold: 0.72,
+			shadow_mode: true,
+			max_context_items: 6,
+			recency_boost_days: 3,
+			recency_boost: 0.15
+		}));
 		expect(result.runner_contract?.prompt).toContain('Task ID: task_2');
 		expect(result.runner_contract?.prompt).toContain('max_tool_calls_per_run=20');
 		expect(result.runner_contract?.prompt).toContain('Execution mode: balanced');
+		expect(result.runner_contract?.prompt).toContain('confidence_threshold=0.72');
+		expect(result.runner_contract?.prompt).toContain('shadow_mode=true');
+		expect(result.runner_contract?.prompt).toContain('max_context_items=6');
 		expect(result.skill_candidate?.type).toBe('skill_candidate');
 		expect(appendToTerritory).toHaveBeenCalledTimes(1);
 		expect(openDueScheduledTasks).toHaveBeenCalledWith('2026-03-28T12:00:00.000Z', 50);
