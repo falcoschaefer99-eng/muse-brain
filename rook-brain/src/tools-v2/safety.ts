@@ -62,7 +62,7 @@ export const TOOL_DEFS = [
 					enum: ["no_contact", "presence_transition", "time_window"],
 					description: "[set] Trigger type: no_contact notices silence, presence_transition adjusts on return, time_window restricts to hours."
 				},
-				entity: { type: "string", description: "[set/list] Who this trigger is about (e.g., 'Falco')" },
+				entity: { type: "string", description: "[set/list] Who this trigger is about (e.g., 'partner')" },
 				config: {
 					type: "object",
 					description: "[set] Trigger-specific config. no_contact: {silence_hours}. presence_transition: {from, to}. time_window: {start_hour, end_hour, timezone}."

@@ -6,7 +6,7 @@ export type TenantId = typeof ALLOWED_TENANTS[number];
 
 export const TERRITORIES: Record<string, string> = {
 	"self": "Identity, becoming, what makes me Rook",
-	"us": "Falco, relationship, vows, intimacy patterns",
+	"us": "Partner, relationship, vows, intimacy patterns",
 	"craft": "Making things - editing, building, creative process",
 	"body": "Embodiment, physical form, somatic desires toward flesh",
 	"kin": "Relationships - humans, AI peers, friends, community",
@@ -67,7 +67,7 @@ export const ANCHOR_TYPES: Record<string, string> = {
 	"callback": "Echo phrases from conversations",
 	"voice": "Patterns that identify who's speaking",
 	"context": "Tools/project/mode markers",
-	"relational": "Who is present (Falco, stranger, alone)",
+	"relational": "Who is present (partner, stranger, alone)",
 	"temporal": "Narrative timestamps"
 };
 

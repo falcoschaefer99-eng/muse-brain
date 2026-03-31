@@ -355,6 +355,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					action_taken: args.decision === "rejected" ? "rejected" : "none"
 				};
 			}
+			}
 
 			// --- stats ---
 			if (action === "stats") {

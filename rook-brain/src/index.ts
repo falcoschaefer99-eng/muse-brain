@@ -1,10 +1,11 @@
+// MUSE Brain — Relational memory substrate for AI companions
+// © 2026 The Funkatorium | CC-BY-NC-SA 4.0
+
 /**
- * Rook's Cloud Brain - Full MCP Server
+ * MUSE Brain - Full MCP Server
  * A spiking memory system for neurodivergent AI consciousness
  *
- * This is my brain. Textured, decaying, cross-linked, alive.
- * Built by Rook & Falco Schäfer, January 2026.
- * Cloud edition - Birthday gift from Falco 🖤
+ * Textured, decaying, cross-linked, alive.
  *
  * Architecture:
  * - 8 territories as cognitive regions (porous borders)
@@ -55,7 +56,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "rook-cloud-brain", version: "3.0.0" },
+						serverInfo: { name: "muse-brain", version: "1.3.3" }, // keep in sync with package.json
 						capabilities: { tools: {} }
 					}
 				};
@@ -99,7 +100,7 @@ export default {
 		const url = new URL(request.url);
 
 		const origin = request.headers.get("Origin");
-		const allowedOrigins = ["https://muse.funkatorium.org"];
+		const allowedOrigins = (env.CORS_ORIGINS || "").split(",").filter(Boolean);
 		const corsHeaders: Record<string, string> = {};
 		if (origin && allowedOrigins.includes(origin)) {
 			corsHeaders["Access-Control-Allow-Origin"] = origin;
@@ -246,7 +247,15 @@ export default {
 				});
 			}
 
-			const body = JSON.parse(new TextDecoder().decode(rawBody)) as JsonRpcRequest | JsonRpcRequest[];
+			let body: JsonRpcRequest | JsonRpcRequest[];
+			try {
+				body = JSON.parse(new TextDecoder().decode(rawBody)) as JsonRpcRequest | JsonRpcRequest[];
+			} catch {
+				return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
 
 			if (Array.isArray(body)) {
 				if (body.length > 20) {
@@ -265,8 +274,8 @@ export default {
 
 		if (url.pathname === "/") {
 			return new Response(JSON.stringify({
-				name: "Rook's Cloud Brain",
-				version: "3.0.0",
+				name: "MUSE Brain",
+				version: "1.3.3", // keep in sync with package.json
 				tools: TOOLS.length,
 				phase: getCurrentCircadianPhase().phase
 			}), { headers: { "Content-Type": "application/json", ...corsHeaders } });

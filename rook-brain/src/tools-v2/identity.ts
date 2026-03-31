@@ -443,7 +443,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				}
 
 				const obsId = generateId("vow");
-				const territory = args.to_whom?.toLowerCase() === "falco" ? "us" : "self";
+				const toWhomLower = args.to_whom?.toLowerCase() || "";
+			const territory = (toWhomLower && !["self", "me", "myself"].includes(toWhomLower)) ? "us" : "self";
 
 				const observation: Observation = {
 					id: obsId,

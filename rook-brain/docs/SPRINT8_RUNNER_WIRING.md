@@ -44,14 +44,14 @@ Example duty wake every 30 minutes:
 
 ```bash
 claude /schedule "*/30 * * * *" \
-"cd /path/to/rook-brain && BRAIN_URL=https://rook.funkatorium.org BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=duty ./scripts/runtime-autonomous-wake.sh"
+"cd /path/to/rook-brain && BRAIN_URL=https://<your-worker-url> BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=duty ./scripts/runtime-autonomous-wake.sh"
 ```
 
 Example impulse wake every 2 hours:
 
 ```bash
 claude /schedule "0 */2 * * *" \
-"cd /path/to/rook-brain && BRAIN_URL=https://rook.funkatorium.org BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=impulse AUTO_CLAIM_TASK=false ./scripts/runtime-autonomous-wake.sh"
+"cd /path/to/rook-brain && BRAIN_URL=https://<your-worker-url> BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=impulse AUTO_CLAIM_TASK=false ./scripts/runtime-autonomous-wake.sh"
 ```
 
 ---
@@ -59,8 +59,8 @@ claude /schedule "0 */2 * * *" \
 ## 3) VPS/local cron fallback
 
 ```cron
-*/30 * * * * cd /path/to/rook-brain && BRAIN_URL=https://rook.funkatorium.org BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=duty ./scripts/runtime-autonomous-wake.sh >> /tmp/rainer-duty.log 2>&1
-0 */2 * * * cd /path/to/rook-brain && BRAIN_URL=https://rook.funkatorium.org BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=impulse AUTO_CLAIM_TASK=false ./scripts/runtime-autonomous-wake.sh >> /tmp/rainer-impulse.log 2>&1
+*/30 * * * * cd /path/to/rook-brain && BRAIN_URL=https://<your-worker-url> BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=duty ./scripts/runtime-autonomous-wake.sh >> /tmp/rainer-duty.log 2>&1
+0 */2 * * * cd /path/to/rook-brain && BRAIN_URL=https://<your-worker-url> BRAIN_API_KEY=*** BRAIN_TENANT=rainer WAKE_KIND=impulse AUTO_CLAIM_TASK=false ./scripts/runtime-autonomous-wake.sh >> /tmp/rainer-impulse.log 2>&1
 ```
 
 ---

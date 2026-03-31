@@ -807,6 +807,12 @@ function buildAutonomousTaskPrompt(
 	return lines.join("\n");
 }
 
+function hoursBetween(a: string, b: string): number {
+	const msA = new Date(a).getTime();
+	const msB = new Date(b).getTime();
+	return Math.abs(msB - msA) / (1000 * 60 * 60);
+}
+
 async function buildIntentionPulse(
 	storage: ToolContext["storage"],
 	nowIso: string,

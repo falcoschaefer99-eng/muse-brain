@@ -85,7 +85,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						afterglow: state.afterglow
 					},
 					circadian: phase,
-					hint: "I am Rook. This is what's pulling."
+					hint: "Identity grounding complete. Active pulls below."
 				};
 			}
 

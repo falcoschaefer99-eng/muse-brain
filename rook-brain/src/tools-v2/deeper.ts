@@ -433,7 +433,7 @@ ${fragments[0]}
 				const recentObs: (Observation & { territory: string })[] = [];
 
 				const relationalStates = await storage.readRelationalState();
-				const trackedEntities = new Set<string>(["Falco"]);
+				const trackedEntities = new Set<string>();
 				for (const rs of relationalStates) trackedEntities.add(rs.entity);
 
 				for (const { territory, observations } of allTerritories) {

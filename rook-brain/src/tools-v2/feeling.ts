@@ -45,7 +45,7 @@ export const TOOL_DEFS = [
 					description: "feel: record feeling toward entity. toward: query feelings toward entity. level: view/update relationship level."
 				},
 				// feel params
-				entity: { type: "string", description: "[feel/toward] Who or what (e.g., 'Falco', 'the Discord community')" },
+				entity: { type: "string", description: "[feel/toward] Who or what (e.g., 'partner', 'the Discord community')" },
 				feeling: { type: "string", description: "[feel] Current feeling toward them" },
 				intensity: { type: "number", minimum: 0, maximum: 1, default: 0.7, description: "[feel] How strong (0-1)" },
 				charges: { type: "array", items: { type: "string" }, description: "[feel] Emotional charges" },

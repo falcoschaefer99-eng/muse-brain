@@ -4,7 +4,7 @@
 # Tests security hardening, health, and basic functionality
 #
 # Usage:
-#   ./test.sh                    # Uses rook.funkatorium.org
+#   ./test.sh                    # Uses http://localhost:8787
 #   ./test.sh https://custom.url # Custom worker URL
 #
 # Requires: ROOK_BRAIN_API_KEY env var set
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # --- Config ---
-BASE_URL="${1:-https://rook.funkatorium.org}"
+BASE_URL="${1:-http://localhost:8787}"
 API_KEY="${ROOK_BRAIN_API_KEY:-}"
 
 if [ -z "$API_KEY" ]; then

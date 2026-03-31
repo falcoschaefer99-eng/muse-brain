@@ -6,6 +6,7 @@ export interface Env {
 	HYPERDRIVE?: Hyperdrive;  // Cloudflare Hyperdrive binding — production
 	API_KEY: string;
 	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
+	CORS_ORIGINS?: string;    // Comma-separated allowed origins, e.g. "https://your-app.example.com"
 }
 
 export interface Texture {

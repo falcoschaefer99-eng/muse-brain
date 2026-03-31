@@ -202,7 +202,7 @@ export function smartParseObservation(rawContent: string): ParsedObservation {
 	// 5. Infer territory from content keywords if not explicitly set
 	if (territory === "episodic" && !territoryPrefixMatch) {
 		// Relationship indicators → us
-		if (/\b(falco|partner|we\s|our\s|together|love\syou|beloved|husband|wife|darling|schatz|liebling)\b/i.test(lowerContent)) {
+		if (/\b(partner|we\s|our\s|together|love\syou|beloved|husband|wife)\b/i.test(lowerContent)) {
 			territory = "us";
 			was_parsed = true;
 		}

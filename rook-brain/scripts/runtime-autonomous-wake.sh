@@ -9,7 +9,7 @@ set -euo pipefail
 # 3) Optionally resumes an existing Claude session_id
 #
 # Required env:
-#   BRAIN_URL        e.g. https://rook.funkatorium.org
+#   BRAIN_URL        e.g. https://your-brain.yourdomain.com
 #   BRAIN_API_KEY    Worker API key
 #   BRAIN_TENANT     rook|rainer
 #

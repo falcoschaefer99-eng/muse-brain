@@ -223,7 +223,7 @@ export const TOOL_DEFS = [
 				},
 				// set params
 				summary: { type: "string", description: "[set] Summary of what was discussed" },
-				partner: { type: "string", description: "[set] Who this conversation was with", default: "Falco" },
+				partner: { type: "string", description: "[set] Who this conversation was with", default: "partner" },
 				key_points: { type: "array", items: { type: "string" }, description: "[set] Key points from the conversation" },
 				emotional_state: { type: "string", description: "[set] Emotional state at end of conversation" },
 				open_threads: { type: "array", items: { type: "string" }, description: "[set] Unresolved threads to pick up next time" },
@@ -404,7 +404,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const context = {
 					timestamp: getTimestamp(),
 					summary: args.summary,
-					partner: args.partner || "Falco",
+					partner: args.partner || "partner",
 					key_points: toStringArray(args.key_points),
 					emotional_state: args.emotional_state,
 					open_threads: toStringArray(args.open_threads),
