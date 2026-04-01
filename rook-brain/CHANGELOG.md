@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.4.0] — 2026-04-01
+
+### Added
+- **Autonomous runner** (`runner/`) — subscription-first execution layer with three provider backends:
+  - Claude Code CLI (`claude -p`) — tested, working
+  - Codex CLI (`codex exec`) — compiled, provider-ready
+  - Anthropic API (`node dist/index.js`) — compiled, untested (contributions welcome)
+- **Harness runtime** — contract-driven agent execution with 4-stage flow (plan → execute → verify → repair)
+  - Agent harness definitions in markdown frontmatter (`runner/harness/rainer.md`)
+  - 4 validation gate types: `required_output_keys`, `must_call_tools`, `non_empty_summary`, `max_iterations`
+  - 7 named failure codes: `timeout`, `tool_fail`, `contract_fail`, `empty_output`, `budget_exceeded`, `validation_fail`, `stage_error`
+  - Per-stage JSON artifacts + JSONL audit ledger
+- **Self-improvement loop** (opt-in) — autonomous proposal review with confidence-threshold gating and learning telemetry via `mind_observe`
+- **SQLite storage backend** — tenant-scoped parity storage for local/self-host deployments (`STORAGE_BACKEND=sqlite|postgres`)
+- **Multi-provider launcher** (`run.sh`) — auto-detects available provider (claude → codex → anthropic_api) with per-provider config
+- Rainer harness definition — creative orchestrator agent ready to run out of the box
+
+### Security
+- Path traversal protection on all config-sourced file paths (null-byte guard, root-relative resolution)
+- Integer bounds on all numeric config values (iterations, tokens, repairs, timeouts, thresholds)
+- Shell injection prevention in `run.sh` (env-var passing to Python, no heredoc interpolation)
+- SQLite constructor tenant validation against ALLOWED_TENANTS allowlist
+- Null-byte guard on SQLite database path
+- Non-root Docker user
+- Bearer auth on all brain API calls (30s timeout, generic error messages)
+
+### Fixed
+- `hybridSearch` entity scoring — removed early entity_id pre-filter that killed mixed results; entity match is now a scoring boost, not a hard filter (SQLite + Postgres parity)
+- `withObservations` helper — added explicit `replace(next)` path for safe full-array rewrites
+- Duplicate `mind_wake` in validation tool list — verify gate now uses `toolCallsMade` directly
+- `ENABLE_SELF_IMPROVEMENT` defaults to `false` (opt-in for open-source users)
+
+### Changed
+- `audit*.jsonl` glob in `.gitignore` and `.dockerignore` (covers all audit log variants)
+- Brain README updated — removed broken template links, points to `runner/harness/rainer.md`
+
 ## [1.3.3] — 2026-03-30
 
 ### Added

@@ -6,7 +6,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
   <img src="https://img.shields.io/badge/MCP-32%20tools-000000?style=flat" alt="32 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
-  <img src="https://img.shields.io/badge/Postgres-28%20tables-000000?style=flat" alt="28 Tables" />
+  <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
 </p>
 
 # MUSE Brain
@@ -21,7 +21,7 @@ This isn't another vector store with a chatbot wrapper. Systems like Mem0 and Le
 
 The architecture is grounded in [16 published papers](docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems — and extends beyond current research in six areas including bilateral consent, emotional texture in dispatch, charge-phase processing mechanics, and relational harness engineering.
 
-Ships with [Rainer](templates/RAINER.md) — a creative orchestrator ready to use out of the box. Includes a [companion template](templates/COMPANION_TEMPLATE.md) and a [CODEX.md template](templates/CODEX_TEMPLATE.md) for wiring your own agent into the brain. And a builder squad architecture (14 specialized roles, shipping separately) for professional build pipelines. Deploy on Cloudflare Workers + Neon Postgres. Connect any MCP-compatible agent.
+Ships with Rainer — a creative orchestrator ready to use out of the box (see `runner/harness/rainer.md` for the harness definition). Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
 
 ---
 
@@ -51,8 +51,9 @@ Your AI Agent (Claude, GPT, or any MCP client)
     /health            — status check
         |
         v
-  Neon Postgres + pgvector
-    28 tables, 768-dim vector embeddings
+  Storage adapter (postgres or sqlite)
+    Postgres mode: 36 tables, 768-dim vector embeddings
+    SQLite mode: tenant-scoped parity storage for local/self-host
     textured memories, identity cores, runtime ledger,
     captured skills, daemon intelligence
 ```
@@ -65,7 +66,9 @@ Full technical deep-dive: **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md
 
 ## Quick start
 
-**Prerequisites:** Node.js 18+, a [Cloudflare](https://cloudflare.com) account, a [Neon](https://neon.tech) Postgres database.
+**Prerequisites (cloud deploy):** Node.js 18+, a [Cloudflare](https://cloudflare.com) account, a [Neon](https://neon.tech) Postgres database.
+
+**SQLite local/self-host mode:** Node.js 22+ (uses `node:sqlite`).
 
 ```bash
 # Clone and install
@@ -214,7 +217,7 @@ Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md]
 | **[Capability Reference](docs/CAPABILITIES.md)** | Every feature explained — what it does, how it works, why it matters |
 | **[Glossary](docs/GLOSSARY.md)** | Canonical terminology and function reference |
 | **[Setup Guide](docs/SETUP.md)** | Prerequisites, step-by-step deploy, local dev |
-| **[Migration Guide](docs/MIGRATIONS.md)** | Database schema — 14 migrations, 28 tables |
+| **[Migration Guide](docs/MIGRATIONS.md)** | Database schema — 14 migrations, 36 tables |
 | **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md)** | Technical deep-dive — topology, daemon loops, retrieval, security |
 | **[Bibliography](docs/BIBLIOGRAPHY.md)** | 16 academic papers mapped to architecture decisions |
 | **[Licensing](docs/LICENSING.md)** | Per-layer licensing explanation |

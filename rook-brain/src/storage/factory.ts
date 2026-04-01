@@ -6,13 +6,22 @@
 
 import type { IBrainStorage, StorageConfig } from "./interface";
 import { createPostgresStorage } from "./postgres";
+import { createSQLiteStorage } from "./sqlite";
 
 export function createStorage(config: StorageConfig, tenant: string): IBrainStorage {
-	if (config.backend !== "postgres") {
-		throw new Error(`createStorage: unknown backend: ${String(config.backend)}`);
+	if (config.backend === "postgres") {
+		if (!config.databaseUrl) {
+			throw new Error("createStorage: databaseUrl is required for postgres backend");
+		}
+		return createPostgresStorage(config.databaseUrl, tenant);
 	}
-	if (!config.databaseUrl) {
-		throw new Error("createStorage: databaseUrl is required for postgres backend");
+
+	if (config.backend === "sqlite") {
+		if (!config.sqlitePath) {
+			throw new Error("createStorage: sqlitePath is required for sqlite backend");
+		}
+		return createSQLiteStorage(config.sqlitePath, tenant);
 	}
-	return createPostgresStorage(config.databaseUrl, tenant);
+
+	throw new Error(`createStorage: unknown backend: ${String((config as any).backend)}`);
 }

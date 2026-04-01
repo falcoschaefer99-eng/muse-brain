@@ -17,6 +17,20 @@ Canonical terms and function additions for launch documentation.
 
 ---
 
+## Core memory texture
+
+| Term | Definition |
+|------|------------|
+| **Charge** | Emotional signal attached to an observation (`charge[]`) that affects retrieval urgency and processing behavior. |
+| **Grip** | Persistence strength of a memory (`iron`, `strong`, `present`, `loose`, `dormant`); higher grip resists decay and surfaces faster. |
+| **Salience** | Priority weight for an observation (`foundational`, `active`, `background`, `archive`) used in retrieval and wake surfacing. |
+| **Vividness** | Detail/intensity level of an observation (`crystalline`, `vivid`, `soft`, `fragmentary`, `faded`). |
+| **Territory** | Cognitive domain classification (`self`, `us`, `craft`, `body`, `emotional`, `episodic`, `philosophy`, `kin`) for organization and biasing. |
+| **Circadian phase** | Time-of-day state (`deep_night` → `night`) that modulates retrieval bias, wake surfacing, and dream defaults. |
+| **Neural modulation** | Retrieval re-ranking layer that combines grip, novelty, circadian phase, and charge phase beyond vector similarity. |
+
+---
+
 ## Anticipatory recall terms
 
 | Term | Definition |

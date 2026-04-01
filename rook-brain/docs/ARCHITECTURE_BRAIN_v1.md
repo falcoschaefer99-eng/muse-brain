@@ -54,13 +54,15 @@ Cloudflare Worker (src/index.ts)
 Tool modules (src/tools-v2/*)
         │
         ▼
-Storage adapter (src/storage/postgres.ts via interface)
+Storage adapter (`IBrainStorage`)
+  - `src/storage/postgres.ts` (cloud / pgvector)
+  - `src/storage/sqlite.ts` (self-host / local)
         │
         ▼
-Neon Postgres + pgvector
+Postgres (schema + vector) or SQLite (tenant-scoped parity store)
 ```
 
-One Cloudflare Worker handles every request. The worker authenticates, validates the tenant, rate-limits, and routes to the appropriate tool module. Tool modules talk to Postgres through a storage interface — the database is never touched directly from the edge layer.
+One Cloudflare Worker handles every request. The worker authenticates, validates the tenant, rate-limits, and routes to the appropriate tool module. Tool modules talk only to `IBrainStorage` — Postgres and SQLite backends both implement the same contract, so edge logic never touches storage internals.
 
 ### Embedding backend
 
@@ -94,7 +96,7 @@ Every request passes through six layers before reaching a tool:
 
 ---
 
-## 5) Tool surface — 32 MCP tools
+## 5) Tool surface — 32 MCP tools across 19 modules
 
 Tool barrel: `src/tools-v2/index.ts`. Organized by cognitive function.
 
@@ -508,7 +510,9 @@ Cross-tenant sharing is intentionally conservative. Private territories stay pri
 
 ## 14) Data architecture
 
-28 tables across 14 migrations.
+36 tables across 14 migrations.
+
+That count describes the Postgres schema. SQLite mode stores tenant-scoped JSON documents in `kv_store` while preserving the same tool-level behavior through the shared storage interface.
 
 ### Table groups
 
@@ -540,7 +544,7 @@ Hot-path indexes are migration-backed for wake queries, task lookups, runtime se
 | **Consent framework** | Bilateral consent gates for relational domains |
 | **Audit trail** | Processing logs, observation versions, dispatch feedback telemetry |
 
-The system operates under an **operator-supervised autonomy** posture. The agent can wake itself and execute tasks, but within policy constraints its operator defines. Full unattended swarm behavior is architecturally possible but intentionally deferred.
+The system operates under an **operator-supervised autonomy** posture. The agent can wake itself and execute tasks within operator-defined policy constraints. Full unattended swarm behavior without operator oversight remains intentionally unsupported.
 
 ---
 

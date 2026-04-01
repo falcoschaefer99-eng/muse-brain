@@ -1,6 +1,6 @@
 // ============ TOOLS V2 — BARREL ============
 // Aggregates all TOOL_DEFS and dispatches executeTool(name, args, context).
-// 16 files → ~35 tools (collapsed from ~50 old tools via action dispatch pattern).
+// 19 modules → 32 tools (collapsed from ~50 old tools via action-dispatch pattern).
 
 import type { ToolContext } from "./context";
 

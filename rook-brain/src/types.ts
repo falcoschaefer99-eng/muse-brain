@@ -2,11 +2,13 @@
 // Pure leaf node — no imports. All types used across the brain.
 
 export interface Env {
-	DATABASE_URL: string;     // Neon Postgres — fallback for local dev
+	DATABASE_URL?: string;    // Neon Postgres — fallback for local dev (optional when STORAGE_BACKEND=sqlite)
 	HYPERDRIVE?: Hyperdrive;  // Cloudflare Hyperdrive binding — production
 	API_KEY: string;
 	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
 	CORS_ORIGINS?: string;    // Comma-separated allowed origins, e.g. "https://your-app.example.com"
+	STORAGE_BACKEND?: "postgres" | "sqlite";
+	SQLITE_PATH?: string;
 }
 
 export interface Texture {

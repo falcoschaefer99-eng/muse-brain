@@ -4,11 +4,15 @@ This guide is for someone who has never used MUSE Brain before.
 
 ## What this deploys
 
-You deploy one Cloudflare Worker backed by one Neon Postgres database.
+You can run MUSE Brain in two supported modes:
 
-- Worker handles MCP tools + auth + runtime trigger endpoint
-- Postgres stores memories, tasks, runtime ledger, captured skills
-- Optional headless wake script drives autonomous runs
+- **Cloud deploy:** Cloudflare Worker backed by Neon Postgres
+- **Local/self-host:** SQLite backend (`STORAGE_BACKEND=sqlite`) for single-node deployments
+
+Shared behavior in both modes:
+- MCP tools + auth + runtime trigger endpoint
+- Memory/identity/runtime/task surfaces through the same tool contract
+- Optional headless wake script for autonomous runs
 
 ## Launch path options
 
@@ -22,11 +26,11 @@ Current repo ships the **README + docs path**.
 
 ## Prerequisites
 
-- Node.js 18+
-- Cloudflare account (Workers)
-- Neon Postgres database
+- Node.js 18+ (Cloudflare path) or Node.js 22+ (SQLite path uses `node:sqlite`)
+- Cloudflare account (Workers) for cloud deploy
+- Neon Postgres database for cloud deploy
 - `wrangler` CLI (installed via `npm install` in this repo)
-- `psql` client (or Neon SQL editor)
+- `psql` client (or Neon SQL editor) for Postgres migrations
 
 **Platform:** Works on macOS, Linux, and Windows (via WSL or Git Bash). The migration scripts use bash. On Windows without WSL, use the Neon SQL editor to run migrations manually (Option B in the migration guide).
 
@@ -38,7 +42,7 @@ cd rook-brain
 npm install
 ```
 
-## 2) Configure Wrangler
+## 2) Configure Wrangler (cloud deploy path)
 
 ```bash
 cp wrangler.jsonc.example wrangler.jsonc
@@ -51,7 +55,7 @@ Then edit `wrangler.jsonc`:
 
 If you do not use Hyperdrive, keep `DATABASE_URL` secret set and worker will fall back to it.
 
-## 3) Set production secrets
+## 3) Set production secrets (cloud deploy path)
 
 ```bash
 npx wrangler secret put API_KEY
@@ -96,7 +100,19 @@ WAKE_KIND=duty \
 
 ```bash
 cp .dev.vars.example .dev.vars
-# edit values
+# postgres dev (default): set DATABASE_URL
+# sqlite dev: set STORAGE_BACKEND=sqlite and SQLITE_PATH=./muse-brain.local.sqlite
+npm run dev
+```
+
+### SQLite quick start (no Postgres)
+
+```bash
+cp .dev.vars.example .dev.vars
+# set:
+# API_KEY=local-dev-api-key
+# STORAGE_BACKEND=sqlite
+# SQLITE_PATH=./muse-brain.local.sqlite
 npm run dev
 ```
 

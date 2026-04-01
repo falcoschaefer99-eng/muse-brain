@@ -43,6 +43,21 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 120; // requests per minute
 const RATE_WINDOW = 60_000; // 1 minute in ms
 
+
+function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; databaseUrl?: string; sqlitePath?: string } {
+	const backendRaw = String(env.STORAGE_BACKEND ?? "postgres").toLowerCase();
+	if (backendRaw === "sqlite") {
+		return {
+			backend: "sqlite",
+			sqlitePath: env.SQLITE_PATH || "./muse-brain.sqlite"
+		};
+	}
+	return {
+		backend: "postgres",
+		databaseUrl: env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL
+	};
+}
+
 // ============ MCP PROTOCOL ============
 
 async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: ExecutionContext, tenant: string): Promise<JsonRpcResponse> {
@@ -69,8 +84,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 
 			case "tools/call": {
 				const { name, arguments: args } = params;
-				const dbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
-				const storage = createStorage({ backend: 'postgres', databaseUrl: dbUrl }, tenant);
+				const storage = createStorage(resolveStorageConfig(env), tenant);
 				const result = await executeTool(name, args || {}, { storage, ai: env.AI, waitUntil: ctx.waitUntil.bind(ctx) });
 				return {
 					jsonrpc: "2.0",
@@ -114,14 +128,11 @@ export default {
 
 		if (url.pathname === "/health") {
 			let storage_ok = false;
-			if (env.HYPERDRIVE || env.DATABASE_URL) {
-				try {
-					const healthDbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
-					const healthStorage = createStorage({ backend: 'postgres', databaseUrl: healthDbUrl }, "rook");
-					await healthStorage.readBrainState();
-					storage_ok = true;
-				} catch {}
-			}
+			try {
+				const healthStorage = createStorage(resolveStorageConfig(env), "rook");
+				await healthStorage.readBrainState();
+				storage_ok = true;
+			} catch {}
 			const status = storage_ok ? "ok" : "degraded";
 			return new Response(JSON.stringify({ status }), {
 				headers: { "Content-Type": "application/json" }
@@ -204,8 +215,7 @@ export default {
 				}
 			}
 
-			const triggerDbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
-			const storage = createStorage({ backend: 'postgres', databaseUrl: triggerDbUrl }, tenant);
+			const storage = createStorage(resolveStorageConfig(env), tenant);
 			const result = await executeTool("mind_runtime", { action: "trigger", ...payload }, {
 				storage,
 				ai: env.AI,
@@ -292,8 +302,7 @@ export default {
 		let totalNoveltyChanges = 0;
 
 		for (const tenant of ALLOWED_TENANTS) {
-			const daemonDbUrl = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
-			const storage = createStorage({ backend: 'postgres', databaseUrl: daemonDbUrl }, tenant);
+			const storage = createStorage(resolveStorageConfig(env), tenant);
 			let decayChanges = 0;
 
 			// Sprint 4: Daemon Intelligence tasks run FIRST (before decay pass).

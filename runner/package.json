@@ -1,0 +1,22 @@
+{
+  "name": "muse-brain-runner",
+  "version": "0.1.0",
+  "description": "Autonomous execution layer for MUSE Brain — runs Claude with brain tools on a schedule",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "daemon": "node dist/index.js --daemon",
+    "dev": "npx tsx src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

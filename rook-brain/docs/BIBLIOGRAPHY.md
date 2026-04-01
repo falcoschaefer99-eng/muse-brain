@@ -1,7 +1,7 @@
 # Bibliography & Research Map — MUSE Brain v1.3
 
 **Date:** 2026-03-31
-**Status:** Complete — 16 academic papers + 3 implementation references mapped to architecture
+**Status:** Complete — 16 academic papers + 5 implementation references mapped to architecture
 
 ## Why this document exists
 
@@ -30,7 +30,7 @@ Every design choice has a receipt.
 | 11 | "Emotions in Artificial Intelligence" (arXiv 2505.01462, May 2025) | Somatic Marker Hypothesis: emotions guide reasoning under uncertainty; emotionally salient tags persist at high fidelity | Charge system (fresh/active/processing/metabolized); somatic markers in observation texture; emotional texture affects retrieval | src/constants.ts (CHARGE_PHASES), texture JSONB | Emotional tagging without grounded affect measurement |
 | 12 | "Artificial Emotion" (arXiv 2508.10286, Aug 2025) | Emotionally salient tags persist at high fidelity even when episodic details degrade | Iron-grip memories persist across sessions; charge-phase processing ("sitting in feelings"); processing_log tracks engagement depth | src/tools-v2/memory.ts, processing_log table | Over-persistence of charged memories may bias retrieval |
 | 13 | "The 2025 AI Agent Index" (arXiv 2602.17753, Feb 2026) | 1,445% surge in multi-agent inquiries; cost-optimized complexity-scaled dispatch (frontier/mid/small models) | Haiku/Sonnet/Opus assignment by task complexity in agent definitions; model field in YAML frontmatter | Agent definitions (model field) | Model pricing changes may invalidate tiering assumptions |
-| 14 | OpenMOSS (github.com/uluckyXH/OpenMOSS) | Scoring, patrol agent, reflection patterns for multi-agent orchestration | Daemon proposals with scoring; kit-hygiene patrol cycle; learning loop with adaptive thresholds | src/daemon/tasks/proposals.ts, kit-hygiene.ts, learning.ts | Pattern adapted from different domain context |
+| 14 | "Agent0: A Unified Agentic Framework" (arXiv 2511.16043, Nov 2025) | Unified framework for building and evaluating modular agent systems with explicit harness boundaries | Runner contract + policy-gated runtime provide explicit execution contracts and measurable orchestration boundaries | src/tools-v2/runtime.ts, runner contract artifacts, agent harness definitions | Benchmark optimization risk: systems can overfit measured harness metrics |
 | 15 | MIT Technology Review — Mechanistic Interpretability (2026 Breakthrough) | Understanding internal model processes; audit trails for reasoning transparency | Processing log (engagement audit trail); observation versions (full edit history); dispatch feedback telemetry | processing_log, observation_versions, dispatch_feedback tables | Interpretability of agent reasoning ≠ interpretability of model internals |
 | 16 | Pan, Zou, Guo, Ni, Zheng — "Natural-Language Agent Harnesses" (arXiv 2603.25723, Mar 2026) | Agent control logic as portable natural-language artifacts; explicit contracts between harness and runtime; durable artifacts surviving session boundaries; module ablation as scientific method | YAML agent definitions as natural-language harnesses; runner contracts with explicit schema (`should_run`, task, prompt, intention pulse); captured skill artifacts as durable portable objects; MCP tool surface as shared execution environment | Agent YAML frontmatter, src/tools-v2/runtime.ts (runner contract), src/tools-v2/skills.ts (durable artifacts) | Natural language harnesses may lose precision compared to code-level control for edge-case orchestration |
 
@@ -51,6 +51,20 @@ Every design choice has a receipt.
 - **Architecture mapping:** review-gated promotion flow, provenance links (runtime/task/observation)
 - **Code mapping:** `mind_skill review`, runtime artifact emission in `mind_runtime`
 - **Test mapping:** `test/skill-registry-v2.spec.ts`, `test/runtime-v2.spec.ts`
+
+### OpenMOSS
+
+- **Adopted principles:** scoring loops, patrol-agent hygiene passes, reflection-driven orchestration
+- **Architecture mapping:** daemon proposal scoring + kit-hygiene patrol + adaptive threshold learning loops
+- **Code mapping:** `src/daemon/tasks/proposals.ts`, `src/daemon/tasks/kit-hygiene.ts`, `src/daemon/tasks/learning.ts`
+- **Test mapping:** `test/propose-v2.spec.ts`, `test/health-v2.spec.ts`
+
+### Hermes v0.6.0
+
+- **Adopted principles:** provider-flexible runtime orchestration, explicit tool contracts, low-friction local execution loops
+- **Architecture mapping:** multi-provider runner contract posture with policy-gated autonomous execution and typed tool boundaries
+- **Code mapping:** `docs/SPRINT8_RUNNER_WIRING.md`, `src/tools-v2/runtime.ts`, `src/tools-v2/index.ts`
+- **Test mapping:** `test/runtime-v2.spec.ts`, `test/task-v2.spec.ts`
 
 ### Agentic Design Patterns (book overview)
 

@@ -135,10 +135,12 @@ export interface TextureUpdate {
 
 /** Config passed to createStorage. */
 export interface StorageConfig {
-	backend: "postgres";
+	backend: "postgres" | "sqlite";
 	/** Neon DATABASE_URL — required for postgres backend. */
 	databaseUrl?: string;
-	/** R2Bucket — required for r2 backend. */
+	/** Local sqlite file path — required for sqlite backend. */
+	sqlitePath?: string;
+	/** R2Bucket — legacy field (unused in v1.3). */
 	bucket?: R2Bucket;
 }
 
