@@ -148,6 +148,7 @@ describe('context confidence gating', () => {
 		expect(storage.hybridSearch).toHaveBeenCalledWith(expect.objectContaining({
 			entity_id: 'entity_project_atlas'
 		}));
+	});
 });
 
 describe('productivity fact extraction on mind_context', () => {

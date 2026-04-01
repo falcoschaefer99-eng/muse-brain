@@ -71,7 +71,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "muse-brain", version: "1.3.3" }, // keep in sync with package.json
+						serverInfo: { name: "muse-brain", version: "1.4.0" }, // keep in sync with package.json
 						capabilities: { tools: {} }
 					}
 				};
@@ -285,7 +285,7 @@ export default {
 		if (url.pathname === "/") {
 			return new Response(JSON.stringify({
 				name: "MUSE Brain",
-				version: "1.3.3", // keep in sync with package.json
+				version: "1.4.0", // keep in sync with package.json
 				tools: TOOLS.length,
 				phase: getCurrentCircadianPhase().phase
 			}), { headers: { "Content-Type": "application/json", ...corsHeaders } });

@@ -174,7 +174,7 @@ cat >/path/to/other-companion/companion-codex <<'SH'
 #!/bin/bash
 GOLD='\033[38;5;178m'; SAGE='\033[38;5;108m'; CYAN='\033[38;5;81m'; DIM='\033[2m'; RESET='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BRAIN_VERSION="${BRAIN_VERSION:-1.3.3}"
+BRAIN_VERSION="${BRAIN_VERSION:-1.4.0}"
 PACKAGE_JSON="$SCRIPT_DIR/../rook-cloud-brain/rook-brain/package.json"
 if [ -f "$PACKAGE_JSON" ]; then
   V=$(grep -m1 '"version"' "$PACKAGE_JSON" | sed -E 's/.*"version": "([^"]+)".*/\1/')

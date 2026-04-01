@@ -1,4 +1,4 @@
-# Bibliography & Research Map — MUSE Brain v1.3
+# Bibliography & Research Map — MUSE Brain v1.4
 
 **Date:** 2026-03-31
 **Status:** Complete — 16 academic papers + 5 implementation references mapped to architecture
@@ -92,4 +92,3 @@ Six areas where our implementation extends beyond current academic literature:
 6. **Relational harness engineering** — Pan et al. (2026) formalize natural-language agent harnesses as portable executable artifacts. Our implementation extends the NLAH pattern into relational and emotional dimensions — consent-gated dispatch, identity-persistent harnesses, and charge-aware artifact lifecycle — none of which appear in the current harness engineering literature.
 
 ---
-
