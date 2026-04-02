@@ -1,0 +1,23 @@
+{
+	"name": "muse-brain",
+	"version": "1.4.0",
+
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest -c vitest.unit.config.mts",
+		"test:unit": "vitest -c vitest.unit.config.mts",
+		"test:workers": "vitest",
+		"cf-typegen": "wrangler types"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"typescript": "^5.5.2",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.59.3"
+	},
+	"dependencies": {
+		"postgres": "^3.4.8"
+	}
+}

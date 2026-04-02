@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+audit*.jsonl
+node_modules/
+dist/
+logs/
+*.key
+*.pem
+.DS_Store
