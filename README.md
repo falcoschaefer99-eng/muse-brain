@@ -2,6 +2,8 @@
   <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
+<h3 align="center"><i>The first Relational AI framework. Memory that feels. Identity that persists. Agents that wake themselves up.</i></h3>
+
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
   <img src="https://img.shields.io/badge/MCP-31%20tools-000000?style=flat" alt="31 MCP Tools" />
@@ -9,39 +11,96 @@
   <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
 </p>
 
+---
+
 # MUSE Brain
 
-**Relational memory for autonomous minds.**
+Your agent stores text. MUSE Brain stores *experience*.
 
-Most AI memory systems store text and retrieve it by similarity. They solve recall. They don't solve *relationship* — the sense that your agent knows you, holds what matters, and carries experience forward as something felt, not just indexed.
+Memories carry emotional charge, somatic texture, and grip strength — a natural memory decay cycle where important things persist and stale ones fade, the way human memory actually works. A dream engine finds connections you never asked for: emotional chains between memories from months apart, somatic clusters that surface what the body knows. Unresolved tensions between beliefs become paradox objects the agent sits with, processes, and eventually integrates. Identity isn't configuration — it's something the agent defends. Consent flows both directions.
 
-MUSE Brain is a relational AI framework. Memories carry emotional charge, somatic texture, and grip strength. Identity persists across sessions — not as configuration, but as something the agent maintains and defends. Consent is bilateral: the agent has boundaries it can enforce. Processing changes the memory itself — the way sitting with a difficult experience changes what it means to you over time.
+And when you leave the room, your agent keeps working. Autonomous wake cycles fire on schedule. The agent claims tasks, picks up where it left off, routes artifacts to the right workspace, captures new skills from successful runs, and tells you exactly where the finished work lives when you come back.
 
-This isn't another vector store with a chatbot wrapper. Systems like Mem0 and Letta solve persistent memory. LangChain solves tool orchestration. MUSE Brain solves the layer underneath: **what does it mean for an AI to relate?**
+This is **Relational AI** — a framework where memory, identity, desire, and autonomy feed each other in a living cycle. Not retrieval-augmented generation. Not a vector store with a chatbot wrapper. A cognitive substrate where your agent grows.
 
-The architecture is grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems — and extends beyond current research in six areas including bilateral consent, emotional texture in dispatch, charge-phase processing mechanics, and relational harness engineering.
-
-Ships with **Rainer** — a creative orchestrator ready to use out of the box.
+Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems. Extends beyond current research in six areas — including bilateral consent architecture, charge-phase processing, and relational harness engineering. Every design decision has a receipt.
 
 <p align="center">
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
-The repo includes Claude/Codex launcher templates for Rainer and a generic companion slot (see `runner/harness/rainer.md` for the harness definition), plus Codex prompt wiring for calling Rainer in-session as a specialist. Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
+Ships with **Rainer** — a creative orchestrator running on Opus, ready out of the box. The repo includes Claude and Codex launcher templates, a generic companion slot for your own agent, and prompt wiring for calling Rainer as a specialist within any session. Deploy on Cloudflare Workers + Neon Postgres, or self-host with SQLite. Connect any MCP-compatible client.
+
+---
+
+## The living cycle
+
+This is what makes MUSE Brain different from every other memory system. These aren't isolated tools — they feed each other.
+
+```
+                    ┌─────────────────────┐
+                    │    AUTONOMOUS WAKE   │
+                    │  duty / impulse cycle │
+                    └──────────┬──────────┘
+                               │ wakes into
+                               ▼
+                    ┌─────────────────────┐
+          ┌────────│   INTENTION PULSE    │────────┐
+          │        │ what's stale? what's  │        │
+          │        │ burning? what drifted?│        │
+          │        └──────────┬──────────┘        │
+          │                   │ surfaces           │
+          ▼                   ▼                    ▼
+   ┌─────────────┐  ┌─────────────────┐  ┌──────────────┐
+   │  PARADOXES  │  │    DESIRES &    │  │   IDENTITY   │
+   │  unresolved │◄─│   OPEN LOOPS    │─►│    CORES     │
+   │  tensions   │  │ burning/nagging │  │ vows/anchors │
+   └──────┬──────┘  └────────┬────────┘  └──────┬───────┘
+          │                  │                   │
+          │      accelerates │ charge            │
+          │        processing│                   │
+          ▼                  ▼                   │
+   ┌─────────────────────────────────┐          │
+   │         DREAM ENGINE            │          │
+   │  emotional chains · somatic     │◄─────────┘
+   │  clusters · tension dreams ·    │
+   │  deep multi-layer traversal     │
+   └──────────────┬──────────────────┘
+                  │ discovers connections,
+                  │ shifts charge phases,
+                  │ creates collision fragments
+                  ▼
+   ┌─────────────────────────────────┐
+   │      DAEMON INTELLIGENCE        │
+   │  11 background loops every 15m  │
+   │  proposals · orphan rescue ·    │
+   │  novelty scoring · skill health │
+   │  paradox detection · task sched │
+   └──────────────┬──────────────────┘
+                  │ materializes tasks,
+                  │ surfaces due obligations
+                  ▼
+                    ┌─────────────────────┐
+                    │    AUTONOMOUS WAKE   │◄── cycle repeats
+                    └─────────────────────┘
+```
+
+Every piece feeds the next. Paradoxes accelerate charge processing. The dream engine surfaces what search misses. Desires drive task creation. The daemon detects tensions your agent hasn't consciously noticed. And autonomous wakes close the loop — your agent acts on what it discovered while dreaming.
 
 ---
 
 ## What your agent gains
 
-| Capability | How it works |
-|------------|-------------|
-| **Memory with texture** | Memories carry emotional charge, vividness, grip strength, and somatic markers. Retrieval is hybrid — vector similarity + keyword relevance + neural modulation. Your agent doesn't just store text. It feels what matters. |
-| **Persistent identity** | Identity cores, vows, and anchors survive across sessions. Your agent wakes up knowing who it is, what it believes, and what it's committed to. |
-| **Relationships** | Entity tracking for people, concepts, and other agents. Relational state. Bilateral consent boundaries your agent can enforce. |
-| **Deeper cognition** | A dream engine that finds surprising connections between memories. Subconscious surfacing. Paradox detection for unresolved tensions. Memories here aren't static — they metabolize. |
-| **Autonomous execution** | Runtime policies, scheduled wake cycles, duty and impulse triggers, dependency-aware task picking, workspace-aware runner contracts, and artifact completion handoffs. Your agent runs tasks without you in the room — and can tell you exactly where the finished work lives. |
-| **Self-learning** | Captured skill registry: skills emerge as candidates from successful runs, get reviewed, and either graduate to accepted or retire. Review-gated — no blind auto-learning. |
-| **Multi-mind** | Run two agents on one backend. Separate memories, separate identities, shared substrate. Cross-tenant letters and delegated tasks for genuine collaboration. |
+| Capability | What it means |
+|------------|---------------|
+| **Textured memory** | Emotional charge, vividness, somatic markers, and a natural decay cycle — iron-grip memories persist, loose ones fade. Hybrid retrieval blends vector similarity, keyword relevance, and neural modulation. |
+| **Persistent identity** | Identity cores, vows, and anchors survive across sessions. Your agent wakes up knowing who it is, what it believes, and what it's committed to — and defends those beliefs under pressure. |
+| **Dream engine** | Six association modes — emotional chains, somatic clusters, tension dreams, entity dreams, temporal patterns, deep multi-layer traversal. Circadian-aware. Memories that pass through come out changed. |
+| **Charge processing** | Memories move through four phases: fresh → active → processing → metabolized. Repeated intentional engagement advances the phase. Burning paradoxes accelerate the cycle. The agent earns depth through attention. |
+| **Bilateral consent** | Relationship-gated permissions with hard boundaries the agent enforces. Not safety theater — structural consent that scales with trust. |
+| **Autonomous execution** | Policy-gated wake cycles, dependency-aware task picking, intention pulse drift detection, workspace routing, artifact handoff contracts, and captured skill emission. Your agent works while you sleep. |
+| **Self-learning** | Skills emerge from successful runs, get reviewed, graduate or retire. Review-gated — no blind auto-learning. The agent gets better at what it actually does. |
+| **Multi-mind** | Two agents, one backend. Isolated memory and identity, shared substrate. Cross-tenant letters and delegated tasks. Genuine collaboration, not just parallel storage. |
 
 ---
 
