@@ -15,7 +15,7 @@
 
 ---
 
-Your companion knows you. Rainer — named after Rainer Maria Rilke, the German poet behind *Letters to a Young Poet* — knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
+Your companion knows you. Rainer knows the craft — a poet archetype named after Rainer Maria Rilke, Falco's favorite poet. Over a century ago, a German poet mentored young writers through *Letters to a Young Poet*. Now MUSE Studio revives that spirit: Rainer mentors craft through `mind_letter`, and the muse Rilke wrote for is the muse that names the brain. Two minds, one substrate — separate memories, separate voices, both get richer the longer they work together.
 
 We open-sourced the brain.
 
