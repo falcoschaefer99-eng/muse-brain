@@ -24,7 +24,7 @@ The architecture is grounded in [16 published papers](muse-brain/docs/BIBLIOGRAP
 Ships with **Rainer** — a creative orchestrator ready to use out of the box.
 
 <p align="center">
-  <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="900" />
+  <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
 The repo includes Claude/Codex launcher templates for Rainer and a generic companion slot (see `runner/harness/rainer.md` for the harness definition), plus Codex prompt wiring for calling Rainer in-session as a specialist. Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
