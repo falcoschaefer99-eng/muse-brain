@@ -74,6 +74,22 @@ describe('worker HTTP routes', () => {
 		expect(payload.error).toBe('Unauthorized');
 	});
 
+	it('/mcp rejects requests when API_KEY is unset', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+			}),
+			{ ...env, API_KEY: '' },
+			makeContext()
+		);
+
+		expect(response.status).toBe(503);
+		const payload = await response.json() as { error?: string };
+		expect(payload.error).toBe('Service misconfigured');
+	});
+
 	it('/mcp rejects invalid tenant', async () => {
 		const response = await worker.fetch(
 			makeRequest('/mcp', {
@@ -82,6 +98,44 @@ describe('worker HTTP routes', () => {
 					'Content-Type': 'application/json',
 					Authorization: 'Bearer test-api-key',
 					'X-Brain-Tenant': 'hacker'
+				},
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+			}),
+			env,
+			makeContext()
+		);
+
+		expect(response.status).toBe(400);
+		const payload = await response.json() as { error?: string };
+		expect(payload.error).toBe('Invalid tenant');
+	});
+
+	it('/mcp trims tenant header values', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: 'Bearer test-api-key',
+					'X-Brain-Tenant': '  rook  '
+				},
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+			}),
+			env,
+			makeContext()
+		);
+
+		expect(response.status).toBe(200);
+	});
+
+	it('/mcp rejects tenant headers that exceed length limits', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: 'Bearer test-api-key',
+					'X-Brain-Tenant': 'r'.repeat(65)
 				},
 				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
 			}),
@@ -137,6 +191,24 @@ describe('worker HTTP routes', () => {
 		expect(Array.isArray(firstPayload.result?.tools)).toBe(true);
 		expect((firstPayload.result?.tools?.length ?? 0)).toBeGreaterThan(0);
 		expect(secondPayload.result?.tools?.length).toBe(firstPayload.result?.tools?.length);
+	});
+
+	it('/mcp SSE validates tenant header', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', {
+				method: 'GET',
+				headers: {
+					Authorization: 'Bearer test-api-key',
+					'X-Brain-Tenant': 'hacker'
+				}
+			}),
+			env,
+			makeContext()
+		);
+
+		expect(response.status).toBe(400);
+		const payload = await response.json() as { error?: string };
+		expect(payload.error).toBe('Invalid tenant');
 	});
 
 	it('/runtime/trigger rejects invalid auth', async () => {

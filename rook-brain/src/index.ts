@@ -43,6 +43,7 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 120; // requests per minute
 const RATE_WINDOW = 60_000; // 1 minute in ms
 
+const MAX_TENANT_HEADER_LENGTH = 64;
 
 function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; databaseUrl?: string; sqlitePath?: string } {
 	const backendRaw = String(env.STORAGE_BACKEND ?? "postgres").toLowerCase();
@@ -56,6 +57,21 @@ function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; datab
 		backend: "postgres",
 		databaseUrl: env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL
 	};
+}
+
+function resolveTenantFromHeader(request: Request): string | null {
+	const rawTenant = request.headers.get("X-Brain-Tenant");
+	const tenant = (rawTenant?.trim() || "rook");
+
+	if (!tenant || tenant.length > MAX_TENANT_HEADER_LENGTH || tenant.includes("\0")) {
+		return null;
+	}
+
+	if (!ALLOWED_TENANTS.includes(tenant as typeof ALLOWED_TENANTS[number])) {
+		return null;
+	}
+
+	return tenant;
 }
 
 // ============ MCP PROTOCOL ============
@@ -143,10 +159,18 @@ export default {
 		// Query param needed for Desktop app connectors (no custom header support)
 		const authHeader = request.headers.get("Authorization");
 		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (url.searchParams.get("key") || "");
+		const configuredKey = env.API_KEY?.trim() || "";
+		if (!configuredKey) {
+			console.error("API_KEY missing or empty");
+			return new Response(JSON.stringify({ error: "Service misconfigured" }), {
+				status: 503,
+				headers: { "Content-Type": "application/json", ...corsHeaders }
+			});
+		}
 
 		const encoder = new TextEncoder();
 		const keyA = encoder.encode(providedKey || "");
-		const keyB = encoder.encode(env.API_KEY || "");
+		const keyB = encoder.encode(configuredKey);
 		if (keyA.byteLength !== keyB.byteLength || !crypto.subtle.timingSafeEqual(keyA, keyB)) {
 			return new Response(JSON.stringify({ error: "Unauthorized" }), {
 				status: 401,
@@ -188,8 +212,8 @@ export default {
 		// Runtime trigger bridge — webhook/scheduler-friendly entrypoint.
 		// Uses existing API-key auth and tenant scoping.
 		if (url.pathname === "/runtime/trigger" && request.method === "POST") {
-			const tenant = request.headers.get("X-Brain-Tenant") || "rook";
-			if (!ALLOWED_TENANTS.includes(tenant as typeof ALLOWED_TENANTS[number])) {
+			const tenant = resolveTenantFromHeader(request);
+			if (!tenant) {
 				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
 					status: 400,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
@@ -230,12 +254,20 @@ export default {
 
 		// SSE for MCP connection
 		if (url.pathname === "/mcp" && request.method === "GET") {
+			const tenant = resolveTenantFromHeader(request);
+			if (!tenant) {
+				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
+					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+
 			const { readable, writable } = new TransformStream();
 			const writer = writable.getWriter();
 			const encoder = new TextEncoder();
 
 			ctx.waitUntil((async () => {
-				await writer.write(encoder.encode(`event: endpoint\ndata: /mcp\n\n`));
+				await writer.write(encoder.encode(`event: endpoint\ndata: /mcp?tenant=${tenant}\n\n`));
 				const interval = setInterval(async () => {
 					try { await writer.write(encoder.encode(`: ping\n\n`)); } catch { clearInterval(interval); }
 				}, 15000);
@@ -249,8 +281,8 @@ export default {
 		// MCP JSON-RPC
 		if (url.pathname === "/mcp" && request.method === "POST") {
 			// Tenant resolution — default "rook" for backward compat (proxy sends no header yet)
-			const tenant = request.headers.get("X-Brain-Tenant") || "rook";
-			if (!ALLOWED_TENANTS.includes(tenant as typeof ALLOWED_TENANTS[number])) {
+			const tenant = resolveTenantFromHeader(request);
+			if (!tenant) {
 				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
 					status: 400,
 					headers: { "Content-Type": "application/json", ...corsHeaders }

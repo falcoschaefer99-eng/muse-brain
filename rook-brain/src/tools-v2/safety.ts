@@ -463,8 +463,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			// ---- CHECK ----
 			if (action === "check") {
 				const triggers = await storage.readTriggers();
-				const now = getTimestamp();
 				const nowMs = Date.now();
+				const now = new Date(nowMs).toISOString();
 				const fired: any[] = [];
 				const approaching: any[] = [];
 				const presenceEvents = parsePresenceEvents(args, nowMs, now);
