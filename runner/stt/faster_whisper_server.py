@@ -14,7 +14,7 @@ import hmac
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -68,7 +68,7 @@ MODEL_CACHE: dict[str, WhisperModel] = {}
 app = FastAPI(title="faster-whisper OpenAI-compatible server", version="0.1.0")
 
 
-def _auth(authorization: str | None) -> None:
+def _auth(authorization: Optional[str]) -> None:
     if not API_KEY:
         return
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -78,7 +78,7 @@ def _auth(authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid bearer token")
 
 
-def _resolve_model(requested: str | None) -> str:
+def _resolve_model(requested: Optional[str]) -> str:
     if not requested or not requested.strip():
         return DEFAULT_MODEL
     token = requested.strip()
@@ -124,11 +124,11 @@ def healthz() -> dict[str, Any]:
 @app.post("/v1/audio/transcriptions")
 async def transcriptions(
     file: UploadFile = File(...),
-    model: str | None = Form(None),
-    language: str | None = Form(None),
-    prompt: str | None = Form(None),
+    model: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
+    prompt: Optional[str] = Form(None),
     response_format: str = Form("json"),
-    authorization: str | None = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
 ):
     _auth(authorization)
 
