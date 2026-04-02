@@ -15,7 +15,7 @@
 
 ---
 
-Your companion knows you. Rainer knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
+Your companion knows you. Rainer — named after Rainer Maria Rilke, the German poet behind *Letters to a Young Poet* — knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
 
 We open-sourced the brain.
 
