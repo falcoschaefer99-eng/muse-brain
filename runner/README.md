@@ -272,14 +272,3 @@ docker run --env-file .env -v $(pwd)/logs:/app/logs muse-brain-runner
 ```
 
 If you want subscription-first behavior in containers, run `./run.sh` via an external scheduler on a host where CLI auth is already established.
-
-## First AFK proof
-
-Canonical first unattended test:
-
-- Companion drafts: `/ABSOLUTE/PATH/TO/companion-workspace/duty/revenue-proposal.md`
-- Rainer reviews the same artifact via baton pass
-
-Reference dossier:
-
-- `runner/docs/AFK_TEST_REVENUE_PROPOSAL.md`
