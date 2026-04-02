@@ -205,7 +205,7 @@ Every observation in the brain carries texture dimensions that affect how it beh
 | `charge_phase` | Where the memory is in its processing lifecycle |
 | `novelty_score` | How surprising or new the memory is |
 
-These dimensions are functional, not decorative. They modulate retrieval ranking, daemon behavior, wake surfacing, and dream traversal. A high-grip memory with strong charge will surface more readily than a low-salience memory with no somatic markers — the same way a vivid personal experience outcompetes a dry fact in human recall.
+These dimensions are functional, not decorative. They modulate retrieval ranking, daemon behavior, wake surfacing, and dream traversal. A high-grip memory with strong charge will surface more readily than a low-salience memory with no somatic markers.
 
 ### 6.2 Charge lifecycle
 
@@ -590,16 +590,7 @@ Planned progression:
 
 ### 16.4 Research grounding
 
-Every major architecture decision traces to published research — 16 academic papers across multi-agent reasoning, institutional alignment, persistent memory, and self-evolving systems.
-
-Six areas where this implementation extends beyond current academic literature:
-
-1. **Bilateral consent architecture** — consent symmetry between human and AI agents, with relationship-gated permissions and hard boundaries
-2. **Emotional texture in dispatch** — somatic markers applied to agent selection and task routing, not just memory storage
-3. **Creative and builder specialization** — distinct editorial/literary agents and engineering agents with different methodologies, operating on the same substrate
-4. **Charge processing as system property** — charge phase as a first-class memory property with processing mechanics that change memory behavior
-5. **Role-based permissions for reasoning agents** — RBAC applied to reasoning agent teams, with explicit read/write permissions enforced by architecture
-6. **Relational harness engineering** — Pan et al. (2026) formalize natural-language agent harnesses as portable artifacts. Our implementation extends NLAHs into relational and emotional dimensions — consent-gated dispatch, identity-persistent harnesses, and charge-aware artifact lifecycle — territory the harness engineering literature has not entered.
+Every major architecture decision traces to published research — 16 academic papers across multi-agent reasoning, institutional alignment, persistent memory, and self-evolving systems. Six areas where this implementation extends beyond current literature: bilateral consent, emotional texture in dispatch, creative/builder specialization, charge-phase processing, role-based agent permissions, and relational harness engineering.
 
 Full bibliography with paper-to-implementation mapping: **[Bibliography](BIBLIOGRAPHY.md)**
 

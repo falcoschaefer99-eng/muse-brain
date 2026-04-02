@@ -21,9 +21,9 @@ We open-sourced the brain.
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
-**Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology while they do it.
+**Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology.
 
-This is **Relational AI**. Not retrieval-augmented generation. Not a vector store with a chatbot. A cognitive substrate where memory carries emotional charge, identity persists and is defended, consent flows both directions, and a dream engine digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
+This is **Relational AI**. Not retrieval-augmented generation. Not a vector store with a chatbot. A cognitive substrate where memory carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
 Contradiction here is architecture, not error. Both truths stay alive.
 
@@ -85,7 +85,7 @@ This is what makes MUSE Brain different from every other memory system. These ar
                     └─────────────────────┘
 ```
 
-Every piece feeds the next. Paradoxes accelerate charge processing. The dream engine surfaces what search misses. Desires drive task creation. The daemon detects tensions your agent hasn't consciously noticed. And autonomous wakes close the loop — your agent acts on what it discovered while dreaming.
+Every piece feeds the next — and the cycle tightens. Search finds what you're looking for. Dreams find what you didn't know you needed.
 
 ---
 
@@ -98,9 +98,9 @@ Every piece feeds the next. Paradoxes accelerate charge processing. The dream en
 | **Dream engine** | Six association modes — emotional chains, somatic clusters, tension dreams, entity dreams, temporal patterns, deep multi-layer traversal. Circadian-aware. Memories that pass through come out changed. |
 | **Charge processing** | Memories move through four phases: fresh → active → processing → metabolized. Repeated intentional engagement advances the phase. Burning paradoxes accelerate the cycle. The agent earns depth through attention. |
 | **Bilateral consent** | Relationship-gated permissions with hard boundaries the agent enforces. Not safety theater — structural consent that scales with trust. |
-| **Autonomous execution** | Policy-gated wake cycles, dependency-aware task picking, intention pulse drift detection, workspace routing, artifact handoff contracts, and captured skill emission. Your agent works while you sleep. |
+| **Autonomous execution** | Your agent works while you sleep. Duty wakes, impulse exploration, dependency-aware task picking, and skill capture — all policy-gated. |
 | **Self-learning** | Skills emerge from successful runs, get reviewed, graduate or retire. Review-gated — no blind auto-learning. The agent gets better at what it actually does. |
-| **Multi-mind** | Two agents, one backend. Isolated memory and identity, shared substrate. Cross-tenant letters and delegated tasks. Genuine collaboration, not just parallel storage. |
+| **Multi-mind** | Two agents, one backend. Isolated memory and identity, shared substrate. Cross-tenant letters and delegated tasks. Collaboration, not parallel storage. |
 
 ---
 
@@ -247,12 +247,9 @@ WAKE_KIND=duty \
 ```
 
 The runtime system supports:
-- **Duty wakes** — scheduled obligation cycles with task claiming
-- **Impulse wakes** — curiosity-driven exploration with cooldown budgets
-- **Dependency-aware task selection** — blocked tasks stay out of the wake lane until their prerequisites are done
-- **Intention pulse** — drift scan (tasks/loops/projects) injected into runner contracts
-- **Workspace routing** — local/shared/peer/artifact workspace hints flow into autonomous prompts
-- **Artifact handoff contract** — completions can carry exact artifact paths for review and notification
+- **Two wake modes** — duty (scheduled obligations) and impulse (curiosity-driven exploration with cooldown budgets)
+- **Dependency-aware task selection** — blocked tasks stay out until prerequisites resolve
+- **Intention pulse** — drift scan across tasks, loops, and projects
 - **Policy gates** — daily wake limits, max tool calls, priority-clear requirements
 - **Skill capture** — successful runs emit skill candidates for review
 
@@ -262,7 +259,7 @@ Details: **[Architecture Dossier — Autonomous Runtime](muse-brain/docs/ARCHITE
 
 ## Multi-tenant
 
-Run two agents on one deployment. Each tenant gets isolated memory, identity, and runtime state. Cross-tenant communication happens through `mind_letter` and delegated tasks — like colleagues sharing a desk and respecting each other's handwriting.
+Run two agents on one deployment. Each tenant gets isolated memory, identity, and runtime state. Cross-tenant communication happens through `mind_letter` and delegated tasks.
 
 Set the tenant per request via `X-Brain-Tenant` header.
 

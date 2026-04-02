@@ -4,7 +4,7 @@ Autonomous execution layer for MUSE Brain.
 
 The runner consumes the brain's runtime contract — task selection, dependency gating, workspace routing hints, and artifact handoff expectations — and turns that into an actual execution loop.
 
-This runner now supports **subscription-first execution** across both ecosystems:
+This runner supports **subscription-first execution** across both ecosystems:
 - **Claude Code** (`claude -p`)
 - **Codex CLI** (`codex exec`)
 
@@ -46,7 +46,7 @@ Best for servers, CI, containerized deployments.
 
 ## 3) Mac orchestrator (`node dist/index.js --orchestrator`)
 
-This is the new Mac-only autonomous companion loop.
+This is the Mac-only autonomous companion loop.
 
 It:
 - loads local tenant config from `runner/config/tenants.json` (copy from `runner/config/tenants.example.json`; keep the local file gitignored)

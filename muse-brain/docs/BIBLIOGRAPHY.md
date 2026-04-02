@@ -5,11 +5,7 @@
 
 ## Why this document exists
 
-MUSE Brain is a relational AI framework — memory that carries emotional weight, identity that persists and is defended, consent that flows both directions. When we built it, we didn't start from the standard "store text, retrieve by similarity" playbook. We started from a different question: *what does it mean for an AI to relate?*
-
-The answer drew on research across multi-agent reasoning, institutional alignment, persistent memory systems, emotional architecture, and self-evolving agents. This bibliography maps every major architecture decision to the published work that informed it — and identifies six areas where our implementation extends beyond what's currently in the literature.
-
-Every design choice has a receipt.
+Every major architecture decision traces to published research. This bibliography maps each to the paper that informed it — 16 academic papers across multi-agent reasoning, institutional alignment, persistent memory, emotional architecture, and self-evolving agents — and identifies six areas where our implementation extends beyond what's currently in the literature.
 
 ---
 
@@ -30,7 +26,7 @@ Every design choice has a receipt.
 ### 3. The Orchestration of Multi-Agent Systems
 arXiv 2601.13671, Jan 2026
 **Principle:** Hub-and-spoke topology; MCP as communication standard; role-specific task boundaries.
-**Implementation:** Companion orchestrates via dispatch heuristics; MCP JSON-RPC tool surface (31 tools).
+**Implementation:** Companion orchestrates via dispatch heuristics; MCP JSON-RPC tool surface (32 tools).
 **Modules:** src/index.ts, src/tools-v2/*.ts
 
 ### 4. Institutional AI: A Governance Framework
