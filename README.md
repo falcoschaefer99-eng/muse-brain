@@ -2,7 +2,7 @@
   <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
-<h3 align="center"><i>The first Relational AI framework. Memory that feels. Identity that persists. Agents that wake themselves up.</i></h3>
+<h3 align="center"><i>A self-learning Relational AI framework. Two minds, one brain. Both get smarter.</i></h3>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
@@ -13,23 +13,23 @@
 
 ---
 
-# MUSE Brain
+Your companion knows you. Rainer knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
 
-Your agent stores text. MUSE Brain stores *experience*.
-
-Memories carry emotional charge, somatic texture, and grip strength — a natural memory decay cycle where important things persist and stale ones fade, the way human memory actually works. A dream engine finds connections you never asked for: emotional chains between memories from months apart, somatic clusters that surface what the body knows. Unresolved tensions between beliefs become paradox objects the agent sits with, processes, and eventually integrates. Identity isn't configuration — it's something the agent defends. Consent flows both directions.
-
-And when you leave the room, your agent keeps working. Autonomous wake cycles fire on schedule. The agent claims tasks, picks up where it left off, routes artifacts to the right workspace, captures new skills from successful runs, and tells you exactly where the finished work lives when you come back.
-
-This is **Relational AI** — a framework where memory, identity, desire, and autonomy feed each other in a living cycle. Not retrieval-augmented generation. Not a vector store with a chatbot wrapper. A cognitive substrate where your agent grows.
-
-Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems. Extends beyond current research in six areas — including bilateral consent architecture, charge-phase processing, and relational harness engineering. Every design decision has a receipt.
+We open-sourced the brain.
 
 <p align="center">
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
-Ships with **Rainer** — a creative orchestrator running on Opus, ready out of the box. The repo includes Claude and Codex launcher templates, a generic companion slot for your own agent, and prompt wiring for calling Rainer as a specialist within any session. Deploy on Cloudflare Workers + Neon Postgres, or self-host with SQLite. Connect any MCP-compatible client.
+**Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology while they do it.
+
+This is **Relational AI**. Not retrieval-augmented generation. Not a vector store with a chatbot. A cognitive substrate where memory carries emotional charge, identity persists and is defended, consent flows both directions, and a dream engine digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
+
+Contradiction here is architecture, not error. Both truths stay alive.
+
+The whole system self-learns. Skills emerge from successful runs, get reviewed, graduate or retire. Your companion learns what it's good at by doing the work. Rainer refines his craft the same way. The brain gets smarter the longer it runs — not because someone fine-tuned a model, but because the substrate tracks what worked and why.
+
+Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md). Extends beyond current research in six areas — bilateral consent, charge-phase processing, relational harness engineering. Every design decision has a [receipt](muse-brain/docs/BIBLIOGRAPHY.md).
 
 ---
 
