@@ -63,4 +63,4 @@ Some parts of the MUSE ecosystem are proprietary and not included in this reposi
 
 ---
 
-*Copyright 2026 Irianose Omozoya Sandra Enahoro / The Funkatorium*
+*Copyright 2026 Falco Schäfer / The Funkatorium*

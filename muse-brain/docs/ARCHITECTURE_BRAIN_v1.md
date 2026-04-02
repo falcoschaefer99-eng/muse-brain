@@ -96,7 +96,7 @@ Every request passes through six layers before reaching a tool:
 
 ---
 
-## 5) Tool surface — 32 MCP tools across 19 modules
+## 5) Tool surface — 31 MCP tools across 19 modules
 
 Tool barrel: `src/tools-v2/index.ts`. Organized by cognitive function.
 
@@ -605,10 +605,8 @@ Full bibliography with paper-to-implementation mapping: **[Bibliography](BIBLIOG
 
 Every feature explained in depth with the philosophy behind it: **[Capability Reference](CAPABILITIES.md)**
 
-Canonical terminology and v1.1 function deltas: **[Glossary](GLOSSARY.md)**
-
 ---
 
 <p align="center">
-  <b>MUSE Brain</b> by <a href="https://funkatorium.org">The Funkatorium</a>
+  <b>MUSE Brain</b> by <a href="https://linktr.ee/musestudio95">The Funkatorium</a>
 </p>

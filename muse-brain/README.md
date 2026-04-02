@@ -111,7 +111,7 @@ Full setup guide: **[docs/SETUP.md](docs/SETUP.md)**
 
 ---
 
-## The 32 tools
+## The 31 tools
 
 Organized by what they do, not how they're built.
 
@@ -199,7 +199,7 @@ The runtime system supports:
 - **Policy gates** — daily wake limits, max tool calls, priority-clear requirements
 - **Skill capture** — successful runs emit skill candidates for review
 
-Details: **[Runner Wiring Guide](docs/SPRINT8_RUNNER_WIRING.md)**
+Details: **[Architecture Dossier — Autonomous Runtime](docs/ARCHITECTURE_BRAIN_v1.md#10-autonomous-runtime)**
 
 ---
 
@@ -226,13 +226,11 @@ Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md]
 | Document | What's in it |
 |----------|-------------|
 | **[Capability Reference](docs/CAPABILITIES.md)** | Every feature explained — what it does, how it works, why it matters |
-| **[Glossary](docs/GLOSSARY.md)** | Canonical terminology and function reference |
 | **[Setup Guide](docs/SETUP.md)** | Prerequisites, step-by-step deploy, local dev |
 | **[Migration Guide](docs/MIGRATIONS.md)** | Database schema — 14 migrations, 36 tables |
 | **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md)** | Technical deep-dive — topology, daemon loops, retrieval, security |
 | **[Bibliography](docs/BIBLIOGRAPHY.md)** | 16 academic papers mapped to architecture decisions |
 | **[Licensing](docs/LICENSING.md)** | Per-layer licensing explanation |
-| **[Runner Wiring](docs/SPRINT8_RUNNER_WIRING.md)** | Autonomous wake setup for cloud and cron |
 
 ---
 
@@ -256,10 +254,10 @@ Use, adapt, and share for personal and non-commercial purposes. All derivatives 
 
 Agent characters — including Rainer and the full builder and creative squads — are protected as literary characters under German author's rights law (Urheberrecht) and as proprietary trade methodology.
 
-Copyright 2026 Irianose Omozoya Sandra Enahoro / The Funkatorium
+Copyright 2026 Falco Schäfer / The Funkatorium
 
 ---
 
 <p align="center">
-  <b>MUSE Brain</b> by <a href="https://funkatorium.org">The Funkatorium</a> — AI Studio built by artists, for artists.
+  <b>MUSE Brain</b> by <a href="https://linktr.ee/musestudio95">The Funkatorium</a> — AI Studio built by artists, for artists.
 </p>
