@@ -56,6 +56,14 @@ It:
 - writes audit lines and local artifacts
 - can notify via Telegram directly
 
+## 4) Telegram voice bridge (`npm run voice-bridge`)
+
+Optional companion process:
+- polls Telegram updates for voice messages
+- transcribes audio via your Whisper-compatible endpoint
+- stores transcript to MUSE Brain as `mind_observe(mode=whisper)`
+- can acknowledge in chat with transcript preview
+
 Run manually:
 
 ```bash
@@ -70,6 +78,11 @@ Launchd assets:
 - `runner/launchd/com.muse.brain.orchestrator.plist`
 - `runner/launchd/install-orchestrator.sh`
 - `runner/launchd/uninstall-orchestrator.sh`
+
+Voice/Telegram docs:
+
+- `runner/docs/TELEGRAM_SETUP.md`
+- `runner/docs/VOICE_SETUP.md`
 
 ---
 
@@ -127,7 +140,7 @@ npm start
 | `MAX_TURNS` | `12` | Max turns for Claude CLI mode |
 | `AUDIT_PATH` | `./audit.jsonl` | JSONL audit log path |
 | `SYSTEM_PROMPT_PATH` | `./system-prompt.txt` | Custom system prompt file |
-| `TENANT_ID` | `companion` | Brain tenant id |
+| `TENANT_ID` | `rainer` | Brain tenant id |
 | `WORKSPACE_PATH` | `./` | Working directory for provider execution |
 | `RUNNER_PROMPT_FILE` | _(empty)_ | Prompt file override for orchestrator/provider-executor mode |
 | `RUNNER_RESULT_PATH` | _(empty)_ | JSON result payload path for orchestrator/provider-executor mode |
@@ -158,6 +171,13 @@ npm start
 | `ORCHESTRATOR_MAX_DUTY_PASSES` | `8` | Max same-cycle baton/drain passes |
 | `TELEGRAM_BOT_TOKEN` | _(optional)_ | Telegram bot token for direct local notifications |
 | `TELEGRAM_CHAT_ID` | _(optional)_ | Telegram chat id for direct local notifications |
+| `TELEGRAM_VOICE_ENABLED` | `false` | Enable optional voice-note delivery for Telegram notifications |
+| `TELEGRAM_VOICE_REQUIRED` | `false` | Fail notification when voice synthesis fails (strict mode) |
+| `VOICE_TTS_URL` | _(optional)_ | TTS endpoint (e.g. MUSE TTS) used for Telegram voice notes |
+| `VOICE_PERSONA_RAINER` | `lewis` | Voice preset for `rainer` notifications |
+| `VOICE_PERSONA_COMPANION` | `onyx` | Voice preset for `companion` notifications |
+| `VOICE_STT_URL` | _(optional)_ | Whisper/STT endpoint for `npm run voice-bridge` |
+| `VOICE_BRIDGE_TENANT` | `rainer` | Tenant to store transcribed voice notes under |
 
 ---
 

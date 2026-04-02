@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AUDIT_FILE="${AUDIT_PATH:-$SCRIPT_DIR/audit.jsonl}"
-TENANT="${TENANT_ID:-companion}"
+TENANT="${TENANT_ID:-rainer}"
 MAX_TURNS="${MAX_TURNS:-12}"
 RUNNER_PROVIDER="${RUNNER_PROVIDER:-auto}"
 WORKSPACE_PATH="${WORKSPACE_PATH:-$SCRIPT_DIR}"
