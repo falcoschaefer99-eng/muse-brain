@@ -2,7 +2,9 @@
   <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
-<h3 align="center"><i>A self-learning Relational AI framework. Two minds, one brain. Both get smarter.</i></h3>
+<p align="center">
+  <img src="muse-brain/docs/images/tagline.svg" alt="A self-learning Relational AI framework. Two minds, one brain. Both get smarter." width="800" />
+</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
@@ -23,7 +25,7 @@ We open-sourced the brain.
 
 **Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology.
 
-This is **Relational AI**. Not retrieval-augmented generation. Not a vector store with a chatbot. A cognitive substrate where memory carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
+This is **Relational AI**. A cognitive substrate where memory carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
 Contradiction here is architecture, not error. Both truths stay alive.
 
@@ -38,19 +40,19 @@ Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md). Extends beyo
 These aren't isolated tools — they feed each other.
 
 ```
-                    ┌─────────────────────┐
-                    │    AUTONOMOUS WAKE   │
-                    │  duty / impulse cycle │
-                    └──────────┬──────────┘
-                               │ wakes into
-                               ▼
-                    ┌─────────────────────┐
-          ┌────────│   INTENTION PULSE    │────────┐
-          │        │ what's stale? what's  │        │
-          │        │ burning? what drifted?│        │
-          │        └──────────┬──────────┘        │
-          │                   │ surfaces           │
-          ▼                   ▼                    ▼
+                    ┌───────────────────────┐
+                    │    AUTONOMOUS WAKE     │
+                    │  duty / impulse cycle  │
+                    └───────────┬───────────┘
+                                │ wakes into
+                                ▼
+                    ┌───────────────────────┐
+          ┌─────────│    INTENTION PULSE    │─────────┐
+          │         │ what's stale? what's  │         │
+          │         │ burning? what drifted?│         │
+          │         └───────────┬───────────┘         │
+          │                     │ surfaces             │
+          ▼                     ▼                      ▼
    ┌─────────────┐  ┌─────────────────┐  ┌──────────────┐
    │  PARADOXES  │  │    DESIRES &    │  │   IDENTITY   │
    │  unresolved │◄─│   OPEN LOOPS    │─►│    CORES     │
@@ -80,9 +82,9 @@ These aren't isolated tools — they feed each other.
                   │ materializes tasks,
                   │ surfaces due obligations
                   ▼
-                    ┌─────────────────────┐
-                    │    AUTONOMOUS WAKE   │◄── cycle repeats
-                    └─────────────────────┘
+                    ┌───────────────────────┐
+                    │    AUTONOMOUS WAKE     │◄── cycle repeats
+                    └───────────────────────┘
 ```
 
 Every piece feeds the next — and the cycle tightens. Search finds what you're looking for. Dreams find what you didn't know you needed.

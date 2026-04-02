@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 40">
+  <defs>
+    <clipPath id="typing">
+      <rect x="0" y="0" width="800" height="40">
+        <animate
+          attributeName="width"
+          values="0;800;800;0"
+          keyTimes="0;0.5;0.92;1"
+          dur="8s"
+          repeatCount="indefinite"
+        />
+      </rect>
+    </clipPath>
+  </defs>
+
+  <text
+    x="5" y="28"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="19"
+    font-style="italic"
+    fill="#9CAF88"
+    clip-path="url(#typing)"
+  >A self-learning Relational AI framework. Two minds, one brain. Both get smarter.</text>
+
+  <line x1="800" y1="8" x2="800" y2="34" stroke="#9CAF88" stroke-width="2" opacity="0.9">
+    <animate
+      attributeName="x1"
+      values="5;795;795;5"
+      keyTimes="0;0.5;0.92;1"
+      dur="8s"
+      repeatCount="indefinite"
+    />
+    <animate
+      attributeName="x2"
+      values="5;795;795;5"
+      keyTimes="0;0.5;0.92;1"
+      dur="8s"
+      repeatCount="indefinite"
+    />
+    <animate
+      attributeName="opacity"
+      values="0.9;0"
+      dur="0.6s"
+      repeatCount="indefinite"
+    />
+  </line>
+</svg>
