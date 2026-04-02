@@ -91,6 +91,65 @@ test("createTelegramNotifierFromEnv returns notifier only when both env vars exi
   }
 });
 
+test("TelegramNotifier can send optional synthesized voice note", async () => {
+  const originalFetch = globalThis.fetch;
+  const snapshot = { ...process.env };
+  const calls: string[] = [];
+
+  try {
+    process.env.TELEGRAM_BOT_TOKEN = "token";
+    process.env.TELEGRAM_CHAT_ID = "chat";
+    process.env.TELEGRAM_VOICE_ENABLED = "true";
+    process.env.VOICE_TTS_URL = "https://tts.example/synthesize";
+    process.env.VOICE_PERSONA_RAINER = "lewis";
+
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      calls.push(target);
+
+      if (target.includes("/sendMessage")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (target === "https://tts.example/synthesize") {
+        return new Response(new Uint8Array([1, 2, 3, 4]), {
+          status: 200,
+          headers: { "Content-Type": "audio/ogg" },
+        });
+      }
+
+      if (target.includes("/sendVoice")) {
+        const body = init?.body;
+        assert.ok(body instanceof FormData);
+        assert.equal(body.get("caption"), "[RAINER] voice update (lewis)");
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      throw new Error(`unexpected fetch target: ${target}`);
+    }) as typeof fetch;
+
+    const notifier = createTelegramNotifierFromEnv();
+    assert.ok(notifier);
+
+    await notifier.send({
+      event_type: "task_completed",
+      tenant: "rainer",
+      wake_type: "duty",
+      summary: "voice test",
+      timestamp: new Date().toISOString(),
+      user_visible: true,
+    });
+
+    assert.equal(calls.length, 3);
+    assert.ok(calls.some((url) => url.includes("/sendMessage")));
+    assert.ok(calls.some((url) => url === "https://tts.example/synthesize"));
+    assert.ok(calls.some((url) => url.includes("/sendVoice")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = snapshot;
+  }
+});
+
 test("BrainClient surfaces network, auth, and RPC failures", async () => {
   const originalFetch = globalThis.fetch;
 

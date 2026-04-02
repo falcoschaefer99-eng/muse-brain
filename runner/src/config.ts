@@ -89,7 +89,7 @@ export function loadConfig(): Config {
     anthropicApiKey: requireEnv("ANTHROPIC_API_KEY"),
     brainUrl: optionalEnv("BRAIN_URL", "https://<your-worker-url>/mcp"),
     brainApiKey: requireEnv("BRAIN_API_KEY"),
-    tenantId: optionalEnv("TENANT_ID", "companion"),
+    tenantId: optionalEnv("TENANT_ID", "rainer"),
     model: optionalEnv("MODEL", "claude-sonnet-4-20250514"),
     maxIterations: Math.min(Math.max(intEnv("MAX_ITERATIONS", 25), 1), 100),
     maxTokens: Math.min(Math.max(intEnv("MAX_TOKENS", 4096), 256), 32000),

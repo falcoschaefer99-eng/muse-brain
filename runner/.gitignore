@@ -5,6 +5,7 @@ audit*.jsonl
 node_modules/
 dist/
 logs/
+.venv/
 *.key
 *.pem
 .DS_Store
