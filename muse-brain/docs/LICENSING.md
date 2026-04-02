@@ -1,6 +1,6 @@
 # Licensing — MUSE Brain
 
-MUSE Brain uses a tiered licensing model. Different parts of the ecosystem carry different licenses based on what they are and how they should be shared.
+MUSE Brain uses a tiered licensing model.
 
 ---
 

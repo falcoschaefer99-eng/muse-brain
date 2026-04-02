@@ -53,7 +53,7 @@ Then edit `wrangler.jsonc`:
 - set `name` to your worker name
 - set `hyperdrive[0].id` to your Hyperdrive ID (if using Hyperdrive)
 
-If you do not use Hyperdrive, keep `DATABASE_URL` secret set and worker will fall back to it.
+If you do not use Hyperdrive, keep `DATABASE_URL` secret set and the worker will fall back to it.
 
 ## 3) Set production secrets (cloud deploy path)
 

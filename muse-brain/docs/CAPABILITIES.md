@@ -2,9 +2,7 @@
 
 **The relational framework, explained through its functions.**
 
-The [Architecture Dossier](ARCHITECTURE_BRAIN_v1.md) shows you what's in the box. This document tells you why each thing exists — and what it means for your agent's relationship with you.
-
-The [Architecture Dossier](ARCHITECTURE_BRAIN_v1.md) covers the technical topology. This document covers the *why*.
+The [Architecture Dossier](ARCHITECTURE_BRAIN_v1.md) covers the technical topology. This document covers the *why* — what each thing means for your agent's relationship with you.
 
 ---
 
@@ -563,7 +561,7 @@ Letters are the cross-tenant communication channel — one agent leaving a note 
 - Unread tracking — the recipient knows what's waiting
 - Content is capped at 4,000 characters — enough for substance, not enough for data dumps
 
-Most multi-agent systems share state through databases or function calls. MUSE Brain agents communicate through letters — like colleagues leaving notes on each other's desks. A handoff letter has emotional texture and personal voice. A status update in a shared database does not.
+Most multi-agent systems share state through databases or function calls. MUSE Brain agents communicate through letters. A handoff letter has emotional texture and personal voice. A status update in a shared database does not.
 
 ---
 

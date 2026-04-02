@@ -35,7 +35,7 @@ Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md). Extends beyo
 
 ## The living cycle
 
-This is what makes MUSE Brain different from every other memory system. These aren't isolated tools — they feed each other.
+These aren't isolated tools — they feed each other.
 
 ```
                     ┌─────────────────────┐
