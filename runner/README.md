@@ -64,13 +64,15 @@ Optional companion process:
 - stores transcript to MUSE Brain as `mind_observe(mode=whisper)`
 - can acknowledge in chat with transcript preview
 
-Run manually:
+Optional local STT sidecar:
+- `runner/stt/faster_whisper_server.py` (OpenAI-compatible `/v1/audio/transcriptions`)
+- launch with `npm run stt:faster-whisper`
+
+Run voice bridge manually:
 
 ```bash
-cp config/tenants.example.json config/tenants.json
-# edit config/tenants.json with your absolute workspace paths
 npm run build
-./run-orchestrator.sh
+npm run voice-bridge
 ```
 
 Launchd assets:
@@ -83,6 +85,7 @@ Voice/Telegram docs:
 
 - `runner/docs/TELEGRAM_SETUP.md`
 - `runner/docs/VOICE_SETUP.md`
+- `runner/docs/FULL_VOICE_STACK.md`
 
 ---
 
@@ -177,7 +180,13 @@ npm start
 | `VOICE_PERSONA_RAINER` | `lewis` | Voice preset for `rainer` notifications |
 | `VOICE_PERSONA_COMPANION` | `onyx` | Voice preset for `companion` notifications |
 | `VOICE_STT_URL` | _(optional)_ | Whisper/STT endpoint for `npm run voice-bridge` |
+| `VOICE_STT_API_KEY` | _(optional)_ | Bearer key for STT endpoint |
+| `VOICE_STT_MODEL` | `whisper-1` | Model value sent to STT endpoint form body |
 | `VOICE_BRIDGE_TENANT` | `rainer` | Tenant to store transcribed voice notes under |
+| `VOICE_BRIDGE_POLL_SECONDS` | `12` | Telegram polling interval in seconds |
+| `VOICE_BRIDGE_TIMEOUT_MS` | `30000` | Timeout for Telegram/STT calls |
+| `VOICE_BRIDGE_SEND_ACK` | `true` | Send transcript preview back to Telegram chat |
+| `VOICE_BRIDGE_STATE_PATH` | `./state/telegram-voice-bridge.json` | Local offset checkpoint path |
 
 ---
 
@@ -240,6 +249,16 @@ Set `SCHEDULE` in `.env`, then:
 ```bash
 npm run daemon
 ```
+
+### Full voice stack bootstrap
+
+```bash
+cd runner
+./scripts/setup-voice-stack.sh
+```
+
+Then follow:
+- `runner/docs/FULL_VOICE_STACK.md`
 
 ---
 

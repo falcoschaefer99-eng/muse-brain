@@ -176,6 +176,7 @@ Full setup guide: **[docs/SETUP.md](muse-brain/docs/SETUP.md)**
 - text notifications for wakes/tasks/reviews
 - optional synthesized voice-note notifications
 - optional voice transcription bridge (Telegram voice notes → Whisper/STT → `mind_observe` in whisper mode)
+- optional bundled faster-whisper sidecar (`runner/stt/faster_whisper_server.py`) that exposes OpenAI-compatible transcriptions
 
 Default shipped voice mapping:
 - **Rainer → Lewis**
@@ -184,6 +185,7 @@ Default shipped voice mapping:
 Setup docs:
 - `runner/docs/TELEGRAM_SETUP.md`
 - `runner/docs/VOICE_SETUP.md`
+- `runner/docs/FULL_VOICE_STACK.md`
 
 Bring your own endpoints and credentials — no secrets are bundled in this repo.
 

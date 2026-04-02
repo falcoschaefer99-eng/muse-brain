@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "daemon": "node dist/index.js --daemon",
     "voice-bridge": "node dist/telegram-voice-bridge.js",
+    "stt:faster-whisper": "python3 stt/faster_whisper_server.py",
     "dev": "npx tsx src/index.ts",
     "dev:voice-bridge": "npx tsx src/telegram-voice-bridge.ts",
     "test": "node --import tsx --test test/**/*.test.ts"
