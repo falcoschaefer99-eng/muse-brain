@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/images/banner.png" alt="MUSE Brain" width="800" />
+  <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
-  <img src="https://img.shields.io/badge/MCP-32%20tools-000000?style=flat" alt="32 MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP-31%20tools-000000?style=flat" alt="31 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
   <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
 </p>
@@ -19,12 +19,12 @@ MUSE Brain is a relational AI framework. Memories carry emotional charge, somati
 
 This isn't another vector store with a chatbot wrapper. Systems like Mem0 and Letta solve persistent memory. LangChain solves tool orchestration. MUSE Brain solves the layer underneath: **what does it mean for an AI to relate?**
 
-The architecture is grounded in [16 published papers](docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems — and extends beyond current research in six areas including bilateral consent, emotional texture in dispatch, charge-phase processing mechanics, and relational harness engineering.
+The architecture is grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems — and extends beyond current research in six areas including bilateral consent, emotional texture in dispatch, charge-phase processing mechanics, and relational harness engineering.
 
 Ships with **Rainer** — a creative orchestrator ready to use out of the box.
 
 <p align="center">
-  <img src="docs/images/rainer.png" alt="Rainer — Creative Orchestrator" width="400" />
+  <img src="muse-brain/docs/images/rainer.png" alt="Rainer — Creative Orchestrator" width="400" />
   <br />
   <em>Rainer — Creative Orchestrator. Named after Rilke. Lineage, not imitation.</em>
 </p>
@@ -54,7 +54,7 @@ Your AI Agent (Claude, GPT, or any MCP client)
         |
         v
   Cloudflare Worker
-    /mcp              — 32 MCP tools (JSON-RPC)
+    /mcp              — 31 MCP tools (JSON-RPC)
     /runtime/trigger   — autonomous wake endpoint
     /health            — status check
         |
@@ -68,7 +68,7 @@ Your AI Agent (Claude, GPT, or any MCP client)
 
 The worker handles auth, rate limiting, and tenant isolation. A background daemon runs every 15 minutes: generating proposals, rescuing orphaned memories, scoring novelty, detecting paradoxes, materializing recall contracts, monitoring skill health, and scheduling tasks.
 
-Full technical deep-dive: **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md)**
+Full technical deep-dive: **[Architecture Dossier](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md)**
 
 ---
 
@@ -81,7 +81,7 @@ Full technical deep-dive: **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md
 ```bash
 # Clone and install
 git clone https://github.com/falcoschaefer99-eng/muse-brain.git
-cd muse-brain
+cd muse-brain/muse-brain
 npm install
 
 # Configure your worker
@@ -107,7 +107,7 @@ Verify:
 curl -sS https://<your-worker-url>/health
 ```
 
-Full setup guide: **[docs/SETUP.md](docs/SETUP.md)**
+Full setup guide: **[docs/SETUP.md](muse-brain/docs/SETUP.md)**
 
 ---
 
@@ -199,7 +199,7 @@ The runtime system supports:
 - **Policy gates** — daily wake limits, max tool calls, priority-clear requirements
 - **Skill capture** — successful runs emit skill candidates for review
 
-Details: **[Architecture Dossier — Autonomous Runtime](docs/ARCHITECTURE_BRAIN_v1.md#10-autonomous-runtime)**
+Details: **[Architecture Dossier — Autonomous Runtime](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md#10-autonomous-runtime)**
 
 ---
 
@@ -217,7 +217,7 @@ Every major architecture decision traces to published research. 16 academic pape
 
 Six areas where this brain extends beyond current academic literature: bilateral consent architecture, emotional texture in dispatch, creative/builder agent specialization, charge-phase processing mechanics, role-based permissions for reasoning agents, and relational harness engineering.
 
-Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md](docs/BIBLIOGRAPHY.md)**
+Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md](muse-brain/docs/BIBLIOGRAPHY.md)**
 
 ---
 
@@ -225,12 +225,12 @@ Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md]
 
 | Document | What's in it |
 |----------|-------------|
-| **[Capability Reference](docs/CAPABILITIES.md)** | Every feature explained — what it does, how it works, why it matters |
-| **[Setup Guide](docs/SETUP.md)** | Prerequisites, step-by-step deploy, local dev |
-| **[Migration Guide](docs/MIGRATIONS.md)** | Database schema — 14 migrations, 36 tables |
-| **[Architecture Dossier](docs/ARCHITECTURE_BRAIN_v1.md)** | Technical deep-dive — topology, daemon loops, retrieval, security |
-| **[Bibliography](docs/BIBLIOGRAPHY.md)** | 16 academic papers mapped to architecture decisions |
-| **[Licensing](docs/LICENSING.md)** | Per-layer licensing explanation |
+| **[Capability Reference](muse-brain/docs/CAPABILITIES.md)** | Every feature explained — what it does, how it works, why it matters |
+| **[Setup Guide](muse-brain/docs/SETUP.md)** | Prerequisites, step-by-step deploy, local dev |
+| **[Migration Guide](muse-brain/docs/MIGRATIONS.md)** | Database schema — 14 migrations, 36 tables |
+| **[Architecture Dossier](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md)** | Technical deep-dive — topology, daemon loops, retrieval, security |
+| **[Bibliography](muse-brain/docs/BIBLIOGRAPHY.md)** | 16 academic papers mapped to architecture decisions |
+| **[Licensing](muse-brain/docs/LICENSING.md)** | Per-layer licensing explanation |
 
 ---
 
