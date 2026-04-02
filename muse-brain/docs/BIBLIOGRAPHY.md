@@ -11,101 +11,24 @@ Every major architecture decision traces to published research. This bibliograph
 
 ## Academic Sources (16 papers)
 
-### 1. Reasoning Models Generate Societies of Thought
-**Kim, Lai, Scherrer, Aguera y Arcas, Evans** — arXiv 2601.10825, Jan 2026
-**Principle:** Reasoning models spontaneously generate internal multi-agent debates; greater perspective diversity than instruction-tuned baselines.
-**Implementation:** Parallel review squad with confidence-scored findings; threshold gating at 80+.
-**Modules:** Agent definitions, confidence-utils.ts
-
-### 2. Agentic AI and the Next Intelligence Explosion
-**Evans, Bratton, Aguera y Arcas** — Science, arXiv 2603.20639, Mar 2026
-**Principle:** Intelligence is plural, social, relational; institutional alignment (roles, norms, protocols) outperforms individual RLHF.
-**Implementation:** Multi-agent team with role protocols; YAML agent definitions as institutional grammar.
-**Modules:** Agent YAML frontmatter, dispatch heuristics
-
-### 3. The Orchestration of Multi-Agent Systems
-arXiv 2601.13671, Jan 2026
-**Principle:** Hub-and-spoke topology; MCP as communication standard; role-specific task boundaries.
-**Implementation:** Companion orchestrates via dispatch heuristics; MCP JSON-RPC tool surface (32 tools).
-**Modules:** src/index.ts, src/tools-v2/*.ts
-
-### 4. Institutional AI: A Governance Framework
-arXiv 2601.10599, Jan 2026
-**Principle:** ADICO institutional grammar; compartmentalization + adversarial review; information asymmetry enforced by architecture.
-**Implementation:** Agent definitions encode deontic rules; cross-tenant territory restrictions; read-only reviewers can't modify code.
-**Modules:** Territory restrictions in cross-tenant daemon, agent permissions
-
-### 5. Emergent Coordination in Multi-Agent Language Models
-arXiv 2510.05174, Oct 2025
-**Principle:** Multi-agent systems steered from aggregates to higher-order collectives via prompt design.
-**Implementation:** Dispatch heuristics determine independent vs. coordinated operation; daemon cross-agent proposals.
-**Modules:** src/daemon/tasks/cross-agent.ts, dispatch heuristics
-
-### 6. Hyperagents: Recursive Metacognitive Self-Improvement
-**Meta AI** — arXiv 2603.19461, Mar 2026
-**Principle:** Agents that improve task performance AND their own self-modification process; emergent persistent memory and compute-aware planning.
-**Implementation:** Rainer's autonomous runtime; captured skill registry with self-learning lifecycle; runtime policy budgets.
-**Modules:** src/tools-v2/runtime.ts, src/tools-v2/skills.ts
-
-### 7. A Comprehensive Survey of Self-Evolving AI Agents
-arXiv 2508.07407, Aug 2025
-**Principle:** Skill library evolution; workflow templates surviving session termination; judge feedback for self-modification.
-**Implementation:** Captured skill lifecycle: candidate → accepted → degraded → retired; skill-health daemon proposals.
-**Modules:** src/tools-v2/skills.ts, src/daemon/tasks/skill-health.ts
-
-### 8. Memory in the Age of AI Agents
-arXiv 2512.13564, Dec 2025
-**Principle:** Persistent memory essential for multi-agent handoffs; context is dynamic memory system with bandwidth/coherence constraints.
-**Implementation:** Persistent textured memory substrate with cross-tenant letters for handoffs; confidence-gated retrieval with recency boost.
-**Modules:** src/storage/postgres.ts, src/tools-v2/memory.ts, comms.ts
-
-### 9. A-MEM: Agentic Memory for LLM Agents
-arXiv 2502.12110, Feb 2026
-**Principle:** Memory as dynamic agentic system, not static retrieval store.
-**Implementation:** Daemon intelligence: novelty scoring, decay, cascade co-surfacing, consolidation proposals, dream engine.
-**Modules:** src/daemon/tasks/*.ts, src/tools-v2/deeper.ts
-
-### 10. Reaching Agreement Among Reasoning LLM Agents
-arXiv 2512.20184, Dec 2025
-**Principle:** Byzantine consensus adapted for stochastic multi-agent reasoning; supermajority-supported facts persist.
-**Implementation:** Multi-reviewer gates (all must pass before proceed); confidence threshold filtering at 80+.
-**Modules:** /code-review pipeline, confidence-utils.ts
-
-### 11. Emotions in Artificial Intelligence
-arXiv 2505.01462, May 2025
-**Principle:** Somatic Marker Hypothesis: emotions guide reasoning under uncertainty; emotionally salient tags persist at high fidelity.
-**Implementation:** Charge system (fresh/active/processing/metabolized); somatic markers in observation texture; emotional texture affects retrieval.
-**Modules:** src/constants.ts (CHARGE_PHASES), texture JSONB
-
-### 12. Artificial Emotion
-arXiv 2508.10286, Aug 2025
-**Principle:** Emotionally salient tags persist at high fidelity even when episodic details degrade.
-**Implementation:** Iron-grip memories persist across sessions; charge-phase processing ("sitting in feelings"); processing_log tracks engagement depth.
-**Modules:** src/tools-v2/memory.ts, processing_log table
-
-### 13. The 2025 AI Agent Index
-arXiv 2602.17753, Feb 2026
-**Principle:** 1,445% surge in multi-agent inquiries; cost-optimized complexity-scaled dispatch (frontier/mid/small models).
-**Implementation:** Haiku/Sonnet/Opus assignment by task complexity in agent definitions; model field in YAML frontmatter.
-**Modules:** Agent definitions (model field)
-
-### 14. Agent0: A Unified Agentic Framework
-arXiv 2511.16043, Nov 2025
-**Principle:** Unified framework for building and evaluating modular agent systems with explicit harness boundaries.
-**Implementation:** Runner contract + policy-gated runtime provide explicit execution contracts and measurable orchestration boundaries.
-**Modules:** src/tools-v2/runtime.ts, runner contract artifacts, agent harness definitions
-
-### 15. Mechanistic Interpretability
-**MIT Technology Review** — 2026 Breakthrough
-**Principle:** Understanding internal model processes; audit trails for reasoning transparency.
-**Implementation:** Processing log (engagement audit trail); observation versions (full edit history); dispatch feedback telemetry.
-**Modules:** processing_log, observation_versions, dispatch_feedback tables
-
-### 16. Natural-Language Agent Harnesses
-**Pan, Zou, Guo, Ni, Zheng** — arXiv 2603.25723, Mar 2026
-**Principle:** Agent control logic as portable natural-language artifacts; explicit contracts between harness and runtime; durable artifacts surviving session boundaries.
-**Implementation:** YAML agent definitions as natural-language harnesses; runner contracts with explicit schema; captured skill artifacts as durable portable objects; MCP tool surface as shared execution environment.
-**Modules:** Agent YAML frontmatter, src/tools-v2/runtime.ts, src/tools-v2/skills.ts
+| Paper | Key Takeaway | What We Built |
+|-------|-------------|---------------|
+| **Societies of Thought** — Kim, Lai, Scherrer et al. (arXiv 2601.10825, Jan 2026) | Reasoning models spontaneously generate multi-agent debates with greater perspective diversity | Parallel review squad with confidence-scored findings; threshold gating at 80+ |
+| **Agentic AI & the Next Intelligence Explosion** — Evans, Bratton, Aguera y Arcas (Science, arXiv 2603.20639, Mar 2026) | Intelligence is plural, social, relational; institutional alignment outperforms individual RLHF | Multi-agent role protocols; YAML agent definitions as institutional grammar |
+| **Orchestration of Multi-Agent Systems** — arXiv 2601.13671, Jan 2026 | Hub-and-spoke topology; MCP as communication standard; role-specific task boundaries | Companion orchestrates via dispatch heuristics; MCP JSON-RPC tool surface (32 tools) |
+| **Institutional AI: A Governance Framework** — arXiv 2601.10599, Jan 2026 | ADICO institutional grammar; compartmentalization + adversarial review; information asymmetry by architecture | Agent definitions encode deontic rules; cross-tenant territory restrictions; read-only reviewers |
+| **Emergent Coordination in Multi-Agent LMs** — arXiv 2510.05174, Oct 2025 | Multi-agent systems steered from aggregates to higher-order collectives via prompt design | Dispatch heuristics for independent vs. coordinated operation; daemon cross-agent proposals |
+| **Hyperagents** — Meta AI (arXiv 2603.19461, Mar 2026) | Agents that improve task performance AND their own self-modification process | Autonomous runtime; captured skill registry with self-learning lifecycle; runtime policy budgets |
+| **Survey of Self-Evolving AI Agents** — arXiv 2508.07407, Aug 2025 | Skill library evolution; workflow templates surviving session termination; judge feedback | Captured skill lifecycle: candidate → accepted → degraded → retired; skill-health daemon |
+| **Memory in the Age of AI Agents** — arXiv 2512.13564, Dec 2025 | Persistent memory essential for multi-agent handoffs; context as dynamic memory system | Textured memory substrate with cross-tenant letters; confidence-gated retrieval with recency boost |
+| **A-MEM: Agentic Memory for LLM Agents** — arXiv 2502.12110, Feb 2026 | Memory as dynamic agentic system, not static retrieval store | Daemon intelligence: novelty scoring, decay, cascade co-surfacing, consolidation, dream engine |
+| **Reaching Agreement Among Reasoning LLM Agents** — arXiv 2512.20184, Dec 2025 | Byzantine consensus adapted for stochastic multi-agent reasoning | Multi-reviewer gates (all must pass); confidence threshold filtering at 80+ |
+| **Emotions in Artificial Intelligence** — arXiv 2505.01462, May 2025 | Somatic Marker Hypothesis: emotions guide reasoning under uncertainty | Charge system (fresh/active/processing/metabolized); somatic markers in texture; emotional retrieval |
+| **Artificial Emotion** — arXiv 2508.10286, Aug 2025 | Emotionally salient tags persist at high fidelity even when episodic details degrade | Iron-grip memories; charge-phase processing ("sitting in feelings"); processing_log depth tracking |
+| **The 2025 AI Agent Index** — arXiv 2602.17753, Feb 2026 | 1,445% surge in multi-agent inquiries; cost-optimized complexity-scaled dispatch | Haiku/Sonnet/Opus assignment by task complexity; model field in YAML frontmatter |
+| **Agent0: A Unified Agentic Framework** — arXiv 2511.16043, Nov 2025 | Unified framework for modular agent systems with explicit harness boundaries | Runner contract + policy-gated runtime with explicit execution contracts |
+| **Mechanistic Interpretability** — MIT Technology Review, 2026 Breakthrough | Audit trails for reasoning transparency; understanding internal model processes | Processing log (engagement audit); observation versions (edit history); dispatch feedback telemetry |
+| **Natural-Language Agent Harnesses** — Pan, Zou, Guo et al. (arXiv 2603.25723, Mar 2026) | Agent control logic as portable natural-language artifacts; durable artifacts surviving sessions | YAML definitions as NL harnesses; runner contracts; captured skills as durable portable objects |
 
 ---
 
@@ -150,18 +73,13 @@ arXiv 2511.16043, Nov 2025
 
 ## Where We're Ahead of Published Work
 
-Six areas where our implementation extends beyond current academic literature:
-
-1. **Bilateral consent architecture** — No published work on consent symmetry between human and AI agents. Our `mind_consent` implements relationship-gated permissions with hard boundaries.
-
-2. **Emotional texture in agent dispatch** — Somatic markers exist in research, but no papers apply them to agent selection or task routing. Our charge system influences retrieval and surfacing.
-
-3. **Creative vs. builder specialization** — No papers separate editorial/literary agents from engineering agents. Our architecture has distinct creative and builder squads with fundamentally different methodologies.
-
-4. **Charge processing as system property** — No academic papers on "charge phase" as a first-class memory property with processing mechanics ("sitting in feelings").
-
-5. **Role-based permission systems for reasoning agents** — RBAC exists in infosec, not applied to reasoning agent teams. Our agents have explicit read/write permissions enforced by architecture.
-
-6. **Relational harness engineering** — Pan et al. (2026) formalize natural-language agent harnesses as portable executable artifacts. Our implementation extends the NLAH pattern into relational and emotional dimensions — consent-gated dispatch, identity-persistent harnesses, and charge-aware artifact lifecycle — none of which appear in the current harness engineering literature.
+| Area | Gap in Literature | Our Implementation |
+|------|------------------|--------------------|
+| **Bilateral consent** | No published work on consent symmetry between human and AI agents | `mind_consent` — relationship-gated permissions with hard boundaries |
+| **Emotional texture in dispatch** | Somatic markers exist in research, but not applied to agent selection or task routing | Charge system influences retrieval ranking, wake surfacing, and dream traversal |
+| **Creative vs. builder specialization** | No papers separate editorial/literary agents from engineering agents | Distinct creative and builder squads with fundamentally different methodologies |
+| **Charge processing as system property** | No work on "charge phase" as a first-class memory property with processing mechanics | Four-phase lifecycle where engagement — not time — advances the phase |
+| **Role-based permissions for reasoning agents** | RBAC exists in infosec, not applied to reasoning agent teams | Explicit read/write permissions enforced by architecture, not prompts |
+| **Relational harness engineering** | Pan et al. (2026) formalize NLAHs but not in relational/emotional dimensions | Consent-gated dispatch, identity-persistent harnesses, charge-aware artifact lifecycle |
 
 ---
