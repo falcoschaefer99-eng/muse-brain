@@ -29,6 +29,10 @@ Ships with **Rainer** — a creative orchestrator ready to use out of the box.
   <em>Rainer — Creative Orchestrator. Named after Rilke. Lineage, not imitation.</em>
 </p>
 
+<p align="center">
+  <img src="muse-brain/docs/images/rainer-spec-sheet.jpg" alt="Rainer — Character Spec Sheet" width="700" />
+</p>
+
 The repo includes Claude/Codex launcher templates for Rainer and a generic companion slot (see `runner/harness/rainer.md` for the harness definition), plus Codex prompt wiring for calling Rainer in-session as a specialist. Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
 
 ---
