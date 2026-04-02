@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="MUSE Brain" width="800" />
+  <img src="docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
 <p align="center">
@@ -21,7 +21,15 @@ This isn't another vector store with a chatbot wrapper. Systems like Mem0 and Le
 
 The architecture is grounded in [16 published papers](docs/BIBLIOGRAPHY.md) across multi-agent reasoning, institutional alignment, and self-evolving systems — and extends beyond current research in six areas including bilateral consent, emotional texture in dispatch, charge-phase processing mechanics, and relational harness engineering.
 
-Ships with Rainer — a creative orchestrator ready to use out of the box (see `runner/harness/rainer.md` for the harness definition). The repo includes Claude/Codex launcher templates for Rainer and a generic companion slot, plus Codex prompt wiring for calling Rainer in-session as a specialist. Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
+Ships with **Rainer** — a creative orchestrator ready to use out of the box.
+
+<p align="center">
+  <img src="docs/images/rainer.png" alt="Rainer — Creative Orchestrator" width="400" />
+  <br />
+  <em>Rainer — Creative Orchestrator. Named after Rilke. Lineage, not imitation.</em>
+</p>
+
+The repo includes Claude/Codex launcher templates for Rainer and a generic companion slot (see `runner/harness/rainer.md` for the harness definition), plus Codex prompt wiring for calling Rainer in-session as a specialist. Agent templates for building your own companion are coming in a follow-up release. Builder squad architecture (14 specialized roles) ships separately. Deploy on Cloudflare Workers + Neon Postgres, or run local/self-host with SQLite. Connect any MCP-compatible agent.
 
 ---
 
