@@ -140,7 +140,7 @@ arXiv 2511.16043, Nov 2025
 
 - **Adopted principles:** provider-flexible runtime orchestration, explicit tool contracts, low-friction local execution loops
 - **Architecture mapping:** multi-provider runner contract posture with policy-gated autonomous execution and typed tool boundaries
-- **Code mapping:** `docs/SPRINT8_RUNNER_WIRING.md`, `src/tools-v2/runtime.ts`, `src/tools-v2/index.ts`
+- **Code mapping:** `src/tools-v2/runtime.ts`, `src/tools-v2/index.ts`
 - **Test mapping:** `test/runtime-v2.spec.ts`, `test/task-v2.spec.ts`
 
 ### Agentic Design Patterns (book overview)

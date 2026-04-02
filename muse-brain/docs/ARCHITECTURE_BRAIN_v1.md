@@ -96,7 +96,7 @@ Every request passes through six layers before reaching a tool:
 
 ---
 
-## 5) Tool surface — 31 MCP tools across 19 modules
+## 5) Tool surface — 32 MCP tools across 19 modules
 
 Tool barrel: `src/tools-v2/index.ts`. Organized by cognitive function.
 

@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
-  <img src="https://img.shields.io/badge/MCP-31%20tools-000000?style=flat" alt="31 MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP-32%20tools-000000?style=flat" alt="32 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
   <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
 </p>
@@ -111,7 +111,7 @@ Your AI Agent (Claude, GPT, or any MCP client)
         |
         v
   Cloudflare Worker
-    /mcp              — 31 MCP tools (JSON-RPC)
+    /mcp              — 32 MCP tools (JSON-RPC)
     /runtime/trigger   — autonomous wake endpoint
     /health            — status check
         |
@@ -168,7 +168,7 @@ Full setup guide: **[docs/SETUP.md](muse-brain/docs/SETUP.md)**
 
 ---
 
-## The 31 tools
+## The 32 tools
 
 Organized by what they do, not how they're built.
 

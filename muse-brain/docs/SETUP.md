@@ -91,7 +91,7 @@ Use `scripts/runtime-autonomous-wake.sh` to run duty/impulse wakes.
 ```bash
 BRAIN_URL=https://<your-worker-url> \
 BRAIN_API_KEY=<API_KEY> \
-BRAIN_TENANT=companion \
+BRAIN_TENANT=rainer \
 WAKE_KIND=duty \
 ./scripts/runtime-autonomous-wake.sh
 ```

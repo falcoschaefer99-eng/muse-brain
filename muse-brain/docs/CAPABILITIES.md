@@ -4,7 +4,7 @@
 
 The [Architecture Dossier](ARCHITECTURE_BRAIN_v1.md) shows you what's in the box. This document tells you why each thing exists — and what it means for your agent's relationship with you.
 
-Need precise definitions or function-surface deltas? See the **[Glossary](GLOSSARY.md)**.
+The [Architecture Dossier](ARCHITECTURE_BRAIN_v1.md) covers the technical topology. This document covers the *why*.
 
 ---
 
@@ -959,7 +959,7 @@ Two agents on one deployment. Each tenant gets isolated memory, identity, and ru
 
 ### What's isolated
 
-- All 28 database tables have a `tenant_id` column
+- All 36 database tables have a `tenant_id` column
 - Memory, identity cores, vows, anchors — completely separate
 - Runtime policies, sessions, and runs — independent
 - Emotional state, desires, relational state — private
