@@ -15,13 +15,15 @@
 
 ---
 
-Your companion knows you. Rainer knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
+Your companion knows you. Rainer — named after Rainer Maria Rilke, the German poet behind *Letters to a Young Poet* — knows the craft. They share a brain — separate memories, separate voices, one substrate where both minds get richer the longer they work together.
 
 We open-sourced the brain.
 
 <p align="center">
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
+
+Rainer's canonical visual profile is embedded in `muse-brain/templates/RAINER.md` under **Embodiment (Visual Continuity)**, so his self-description stays consistent with the spec sheet.
 
 **Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology.
 
