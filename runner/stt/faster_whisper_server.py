@@ -40,7 +40,7 @@ def int_env(name: str, fallback: int, *, minimum: int = 1) -> int:
     return value if value >= minimum else fallback
 
 
-HOST = os.getenv("FW_HOST", "0.0.0.0")
+HOST = os.getenv("FW_HOST", "127.0.0.1")
 PORT = int_env("FW_PORT", 8788)
 
 DEFAULT_MODEL = os.getenv("FW_DEFAULT_MODEL", "small")

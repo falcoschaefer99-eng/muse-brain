@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-BUCKET="muse-brain-storage"
+BUCKET="${R2_BUCKET:-muse-brain-storage}"
 TENANT="companion"
 WRANGLER="npx wrangler"
 
