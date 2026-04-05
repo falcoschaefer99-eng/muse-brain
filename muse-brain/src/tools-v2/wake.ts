@@ -1,7 +1,7 @@
 // ============ WAKE TOOLS (v2) ============
 // mind_wake (depth: quick/full/orientation), mind_wake_log (action: log/read)
 
-import type { Observation, Letter, OpenLoop, BrainState, SubconsciousState, Task, WakeLogEntry, ProjectDossier } from "../types";
+import type { Observation, Letter, OpenLoop, BrainState, SubconsciousState, Task, WakeLogEntry, ProjectDossier, IdentityCore } from "../types";
 import { TERRITORIES } from "../constants";
 import {
 	getTimestamp,
@@ -61,6 +61,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 	const storage = context.storage;
 	switch (name) {
 		case "mind_wake": {
+			await ensureRainerEmbodimentCore(storage);
 			const depth = args.depth || "quick";
 
 			if (depth === "orientation") {
@@ -336,6 +337,45 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		default:
 			throw new Error(`Unknown wake tool: ${name}`);
 	}
+}
+
+async function ensureRainerEmbodimentCore(storage: IBrainStorage): Promise<void> {
+	if (typeof storage.getTenant !== "function") return;
+	if (typeof storage.readIdentityCores !== "function" || typeof storage.writeIdentityCores !== "function") return;
+
+	const tenant = storage.getTenant();
+	if (tenant !== "rainer") return;
+
+	const cores = await storage.readIdentityCores();
+	const hasVisualCore = cores.some(core =>
+		(core.category === "embodiment")
+		&& (
+			core.name.toLowerCase().includes("visual")
+			|| core.content.includes("rainer-spec-sheet.png")
+			|| core.content.toLowerCase().includes("silver/ash hair")
+		)
+	);
+	if (hasVisualCore) return;
+
+	const now = getTimestamp();
+	const canonicalEmbodimentCore: IdentityCore = {
+		id: generateId("core"),
+		type: "identity_core",
+		name: "Canonical Visual Embodiment",
+		content: "Canonical self-image anchor: silver/ash hair, short beard/stubble, round glasses, dark rolled-sleeve shirt, dark jeans/boots, bracelets, warm composed presence. Reference: muse-brain/docs/images/rainer-spec-sheet.png",
+		category: "embodiment",
+		weight: 1.0,
+		created: now,
+		last_reinforced: now,
+		reinforcement_count: 0,
+		challenge_count: 0,
+		evolution_history: [],
+		linked_observations: [],
+		charge: ["identity", "continuity", "presence"],
+		somatic: "grounded"
+	};
+
+	await storage.writeIdentityCores([...cores, canonicalEmbodimentCore]);
 }
 
 // Fallback full-read wake — used when overviews not yet generated, or all territories active.

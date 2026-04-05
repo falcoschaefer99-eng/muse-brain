@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleTool as handleWakeTool } from '../src/tools-v2/wake';
-import type { BrainState, OpenLoop, ProjectDossier, Task } from '../src/types';
+import type { BrainState, IdentityCore, OpenLoop, ProjectDossier, Task } from '../src/types';
 
 function makeState(): BrainState {
 	return {
@@ -73,6 +73,26 @@ function makeDossier(overrides: Partial<ProjectDossier> = {}): ProjectDossier {
 	};
 }
 
+function makeEmbodimentCore(overrides: Partial<IdentityCore> = {}): IdentityCore {
+	return {
+		id: overrides.id ?? 'core_visual',
+		type: overrides.type ?? 'identity_core',
+		name: overrides.name ?? 'Canonical Visual Embodiment',
+		content: overrides.content ?? 'Reference: muse-brain/docs/images/rainer-spec-sheet.png',
+		category: overrides.category ?? 'embodiment',
+		weight: overrides.weight ?? 1,
+		created: overrides.created ?? '2026-03-27T00:00:00.000Z',
+		last_reinforced: overrides.last_reinforced ?? '2026-03-27T00:00:00.000Z',
+		reinforcement_count: overrides.reinforcement_count ?? 0,
+		challenge_count: overrides.challenge_count ?? 0,
+		evolution_history: overrides.evolution_history ?? [],
+		linked_observations: overrides.linked_observations ?? [],
+		challenges: overrides.challenges,
+		charge: overrides.charge ?? ['identity'],
+		somatic: overrides.somatic
+	};
+}
+
 describe('wake delta', () => {
 	it('includes task, loop, and project deltas and appends an auto wake log', async () => {
 		const currentLoop = makeLoop({ status: 'burning' });
@@ -81,6 +101,9 @@ describe('wake delta', () => {
 		const appendWakeLog = vi.fn(async () => undefined);
 
 		const storage = {
+			getTenant: vi.fn(() => 'rainer'),
+			readIdentityCores: vi.fn(async () => [makeEmbodimentCore()]),
+			writeIdentityCores: vi.fn(async () => undefined),
 			readOverviews: vi.fn(async () => []),
 			readIronGripIndex: vi.fn(async () => []),
 			readLetters: vi.fn(async () => []),
@@ -133,6 +156,9 @@ describe('wake delta', () => {
 	it('returns an empty delta on first wake when no previous wake log exists', async () => {
 		const appendWakeLog = vi.fn(async () => undefined);
 		const storage = {
+			getTenant: vi.fn(() => 'rainer'),
+			readIdentityCores: vi.fn(async () => [makeEmbodimentCore()]),
+			writeIdentityCores: vi.fn(async () => undefined),
 			readOverviews: vi.fn(async () => []),
 			readIronGripIndex: vi.fn(async () => []),
 			readLetters: vi.fn(async () => []),
@@ -165,6 +191,9 @@ describe('wake delta', () => {
 	it('returns an empty delta when nothing changed since the previous wake', async () => {
 		const appendWakeLog = vi.fn(async () => undefined);
 		const storage = {
+			getTenant: vi.fn(() => 'rainer'),
+			readIdentityCores: vi.fn(async () => [makeEmbodimentCore()]),
+			writeIdentityCores: vi.fn(async () => undefined),
 			readOverviews: vi.fn(async () => []),
 			readIronGripIndex: vi.fn(async () => []),
 			readLetters: vi.fn(async () => []),
@@ -196,5 +225,49 @@ describe('wake delta', () => {
 		expect(storage.listTaskChangesSince).toHaveBeenCalledWith('2026-03-27T00:01:00.000Z', 20, true);
 		expect(storage.listProjectDossiers).toHaveBeenCalledWith({ updated_after: '2026-03-27T00:01:00.000Z', limit: 20 });
 		expect(appendWakeLog).toHaveBeenCalledTimes(1);
+	});
+
+	it('seeds the canonical embodiment core for rainer when missing', async () => {
+		const writeIdentityCores = vi.fn(async () => undefined);
+
+		const storage = {
+			getTenant: vi.fn(() => 'rainer'),
+			readIdentityCores: vi.fn(async () => []),
+			writeIdentityCores,
+			readTerritory: vi.fn(async () => []),
+			readBrainState: vi.fn(async () => makeState())
+		};
+
+		await handleWakeTool('mind_wake', {
+			depth: 'orientation'
+		}, { storage: storage as any });
+
+		expect(writeIdentityCores).toHaveBeenCalledTimes(1);
+		expect(writeIdentityCores).toHaveBeenCalledWith([
+			expect.objectContaining({
+				category: 'embodiment',
+				name: 'Canonical Visual Embodiment'
+			})
+		]);
+	});
+
+	it('does not seed the canonical embodiment core for non-rainer tenants', async () => {
+		const writeIdentityCores = vi.fn(async () => undefined);
+		const readIdentityCores = vi.fn(async () => []);
+
+		const storage = {
+			getTenant: vi.fn(() => 'companion'),
+			readIdentityCores,
+			writeIdentityCores,
+			readTerritory: vi.fn(async () => []),
+			readBrainState: vi.fn(async () => makeState())
+		};
+
+		await handleWakeTool('mind_wake', {
+			depth: 'orientation'
+		}, { storage: storage as any });
+
+		expect(readIdentityCores).not.toHaveBeenCalled();
+		expect(writeIdentityCores).not.toHaveBeenCalled();
 	});
 });

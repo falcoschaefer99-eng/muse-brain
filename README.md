@@ -8,6 +8,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
+  <img src="https://img.shields.io/badge/Built_with-Claude_Agent_SDK-CC785C?style=flat" alt="Built with Claude Agent SDK" />
+  <img src="https://img.shields.io/badge/Native_First--Party_Tools-No_3rd--Party_Harness-000000?style=flat" alt="No Third-Party Harness" />
   <img src="https://img.shields.io/badge/MCP-32%20tools-000000?style=flat" alt="32 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
   <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
