@@ -57,6 +57,13 @@ import {
 } from "../constants";
 
 import { getTimestamp, calculateMomentumDecay, calculateAfterglowFade, generateId } from "../helpers";
+import {
+	DEFAULT_RETRIEVAL_PROFILE,
+	getRetrievalProfileConfig,
+	normalizeRetrievalProfile,
+	extractQuerySignals,
+	computeQuerySignalBoosts
+} from "../retrieval/query-signals";
 
 import type {
 	IBrainStorage,
@@ -616,10 +623,14 @@ export class SQLiteBrainStorage implements IBrainStorage {
 	}
 
 	async hybridSearch(options: HybridSearchOptions): Promise<HybridSearchResult[]> {
+		const retrievalProfile = normalizeRetrievalProfile(options.retrieval_profile) ?? DEFAULT_RETRIEVAL_PROFILE;
+		const profileConfig = getRetrievalProfileConfig(retrievalProfile);
 		const limit = Math.max(1, options.limit ?? 10);
 		const minSimilarity = options.min_similarity ?? 0.3;
+		const querySignals = options.query_signals ?? extractQuerySignals(options.query || "");
 		const queryTokens = tokenize(options.query || "");
 		const circadianBias = options.circadian_phase ? new Set(CIRCADIAN_PHASES[options.circadian_phase]?.retrieval_bias ?? []) : new Set<string>();
+		const nowMs = Date.now();
 
 		let rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
 
@@ -642,8 +653,13 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			metabolized: 0.95
 		};
 
-		const results: HybridSearchResult[] = [];
-
+		interface CandidateSeed {
+			obs: StoredObservation;
+			keywordRank: number;
+			vectorSimilarity?: number;
+			hasEntityMatch: boolean;
+		}
+		const seeds: CandidateSeed[] = [];
 		for (const obs of rows) {
 			const body = `${obs.content}\n${obs.summary ?? ""}`.toLowerCase();
 			let keywordRank = 0;
@@ -661,37 +677,92 @@ export class SQLiteBrainStorage implements IBrainStorage {
 
 			const hasEntityMatch = Boolean(options.entity_id && obs.entity_id === options.entity_id);
 			if ((vectorSimilarity ?? 0) <= 0 && keywordRank <= 0 && !hasEntityMatch) continue;
+			seeds.push({ obs, keywordRank, vectorSimilarity, hasEntityMatch });
+		}
 
-			let score = 0;
+		const candidateMap = new Map<string, CandidateSeed>();
+		const vectorSeeds = seeds
+			.filter(seed => typeof seed.vectorSimilarity === "number" && (seed.vectorSimilarity ?? 0) > 0)
+			.sort((a, b) => (b.vectorSimilarity ?? 0) - (a.vectorSimilarity ?? 0))
+			.slice(0, profileConfig.candidate_pool.vector);
+		const keywordSeeds = seeds
+			.filter(seed => seed.keywordRank > 0)
+			.sort((a, b) => b.keywordRank - a.keywordRank)
+			.slice(0, profileConfig.candidate_pool.keyword);
+		const entitySeeds = seeds
+			.filter(seed => seed.hasEntityMatch)
+			.sort((a, b) => toMillis(b.obs.created) - toMillis(a.obs.created))
+			.slice(0, profileConfig.candidate_pool.entity);
+		for (const seed of [...vectorSeeds, ...keywordSeeds, ...entitySeeds]) {
+			candidateMap.set(seed.obs.id, seed);
+		}
+
+		const results: HybridSearchResult[] = [];
+		for (const seed of candidateMap.values()) {
+			const { obs, keywordRank, vectorSimilarity, hasEntityMatch } = seed;
+
+			let baseRelevance = 0;
+			let vectorComponent = 0;
+			let keywordComponent = 0;
+			let entityComponent = 0;
 			const matchSources: string[] = [];
-			if (typeof vectorSimilarity === "number" && vectorSimilarity > 0) {
-				score += vectorSimilarity * (keywordRank > 0 ? 0.65 : 1.0);
+			if (typeof vectorSimilarity === "number" && vectorSimilarity > 0 && keywordRank > 0) {
+				vectorComponent = vectorSimilarity * profileConfig.relevance_mix.vector;
+				keywordComponent = keywordRank * profileConfig.relevance_mix.keyword;
+				baseRelevance = vectorComponent + keywordComponent;
 				matchSources.push("vector");
-			}
-			if (keywordRank > 0) {
-				score += keywordRank * (typeof vectorSimilarity === "number" ? 0.35 : 1.0);
+				matchSources.push("keyword");
+			} else if (typeof vectorSimilarity === "number" && vectorSimilarity > 0) {
+				vectorComponent = vectorSimilarity;
+				baseRelevance = vectorComponent;
+				matchSources.push("vector");
+			} else if (keywordRank > 0) {
+				keywordComponent = keywordRank;
+				baseRelevance = keywordComponent;
 				matchSources.push("keyword");
 			}
-			if (hasEntityMatch && score <= 0) {
-				// Mirror postgres hybrid behavior: include entity-only candidates.
-				score = 0.5;
+			if (hasEntityMatch && baseRelevance <= 0) {
+				baseRelevance = profileConfig.entity_only_base;
+			}
+			if (hasEntityMatch) {
+				entityComponent += profileConfig.entity_match_boost;
+				matchSources.push("entity");
 			}
 
-			score *= gripWeight[obs.texture?.grip ?? "present"] ?? 1.0;
-			score *= phaseWeight[obs.texture?.charge_phase ?? "fresh"] ?? 1.0;
+			const signalMatch = computeQuerySignalBoosts(
+				querySignals,
+				{
+					content: obs.content,
+					summary: obs.summary,
+					context: obs.context,
+					created: obs.created,
+					type: obs.type,
+					tags: obs.tags
+				},
+				profileConfig.query_signal_boosts,
+				nowMs
+			);
+			if (signalMatch.quoted_phrase_matches.length > 0) matchSources.push("quoted_phrase");
+			if (signalMatch.proper_name_matches.length > 0) matchSources.push("proper_name");
+			if (signalMatch.temporal_matched) matchSources.push("temporal");
+			if (signalMatch.assistant_reference_matched) matchSources.push("assistant_reference");
+
+			const adjustedRelevance = Math.max(0, (baseRelevance + entityComponent + signalMatch.total_boost) * profileConfig.layer_weights.relevance);
+			if (adjustedRelevance <= 0) continue;
 
 			const novelty = typeof obs.novelty_score === "number"
 				? obs.novelty_score
 				: (typeof obs.texture?.novelty_score === "number" ? obs.texture.novelty_score : 0.5);
+			const gripMod = gripWeight[obs.texture?.grip ?? "present"] ?? 1.0;
+			const phaseMod = phaseWeight[obs.texture?.charge_phase ?? "fresh"] ?? 1.0;
+			let noveltyMod = 1.0;
 			if (novelty > 0.7 && (obs.texture?.charge_phase ?? "fresh") !== "metabolized") {
-				score *= 1 + (novelty - 0.5) * 0.5;
+				noveltyMod = 1 + (novelty - 0.5) * 0.5;
 			}
-
-			if (circadianBias.has(obs.territory)) score *= 1.15;
-			if (options.entity_id && obs.entity_id === options.entity_id) {
-				score *= 1.15;
-				if (!matchSources.includes("entity")) matchSources.push("entity");
-			}
+			const circadianMod = circadianBias.has(obs.territory) ? 1.15 : 1.0;
+			const baseCognitiveMultiplier = gripMod * phaseMod * noveltyMod * circadianMod;
+			const weightedCognitiveMultiplier = 1 + ((baseCognitiveMultiplier - 1) * profileConfig.layer_weights.cognition);
+			const score = adjustedRelevance * weightedCognitiveMultiplier;
 
 			if (score < minSimilarity) continue;
 
@@ -699,9 +770,39 @@ export class SQLiteBrainStorage implements IBrainStorage {
 				observation: this.toPublicObservation(obs),
 				territory: obs.territory,
 				score,
-				match_sources: matchSources,
+				match_sources: Array.from(new Set(matchSources)),
 				vector_similarity: vectorSimilarity,
-				keyword_rank: keywordRank
+				keyword_rank: keywordRank,
+				score_breakdown: {
+					profile: retrievalProfile,
+					layer_a: {
+						base_relevance: baseRelevance,
+						vector_component: vectorComponent,
+						keyword_component: keywordComponent,
+						entity_component: entityComponent,
+						signal_boost: signalMatch.total_boost,
+						adjusted_relevance: adjustedRelevance
+					},
+					layer_b: {
+						base_multiplier: baseCognitiveMultiplier,
+						grip_multiplier: gripMod,
+						charge_phase_multiplier: phaseMod,
+						novelty_multiplier: noveltyMod,
+						circadian_multiplier: circadianMod,
+						weighted_multiplier: weightedCognitiveMultiplier
+					},
+					signals: {
+						quoted_phrases: querySignals.quoted_phrases,
+						proper_names: querySignals.proper_names,
+						temporal_query: querySignals.temporal.has_temporal_cue,
+						assistant_reference_query: querySignals.assistant_reference.detected,
+						quoted_phrase_matches: signalMatch.quoted_phrase_matches,
+						proper_name_matches: signalMatch.proper_name_matches,
+						temporal_matched: signalMatch.temporal_matched,
+						temporal_reasons: signalMatch.temporal_reasons,
+						assistant_reference_matched: signalMatch.assistant_reference_matched
+					}
+				}
 			});
 		}
 

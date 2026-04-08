@@ -121,6 +121,51 @@ describe('sqlite storage backend', () => {
 		expect(ids).toContain('obs_entity_only');
 	});
 
+	it('applies retrieval profiles, signal boosts, and profile-sized candidate pools', async () => {
+		const dbPath = `/tmp/muse-brain-test-${crypto.randomUUID()}.sqlite`;
+		const storage = createStorage({ backend: 'sqlite', sqlitePath: dbPath }, 'companion');
+		const now = new Date().toISOString();
+
+		for (let i = 0; i < 60; i++) {
+			await storage.appendToTerritory('craft', {
+				id: `obs_bulk_${i}`,
+				content: `atlas memo ${i}`,
+				territory: 'craft',
+				created: now,
+				texture: { salience: 'active', vividness: 'vivid', charge: [], grip: 'present', charge_phase: 'fresh' },
+				access_count: 0
+			});
+		}
+		await storage.appendToTerritory('craft', {
+			id: 'obs_quoted_target',
+			content: 'atlas note with exact memory palace phrase',
+			territory: 'craft',
+			created: now,
+			type: 'assistant_response',
+			tags: ['assistant'],
+			texture: { salience: 'active', vividness: 'vivid', charge: [], grip: 'present', charge_phase: 'fresh' },
+			access_count: 0
+		});
+
+		const native = await storage.hybridSearch({
+			query: 'what did you say about "memory palace" atlas',
+			retrieval_profile: 'native',
+			limit: 50,
+			min_similarity: 0.01
+		});
+		const benchmark = await storage.hybridSearch({
+			query: 'what did you say about "memory palace" atlas',
+			retrieval_profile: 'benchmark',
+			limit: 50,
+			min_similarity: 0.01
+		});
+
+		expect(native.length).toBeLessThan(benchmark.length);
+		expect(benchmark[0].observation.id).toBe('obs_quoted_target');
+		expect(benchmark[0].score_breakdown?.profile).toBe('benchmark');
+		expect(benchmark[0].match_sources).toContain('quoted_phrase');
+	});
+
 	it('rejects invalid tenant at constructor boundary', () => {
 		expect(() => new SQLiteBrainStorage('/tmp/muse-brain-test.sqlite', 'invalid-tenant')).toThrow(/Invalid tenant/);
 	});

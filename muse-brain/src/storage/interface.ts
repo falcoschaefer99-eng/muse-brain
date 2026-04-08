@@ -46,6 +46,7 @@ import type {
 	CapturedSkillArtifactFilter,
 	CapturedSkillRegistryHealth
 } from "../types";
+import type { QuerySignals, RetrievalProfile } from "../retrieval/query-signals";
 
 // ============ FILTER / QUERY TYPES ============
 
@@ -98,6 +99,10 @@ export interface HybridSearchOptions {
 	query: string;
 	/** Pre-computed query embedding — if omitted, vector search is skipped. */
 	embedding?: number[];
+	/** Retrieval profile baseline: native (default), balanced, benchmark. */
+	retrieval_profile?: RetrievalProfile;
+	/** Optional pre-extracted query signals (storage extracts when omitted). */
+	query_signals?: QuerySignals;
 	territory?: string;
 	grip?: string[];
 	charge_phase?: string;
@@ -123,6 +128,37 @@ export interface HybridSearchResult {
 	vector_similarity?: number;
 	/** Raw ts_rank score before modulation (if keyword search ran). */
 	keyword_rank?: number;
+	/** Scoring diagnostics for retrieval analysis. */
+	score_breakdown?: {
+		profile: RetrievalProfile;
+		layer_a: {
+			base_relevance: number;
+			vector_component: number;
+			keyword_component: number;
+			entity_component: number;
+			signal_boost: number;
+			adjusted_relevance: number;
+		};
+		layer_b: {
+			base_multiplier: number;
+			grip_multiplier: number;
+			charge_phase_multiplier: number;
+			novelty_multiplier: number;
+			circadian_multiplier: number;
+			weighted_multiplier: number;
+		};
+		signals: {
+			quoted_phrases: string[];
+			proper_names: string[];
+			temporal_query: boolean;
+			assistant_reference_query: boolean;
+			quoted_phrase_matches: string[];
+			proper_name_matches: string[];
+			temporal_matched: boolean;
+			temporal_reasons: string[];
+			assistant_reference_matched: boolean;
+		};
+	};
 }
 
 /** Options for bulk texture updates (decay daemon). */

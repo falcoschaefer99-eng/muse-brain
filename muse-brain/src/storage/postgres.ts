@@ -76,6 +76,13 @@ import type {
 
 import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES, CIRCADIAN_PHASES, ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, calculateMomentumDecay, calculateAfterglowFade, generateId } from "../helpers";
+import {
+	DEFAULT_RETRIEVAL_PROFILE,
+	getRetrievalProfileConfig,
+	normalizeRetrievalProfile,
+	extractQuerySignals,
+	computeQuerySignalBoosts
+} from "../retrieval/query-signals";
 
 import type {
 	IBrainStorage,
@@ -2161,8 +2168,12 @@ export class PostgresBrainStorage implements IBrainStorage {
 	// ============ HYBRID SEARCH (Sprint 2) ============
 
 	async hybridSearch(options: HybridSearchOptions): Promise<HybridSearchResult[]> {
+		const retrievalProfile = normalizeRetrievalProfile(options.retrieval_profile) ?? DEFAULT_RETRIEVAL_PROFILE;
+		const profileConfig = getRetrievalProfileConfig(retrievalProfile);
 		const limit = Math.min(options.limit ?? 10, 50);
 		const minSimilarity = options.min_similarity ?? 0.3;
+		const querySignals = options.query_signals ?? extractQuerySignals(options.query ?? "");
+		const nowMs = Date.now();
 
 		// ---- Phase 1: Candidate Generation ----
 
@@ -2193,6 +2204,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 				return [];
 			}
 			const embeddingLiteral = `[${options.embedding.join(",")}]`;
+			const vectorLimit = profileConfig.candidate_pool.vector;
 			try {
 				if (options.territory && options.grip?.length) {
 					return await this.sql`
@@ -2206,7 +2218,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND territory = ${options.territory}
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY embedding <=> ${embeddingLiteral}::vector
-						LIMIT 50
+						LIMIT ${vectorLimit}
 					` as Record<string, unknown>[];
 				} else if (options.territory) {
 					return await this.sql`
@@ -2219,7 +2231,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND embedding IS NOT NULL
 						  AND territory = ${options.territory}
 						ORDER BY embedding <=> ${embeddingLiteral}::vector
-						LIMIT 50
+						LIMIT ${vectorLimit}
 					` as Record<string, unknown>[];
 				} else if (options.grip?.length) {
 					return await this.sql`
@@ -2232,7 +2244,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND embedding IS NOT NULL
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY embedding <=> ${embeddingLiteral}::vector
-						LIMIT 50
+						LIMIT ${vectorLimit}
 					` as Record<string, unknown>[];
 				} else {
 					return await this.sql`
@@ -2244,7 +2256,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						WHERE tenant_id = ${this.tenant}
 						  AND embedding IS NOT NULL
 						ORDER BY embedding <=> ${embeddingLiteral}::vector
-						LIMIT 50
+						LIMIT ${vectorLimit}
 					` as Record<string, unknown>[];
 				}
 			} catch (err) {
@@ -2255,6 +2267,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 		const keywordPromise: Promise<Record<string, unknown>[]> = (async () => {
 			if (!options.query?.trim()) return [];
+			const keywordLimit = profileConfig.candidate_pool.keyword;
 			try {
 				if (options.territory && options.grip?.length) {
 					return await this.sql`
@@ -2268,7 +2281,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND territory = ${options.territory}
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY text_rank DESC
-						LIMIT 30
+						LIMIT ${keywordLimit}
 					` as Record<string, unknown>[];
 				} else if (options.territory) {
 					return await this.sql`
@@ -2281,7 +2294,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND search_vector @@ plainto_tsquery('english', ${options.query})
 						  AND territory = ${options.territory}
 						ORDER BY text_rank DESC
-						LIMIT 30
+						LIMIT ${keywordLimit}
 					` as Record<string, unknown>[];
 				} else if (options.grip?.length) {
 					return await this.sql`
@@ -2294,7 +2307,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						  AND search_vector @@ plainto_tsquery('english', ${options.query})
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY text_rank DESC
-						LIMIT 30
+						LIMIT ${keywordLimit}
 					` as Record<string, unknown>[];
 				} else {
 					return await this.sql`
@@ -2306,7 +2319,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						WHERE tenant_id = ${this.tenant}
 						  AND search_vector @@ plainto_tsquery('english', ${options.query})
 						ORDER BY text_rank DESC
-						LIMIT 30
+						LIMIT ${keywordLimit}
 					` as Record<string, unknown>[];
 				}
 			} catch (err) {
@@ -2318,6 +2331,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 		// 3. Entity-linked candidates (when entity_id filter is present)
 		const entityPromise: Promise<Record<string, unknown>[]> = (async () => {
 			if (!options.entity_id) return [];
+			const entityLimit = profileConfig.candidate_pool.entity;
 			try {
 				const rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
@@ -2327,7 +2341,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 					WHERE tenant_id = ${this.tenant}
 					  AND entity_id = ${options.entity_id}
 					ORDER BY created_at DESC
-					LIMIT 20
+					LIMIT ${entityLimit}
 				`;
 				return rows as Record<string, unknown>[];
 			} catch (err) {
@@ -2432,22 +2446,29 @@ export class PostgresBrainStorage implements IBrainStorage {
 			const grip: string = texture.grip ?? "present";
 			const match_sources: string[] = [];
 
-			// Base score: weighted combination of available signals.
-			let baseScore: number;
+			// Base Layer A relevance from vector/keyword/entity candidate generation.
+			let baseRelevance: number;
+			let vectorComponent = 0;
+			let keywordComponent = 0;
+			let entityComponent = 0;
 			if (vector_sim !== undefined && keyword_rank !== undefined) {
 				const normalizedKeyword = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
-				baseScore = vector_sim * 0.7 + normalizedKeyword * 0.3;
+				vectorComponent = vector_sim * profileConfig.relevance_mix.vector;
+				keywordComponent = normalizedKeyword * profileConfig.relevance_mix.keyword;
+				baseRelevance = vectorComponent + keywordComponent;
 				match_sources.push('vector', 'keyword');
 			} else if (vector_sim !== undefined) {
-				baseScore = vector_sim;
+				vectorComponent = vector_sim;
+				baseRelevance = vectorComponent;
 				match_sources.push('vector');
 			} else if (keyword_rank !== undefined) {
 				// keyword only
-				baseScore = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
+				keywordComponent = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
+				baseRelevance = keywordComponent;
 				match_sources.push('keyword');
 			} else {
 				// entity-only — no vector or keyword signal; use flat base score
-				baseScore = 0.5;
+				baseRelevance = profileConfig.entity_only_base;
 			}
 
 			// Entity match source label (for candidates that appeared in entity query)
@@ -2455,41 +2476,92 @@ export class PostgresBrainStorage implements IBrainStorage {
 				match_sources.push('entity');
 			}
 
-			// Skip results below threshold before applying multipliers.
-			// Entity-only candidates always clear the threshold (baseScore = 0.5 >= default 0.3).
-			if (baseScore < minSimilarity) continue;
-
-			let score = baseScore;
-
-			// 1. Grip weighting
-			score *= gripMultiplier[grip] ?? 1.0;
-
-			// 2. Charge phase multiplier
-			score *= chargePhaseMultiplier[chargePhase] ?? 1.0;
-
-			// 3. Novelty boost (only for non-metabolized observations with high novelty)
-			if (noveltyScore > 0.7 && chargePhase !== 'metabolized') {
-				score *= 1.0 + (noveltyScore - 0.5) * 0.5;
-			}
-
-			// 4. Circadian territory bias
-			if (circadianBiasSet.has(territory)) {
-				score *= 1.15;
-			}
-
-			// 5. Entity gravity — observations about same entity cluster
+			// Entity match is a Layer A relevance signal, not a cognitive modulation.
 			if (options.entity_id && observation.entity_id === options.entity_id) {
-				score *= 1.15;
+				entityComponent += profileConfig.entity_match_boost;
 				if (!match_sources.includes('entity')) match_sources.push('entity');
 			}
+
+			const signalMatch = computeQuerySignalBoosts(
+				querySignals,
+				{
+					content: observation.content,
+					summary: observation.summary,
+					context: observation.context,
+					created: observation.created,
+					type: observation.type,
+					tags: observation.tags
+				},
+				profileConfig.query_signal_boosts,
+				nowMs
+			);
+			const signalBoost = signalMatch.total_boost;
+			if (signalMatch.quoted_phrase_matches.length > 0) match_sources.push('quoted_phrase');
+			if (signalMatch.proper_name_matches.length > 0) match_sources.push('proper_name');
+			if (signalMatch.temporal_matched) match_sources.push('temporal');
+			if (signalMatch.assistant_reference_matched) match_sources.push('assistant_reference');
+
+			const adjustedRelevance = Math.max(0, (baseRelevance + entityComponent + signalBoost) * profileConfig.layer_weights.relevance);
+			if (adjustedRelevance <= 0) continue;
+
+			// Layer B cognitive modulation.
+			const gripMod = gripMultiplier[grip] ?? 1.0;
+			const chargePhaseMod = chargePhaseMultiplier[chargePhase] ?? 1.0;
+			let noveltyMod = 1.0;
+			let circadianMod = 1.0;
+
+			// Novelty boost (only for non-metabolized observations with high novelty)
+			if (noveltyScore > 0.7 && chargePhase !== 'metabolized') {
+				noveltyMod = 1.0 + (noveltyScore - 0.5) * 0.5;
+			}
+
+			// Circadian territory bias
+			if (circadianBiasSet.has(territory)) {
+				circadianMod = 1.15;
+			}
+
+			const baseCognitiveMultiplier = gripMod * chargePhaseMod * noveltyMod * circadianMod;
+			const weightedCognitiveMultiplier = 1 + ((baseCognitiveMultiplier - 1) * profileConfig.layer_weights.cognition);
+			const score = adjustedRelevance * weightedCognitiveMultiplier;
+			if (score < minSimilarity) continue;
 
 			results.push({
 				observation,
 				territory,
 				score,
-				match_sources,
+				match_sources: Array.from(new Set(match_sources)),
 				vector_similarity: vector_sim,
-				keyword_rank: keyword_rank
+				keyword_rank: keyword_rank,
+				score_breakdown: {
+					profile: retrievalProfile,
+					layer_a: {
+						base_relevance: baseRelevance,
+						vector_component: vectorComponent,
+						keyword_component: keywordComponent,
+						entity_component: entityComponent,
+						signal_boost: signalBoost,
+						adjusted_relevance: adjustedRelevance
+					},
+					layer_b: {
+						base_multiplier: baseCognitiveMultiplier,
+						grip_multiplier: gripMod,
+						charge_phase_multiplier: chargePhaseMod,
+						novelty_multiplier: noveltyMod,
+						circadian_multiplier: circadianMod,
+						weighted_multiplier: weightedCognitiveMultiplier
+					},
+					signals: {
+						quoted_phrases: querySignals.quoted_phrases,
+						proper_names: querySignals.proper_names,
+						temporal_query: querySignals.temporal.has_temporal_cue,
+						assistant_reference_query: querySignals.assistant_reference.detected,
+						quoted_phrase_matches: signalMatch.quoted_phrase_matches,
+						proper_name_matches: signalMatch.proper_name_matches,
+						temporal_matched: signalMatch.temporal_matched,
+						temporal_reasons: signalMatch.temporal_reasons,
+						assistant_reference_matched: signalMatch.assistant_reference_matched
+					}
+				}
 			});
 		}
 

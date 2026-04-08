@@ -22,6 +22,59 @@ function makeObservation(id: string, created: string): Observation {
 }
 
 describe('context confidence gating', () => {
+	it('passes retrieval_profile and exposes scoring diagnostics in mind_query hybrid path', async () => {
+		const now = Date.now();
+		const storage = {
+			hybridSearch: vi.fn(async () => ([
+				{
+					observation: makeObservation('obs_profile', new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString()),
+					territory: 'craft',
+					score: 0.82,
+					match_sources: ['vector', 'quoted_phrase'],
+					score_breakdown: {
+						profile: 'balanced',
+						layer_a: { base_relevance: 0.6 },
+						layer_b: { weighted_multiplier: 1.1 },
+						signals: { quoted_phrase_matches: ['memory palace'] }
+					}
+				}
+			])),
+			findEntityById: vi.fn(async () => null),
+			findEntityByName: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool('mind_query', {
+			query: 'What did you say about "memory palace"?',
+			retrieval_profile: 'balanced'
+		}, { storage: storage as any });
+
+		expect(result.retrieval_profile).toBe('balanced');
+		expect(result.query_signals.quoted_phrases).toContain('memory palace');
+		expect(storage.hybridSearch).toHaveBeenCalledWith(expect.objectContaining({
+			retrieval_profile: 'balanced',
+			query_signals: expect.objectContaining({
+				quoted_phrases: expect.arrayContaining(['memory palace'])
+			})
+		}));
+		expect(result.observations[0].score_breakdown.profile).toBe('balanced');
+	});
+
+	it('rejects invalid retrieval profile values in mind_query', async () => {
+		const storage = {
+			hybridSearch: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null),
+			findEntityByName: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool('mind_query', {
+			query: 'profile validation',
+			retrieval_profile: 'cognitive_advantage'
+		}, { storage: storage as any });
+
+		expect(result.error).toMatch(/retrieval_profile must be one of/i);
+		expect(storage.hybridSearch).not.toHaveBeenCalled();
+	});
+
 	it('applies confidence threshold + hard cap in mind_query hybrid path', async () => {
 		const now = Date.now();
 		const storage = {

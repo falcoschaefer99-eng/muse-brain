@@ -26,6 +26,11 @@ import {
 	fireAndForgetSideEffects,
 	CONFIDENCE_DEFAULTS
 } from "./confidence-utils";
+import {
+	DEFAULT_RETRIEVAL_PROFILE,
+	normalizeRetrievalProfile,
+	extractQuerySignals
+} from "../retrieval/query-signals";
 
 // ============ HELPERS ============
 
@@ -98,6 +103,16 @@ export const TOOL_DEFS = [
 			properties: {
 				// Free-text hybrid search (activates hybridSearch path when present)
 				query: { type: "string", description: "Free-text query — activates hybrid vector + keyword search with Neural Surfacing modulation" },
+				retrieval_profile: {
+					type: "string",
+					enum: ["native", "balanced", "benchmark"],
+					description: "Hybrid path only: retrieval weighting profile. native=relational baseline, balanced=recall+relation, benchmark=recall-first."
+				},
+				profile: {
+					type: "string",
+					enum: ["native", "balanced", "benchmark"],
+					description: "Alias for retrieval_profile."
+				},
 				// Temporal filter
 				days: { type: "number", description: "Filter to observations from last N days" },
 				hours: { type: "number", description: "Filter to observations from last N hours (overrides days)" },
@@ -367,6 +382,19 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 		case "mind_query": {
 			const limit = Math.min(Math.max(1, args.limit ?? 10), 50);
+			const explicitRetrievalProfile = normalizeRetrievalProfile(args.retrieval_profile);
+			const explicitAliasProfile = normalizeRetrievalProfile(args.profile);
+			if (args.retrieval_profile !== undefined && explicitRetrievalProfile === undefined) {
+				return { error: "retrieval_profile must be one of: native, balanced, benchmark" };
+			}
+			if (args.profile !== undefined && explicitAliasProfile === undefined) {
+				return { error: "profile must be one of: native, balanced, benchmark" };
+			}
+			if (explicitRetrievalProfile && explicitAliasProfile && explicitRetrievalProfile !== explicitAliasProfile) {
+				return { error: "retrieval_profile and profile conflict; use one value" };
+			}
+			const profileInput = explicitRetrievalProfile ?? explicitAliasProfile;
+			const retrievalProfile = profileInput ?? DEFAULT_RETRIEVAL_PROFILE;
 			const confidenceThreshold = parseConfidenceThreshold(args.confidence_threshold);
 			if (args.confidence_threshold !== undefined && confidenceThreshold === undefined) {
 				return { error: "confidence_threshold must be a number between 0 and 1" };
@@ -394,10 +422,12 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				|| args.recency_boost_days !== undefined
 				|| args.recency_boost !== undefined
 				|| args.max_context_items !== undefined;
+			const profileControlProvided = profileInput !== undefined;
 
 			// ---- Hybrid search path: activated when free-text query is present ----
 			if (args.query && typeof args.query === 'string' && args.query.trim()) {
 				const query: string = args.query.trim();
+				const querySignals = extractQuerySignals(query);
 
 				// Generate embedding if AI binding available.
 				let embedding: number[] | undefined;
@@ -436,6 +466,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const hybridResults = await storage.hybridSearch({
 					query,
 					embedding,
+					retrieval_profile: retrievalProfile,
+					query_signals: querySignals,
 					territory,
 					grip: gripFilter,
 					limit,
@@ -455,6 +487,13 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return {
 					query,
 					search_mode: "hybrid",
+					retrieval_profile: retrievalProfile,
+					query_signals: {
+						quoted_phrases: querySignals.quoted_phrases,
+						proper_names: querySignals.proper_names,
+						temporal: querySignals.temporal,
+						assistant_reference: querySignals.assistant_reference.detected
+					},
 					filter: {
 						territory: args.territory,
 						grip: args.grip
@@ -478,6 +517,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 							confidence: Math.round(r.confidence * 100) / 100,
 							recency_boost_applied: Math.round(r.recency_boost_applied * 100) / 100,
 							match_in: r.match_sources,
+							score_breakdown: r.score_breakdown,
 							charge: r.observation.texture?.charge || [],
 							grip: r.observation.texture?.grip,
 							created: r.observation.created
@@ -570,6 +610,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				},
 				...(confidenceControlsProvided
 					? { confidence_notice: "confidence_threshold/shadow_mode/recency/max_context_items are applied only when query is provided (hybrid mode)." }
+					: {}),
+				...(profileControlProvided
+					? { retrieval_profile_notice: "retrieval_profile/profile is applied only when query is provided (hybrid mode)." }
 					: {}),
 				count: topHits.length,
 				total_matching: hits.length,

@@ -134,7 +134,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				match_in: r.match_sources,
 				score: Math.round(r.score * 100) / 100,
 				confidence: Math.round(r.confidence * 100) / 100,
-				recency_boost_applied: Math.round(r.recency_boost_applied * 100) / 100
+				recency_boost_applied: Math.round(r.recency_boost_applied * 100) / 100,
+				score_breakdown: r.score_breakdown
 			}));
 
 			return {
