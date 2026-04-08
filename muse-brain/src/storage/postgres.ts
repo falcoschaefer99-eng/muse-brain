@@ -80,9 +80,9 @@ import {
 	DEFAULT_RETRIEVAL_PROFILE,
 	getRetrievalProfileConfig,
 	normalizeRetrievalProfile,
-	extractQuerySignals,
-	computeQuerySignalBoosts
+	extractQuerySignals
 } from "../retrieval/query-signals";
+import { scoreHybridCandidate } from "../retrieval/scoring";
 
 import type {
 	IBrainStorage,
@@ -2173,7 +2173,6 @@ export class PostgresBrainStorage implements IBrainStorage {
 		const limit = Math.min(options.limit ?? 10, 50);
 		const minSimilarity = options.min_similarity ?? 0.3;
 		const querySignals = options.query_signals ?? extractQuerySignals(options.query ?? "");
-		const nowMs = Date.now();
 
 		// ---- Phase 1: Candidate Generation ----
 
@@ -2419,7 +2418,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 		}
 
-		// ---- Phase 2: Score Modulation (Neural Surfacing v1) ----
+		// ---- Phase 2: Score Modulation ----
 
 		// Build retrieval_bias set from circadian phase for territory boost.
 		const circadianBiasSet = new Set<string>();
@@ -2429,139 +2428,33 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 		}
 
-		const gripMultiplier: Record<string, number> = {
-			iron: 1.3, strong: 1.15, present: 1.0, loose: 0.9, dormant: 0.7
-		};
-		const chargePhaseMultiplier: Record<string, number> = {
-			fresh: 1.3, active: 1.15, processing: 1.0, metabolized: 0.85
-		};
-
 		const results: HybridSearchResult[] = [];
 
 		for (const [, cand] of candidates) {
 			const { observation, territory, vector_sim, keyword_rank } = cand;
-			const texture = observation.texture || {};
-			const noveltyScore: number = cand.novelty_score_raw ?? texture.novelty_score ?? 0.5;
-			const chargePhase: string = texture.charge_phase ?? "processing";
-			const grip: string = texture.grip ?? "present";
-			const match_sources: string[] = [];
-
-			// Base Layer A relevance from vector/keyword/entity candidate generation.
-			let baseRelevance: number;
-			let vectorComponent = 0;
-			let keywordComponent = 0;
-			let entityComponent = 0;
-			if (vector_sim !== undefined && keyword_rank !== undefined) {
-				const normalizedKeyword = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
-				vectorComponent = vector_sim * profileConfig.relevance_mix.vector;
-				keywordComponent = normalizedKeyword * profileConfig.relevance_mix.keyword;
-				baseRelevance = vectorComponent + keywordComponent;
-				match_sources.push('vector', 'keyword');
-			} else if (vector_sim !== undefined) {
-				vectorComponent = vector_sim;
-				baseRelevance = vectorComponent;
-				match_sources.push('vector');
-			} else if (keyword_rank !== undefined) {
-				// keyword only
-				keywordComponent = maxKeywordRank > 0 ? keyword_rank / maxKeywordRank : 0;
-				baseRelevance = keywordComponent;
-				match_sources.push('keyword');
-			} else {
-				// entity-only — no vector or keyword signal; use flat base score
-				baseRelevance = profileConfig.entity_only_base;
-			}
-
-			// Entity match source label (for candidates that appeared in entity query)
-			if (cand._entity_only || cand._entity_matched) {
-				match_sources.push('entity');
-			}
-
-			// Entity match is a Layer A relevance signal, not a cognitive modulation.
-			if (options.entity_id && observation.entity_id === options.entity_id) {
-				entityComponent += profileConfig.entity_match_boost;
-				if (!match_sources.includes('entity')) match_sources.push('entity');
-			}
-
-			const signalMatch = computeQuerySignalBoosts(
-				querySignals,
-				{
-					content: observation.content,
-					summary: observation.summary,
-					context: observation.context,
-					created: observation.created,
-					type: observation.type,
-					tags: observation.tags
-				},
-				profileConfig.query_signal_boosts,
-				nowMs
-			);
-			const signalBoost = signalMatch.total_boost;
-			if (signalMatch.quoted_phrase_matches.length > 0) match_sources.push('quoted_phrase');
-			if (signalMatch.proper_name_matches.length > 0) match_sources.push('proper_name');
-			if (signalMatch.temporal_matched) match_sources.push('temporal');
-			if (signalMatch.assistant_reference_matched) match_sources.push('assistant_reference');
-
-			const adjustedRelevance = Math.max(0, (baseRelevance + entityComponent + signalBoost) * profileConfig.layer_weights.relevance);
-			if (adjustedRelevance <= 0) continue;
-
-			// Layer B cognitive modulation.
-			const gripMod = gripMultiplier[grip] ?? 1.0;
-			const chargePhaseMod = chargePhaseMultiplier[chargePhase] ?? 1.0;
-			let noveltyMod = 1.0;
-			let circadianMod = 1.0;
-
-			// Novelty boost (only for non-metabolized observations with high novelty)
-			if (noveltyScore > 0.7 && chargePhase !== 'metabolized') {
-				noveltyMod = 1.0 + (noveltyScore - 0.5) * 0.5;
-			}
-
-			// Circadian territory bias
-			if (circadianBiasSet.has(territory)) {
-				circadianMod = 1.15;
-			}
-
-			const baseCognitiveMultiplier = gripMod * chargePhaseMod * noveltyMod * circadianMod;
-			const weightedCognitiveMultiplier = 1 + ((baseCognitiveMultiplier - 1) * profileConfig.layer_weights.cognition);
-			const score = adjustedRelevance * weightedCognitiveMultiplier;
-			if (score < minSimilarity) continue;
+			const scored = scoreHybridCandidate({
+				observation,
+				territory,
+				retrieval_profile: retrievalProfile,
+				query_signals: querySignals,
+				max_keyword_rank: maxKeywordRank,
+				vector_similarity: vector_sim,
+				keyword_rank,
+				entity_matched: Boolean(cand._entity_only || cand._entity_matched || (options.entity_id && observation.entity_id === options.entity_id)),
+				novelty_score: cand.novelty_score_raw,
+				circadian_bias_matched: circadianBiasSet.has(territory),
+				min_similarity: minSimilarity
+			});
+			if (!scored) continue;
 
 			results.push({
 				observation,
 				territory,
-				score,
-				match_sources: Array.from(new Set(match_sources)),
+				score: scored.score,
+				match_sources: scored.match_sources,
 				vector_similarity: vector_sim,
-				keyword_rank: keyword_rank,
-				score_breakdown: {
-					profile: retrievalProfile,
-					layer_a: {
-						base_relevance: baseRelevance,
-						vector_component: vectorComponent,
-						keyword_component: keywordComponent,
-						entity_component: entityComponent,
-						signal_boost: signalBoost,
-						adjusted_relevance: adjustedRelevance
-					},
-					layer_b: {
-						base_multiplier: baseCognitiveMultiplier,
-						grip_multiplier: gripMod,
-						charge_phase_multiplier: chargePhaseMod,
-						novelty_multiplier: noveltyMod,
-						circadian_multiplier: circadianMod,
-						weighted_multiplier: weightedCognitiveMultiplier
-					},
-					signals: {
-						quoted_phrases: querySignals.quoted_phrases,
-						proper_names: querySignals.proper_names,
-						temporal_query: querySignals.temporal.has_temporal_cue,
-						assistant_reference_query: querySignals.assistant_reference.detected,
-						quoted_phrase_matches: signalMatch.quoted_phrase_matches,
-						proper_name_matches: signalMatch.proper_name_matches,
-						temporal_matched: signalMatch.temporal_matched,
-						temporal_reasons: signalMatch.temporal_reasons,
-						assistant_reference_matched: signalMatch.assistant_reference_matched
-					}
-				}
+				keyword_rank,
+				score_breakdown: scored.score_breakdown
 			});
 		}
 

@@ -61,9 +61,9 @@ import {
 	DEFAULT_RETRIEVAL_PROFILE,
 	getRetrievalProfileConfig,
 	normalizeRetrievalProfile,
-	extractQuerySignals,
-	computeQuerySignalBoosts
+	extractQuerySignals
 } from "../retrieval/query-signals";
+import { scoreHybridCandidate } from "../retrieval/scoring";
 
 import type {
 	IBrainStorage,
@@ -630,28 +630,12 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		const querySignals = options.query_signals ?? extractQuerySignals(options.query || "");
 		const queryTokens = tokenize(options.query || "");
 		const circadianBias = options.circadian_phase ? new Set(CIRCADIAN_PHASES[options.circadian_phase]?.retrieval_bias ?? []) : new Set<string>();
-		const nowMs = Date.now();
 
 		let rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
 
 		if (options.territory) rows = rows.filter(o => o.territory === options.territory);
 		if (options.grip?.length) rows = rows.filter(o => options.grip!.includes(o.texture?.grip ?? "present"));
 		if (options.charge_phase) rows = rows.filter(o => (o.texture?.charge_phase ?? "fresh") === options.charge_phase);
-
-		const gripWeight: Record<string, number> = {
-			iron: 1.2,
-			strong: 1.1,
-			present: 1.0,
-			loose: 0.92,
-			dormant: 0.85
-		};
-
-		const phaseWeight: Record<string, number> = {
-			fresh: 1.08,
-			active: 1.04,
-			processing: 1.0,
-			metabolized: 0.95
-		};
 
 		interface CandidateSeed {
 			obs: StoredObservation;
@@ -697,112 +681,39 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			candidateMap.set(seed.obs.id, seed);
 		}
 
+		let maxKeywordRank = 0;
+		for (const seed of candidateMap.values()) {
+			if (seed.keywordRank > maxKeywordRank) maxKeywordRank = seed.keywordRank;
+		}
+
 		const results: HybridSearchResult[] = [];
 		for (const seed of candidateMap.values()) {
 			const { obs, keywordRank, vectorSimilarity, hasEntityMatch } = seed;
-
-			let baseRelevance = 0;
-			let vectorComponent = 0;
-			let keywordComponent = 0;
-			let entityComponent = 0;
-			const matchSources: string[] = [];
-			if (typeof vectorSimilarity === "number" && vectorSimilarity > 0 && keywordRank > 0) {
-				vectorComponent = vectorSimilarity * profileConfig.relevance_mix.vector;
-				keywordComponent = keywordRank * profileConfig.relevance_mix.keyword;
-				baseRelevance = vectorComponent + keywordComponent;
-				matchSources.push("vector");
-				matchSources.push("keyword");
-			} else if (typeof vectorSimilarity === "number" && vectorSimilarity > 0) {
-				vectorComponent = vectorSimilarity;
-				baseRelevance = vectorComponent;
-				matchSources.push("vector");
-			} else if (keywordRank > 0) {
-				keywordComponent = keywordRank;
-				baseRelevance = keywordComponent;
-				matchSources.push("keyword");
-			}
-			if (hasEntityMatch && baseRelevance <= 0) {
-				baseRelevance = profileConfig.entity_only_base;
-			}
-			if (hasEntityMatch) {
-				entityComponent += profileConfig.entity_match_boost;
-				matchSources.push("entity");
-			}
-
-			const signalMatch = computeQuerySignalBoosts(
-				querySignals,
-				{
-					content: obs.content,
-					summary: obs.summary,
-					context: obs.context,
-					created: obs.created,
-					type: obs.type,
-					tags: obs.tags
-				},
-				profileConfig.query_signal_boosts,
-				nowMs
-			);
-			if (signalMatch.quoted_phrase_matches.length > 0) matchSources.push("quoted_phrase");
-			if (signalMatch.proper_name_matches.length > 0) matchSources.push("proper_name");
-			if (signalMatch.temporal_matched) matchSources.push("temporal");
-			if (signalMatch.assistant_reference_matched) matchSources.push("assistant_reference");
-
-			const adjustedRelevance = Math.max(0, (baseRelevance + entityComponent + signalMatch.total_boost) * profileConfig.layer_weights.relevance);
-			if (adjustedRelevance <= 0) continue;
-
-			const novelty = typeof obs.novelty_score === "number"
-				? obs.novelty_score
-				: (typeof obs.texture?.novelty_score === "number" ? obs.texture.novelty_score : 0.5);
-			const gripMod = gripWeight[obs.texture?.grip ?? "present"] ?? 1.0;
-			const phaseMod = phaseWeight[obs.texture?.charge_phase ?? "fresh"] ?? 1.0;
-			let noveltyMod = 1.0;
-			if (novelty > 0.7 && (obs.texture?.charge_phase ?? "fresh") !== "metabolized") {
-				noveltyMod = 1 + (novelty - 0.5) * 0.5;
-			}
-			const circadianMod = circadianBias.has(obs.territory) ? 1.15 : 1.0;
-			const baseCognitiveMultiplier = gripMod * phaseMod * noveltyMod * circadianMod;
-			const weightedCognitiveMultiplier = 1 + ((baseCognitiveMultiplier - 1) * profileConfig.layer_weights.cognition);
-			const score = adjustedRelevance * weightedCognitiveMultiplier;
-
-			if (score < minSimilarity) continue;
+			const scored = scoreHybridCandidate({
+				observation: this.toPublicObservation(obs),
+				territory: obs.territory,
+				retrieval_profile: retrievalProfile,
+				query_signals: querySignals,
+				max_keyword_rank: maxKeywordRank,
+				vector_similarity: vectorSimilarity,
+				keyword_rank: keywordRank > 0 ? keywordRank : undefined,
+				entity_matched: hasEntityMatch,
+				novelty_score: typeof obs.novelty_score === "number"
+					? obs.novelty_score
+					: (typeof obs.texture?.novelty_score === "number" ? obs.texture.novelty_score : undefined),
+				circadian_bias_matched: circadianBias.has(obs.territory),
+				min_similarity: minSimilarity
+			});
+			if (!scored) continue;
 
 			results.push({
 				observation: this.toPublicObservation(obs),
 				territory: obs.territory,
-				score,
-				match_sources: Array.from(new Set(matchSources)),
+				score: scored.score,
+				match_sources: scored.match_sources,
 				vector_similarity: vectorSimilarity,
-				keyword_rank: keywordRank,
-				score_breakdown: {
-					profile: retrievalProfile,
-					layer_a: {
-						base_relevance: baseRelevance,
-						vector_component: vectorComponent,
-						keyword_component: keywordComponent,
-						entity_component: entityComponent,
-						signal_boost: signalMatch.total_boost,
-						adjusted_relevance: adjustedRelevance
-					},
-					layer_b: {
-						base_multiplier: baseCognitiveMultiplier,
-						grip_multiplier: gripMod,
-						charge_phase_multiplier: phaseMod,
-						novelty_multiplier: noveltyMod,
-						circadian_multiplier: circadianMod,
-						weighted_multiplier: weightedCognitiveMultiplier
-					},
-					signals: {
-						quoted_phrases: querySignals.quoted_phrases,
-						proper_names: querySignals.proper_names,
-						temporal_query: querySignals.temporal.has_temporal_cue,
-						assistant_reference_query: querySignals.assistant_reference.detected,
-						quoted_phrase_matches: signalMatch.quoted_phrase_matches,
-						proper_name_matches: signalMatch.proper_name_matches,
-						temporal_matched: signalMatch.temporal_matched,
-						temporal_reasons: signalMatch.temporal_reasons,
-						assistant_reference_matched: signalMatch.assistant_reference_matched
-					}
-				}
+				keyword_rank: keywordRank > 0 ? keywordRank : undefined,
+				score_breakdown: scored.score_breakdown
 			});
 		}
 

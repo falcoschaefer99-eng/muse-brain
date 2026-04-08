@@ -47,6 +47,7 @@ import type {
 	CapturedSkillRegistryHealth
 } from "../types";
 import type { QuerySignals, RetrievalProfile } from "../retrieval/query-signals";
+import type { HybridScoreBreakdown } from "../retrieval/scoring";
 
 // ============ FILTER / QUERY TYPES ============
 
@@ -129,36 +130,7 @@ export interface HybridSearchResult {
 	/** Raw ts_rank score before modulation (if keyword search ran). */
 	keyword_rank?: number;
 	/** Scoring diagnostics for retrieval analysis. */
-	score_breakdown?: {
-		profile: RetrievalProfile;
-		layer_a: {
-			base_relevance: number;
-			vector_component: number;
-			keyword_component: number;
-			entity_component: number;
-			signal_boost: number;
-			adjusted_relevance: number;
-		};
-		layer_b: {
-			base_multiplier: number;
-			grip_multiplier: number;
-			charge_phase_multiplier: number;
-			novelty_multiplier: number;
-			circadian_multiplier: number;
-			weighted_multiplier: number;
-		};
-		signals: {
-			quoted_phrases: string[];
-			proper_names: string[];
-			temporal_query: boolean;
-			assistant_reference_query: boolean;
-			quoted_phrase_matches: string[];
-			proper_name_matches: string[];
-			temporal_matched: boolean;
-			temporal_reasons: string[];
-			assistant_reference_matched: boolean;
-		};
-	};
+	score_breakdown?: HybridScoreBreakdown;
 }
 
 /** Options for bulk texture updates (decay daemon). */

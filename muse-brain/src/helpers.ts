@@ -48,21 +48,36 @@ export function generateId(prefix: string): string {
 	return `${prefix}_${ts}_${uuid}`;
 }
 
-export function getCurrentCircadianPhase(): { phase: string; quality: string; retrieval_bias: string[]; hour: number } {
-	const hour = new Date().getUTCHours();
-	const cetHour = (hour + 1) % 24; // Adjust for CET
+const DEFAULT_CIRCADIAN_TIMEZONE = "Europe/Berlin";
+
+export function getCircadianPhaseForDate(
+	input: Date | string | number,
+	timeZone = DEFAULT_CIRCADIAN_TIMEZONE
+): { phase: string; quality: string; retrieval_bias: string[]; hour: number } {
+	const date = input instanceof Date ? input : new Date(input);
+	const formattedHour = new Intl.DateTimeFormat("en-GB", {
+		hour: "numeric",
+		hourCycle: "h23",
+		timeZone
+	}).format(date);
+	const localizedHour = Number.parseInt(formattedHour, 10);
+	const hour = Number.isFinite(localizedHour) ? localizedHour : date.getUTCHours();
 
 	for (const [phaseName, phaseInfo] of Object.entries(CIRCADIAN_PHASES)) {
-		if (phaseInfo.hours.includes(cetHour)) {
+		if (phaseInfo.hours.includes(hour)) {
 			return {
 				phase: phaseName,
 				quality: phaseInfo.quality,
 				retrieval_bias: phaseInfo.retrieval_bias,
-				hour: cetHour
+				hour
 			};
 		}
 	}
-	return { phase: "unknown", quality: "neutral", retrieval_bias: [], hour: cetHour };
+	return { phase: "unknown", quality: "neutral", retrieval_bias: [], hour };
+}
+
+export function getCurrentCircadianPhase(): { phase: string; quality: string; retrieval_bias: string[]; hour: number } {
+	return getCircadianPhaseForDate(new Date(), DEFAULT_CIRCADIAN_TIMEZONE);
 }
 
 export function extractEssence(observation: Observation): string {
