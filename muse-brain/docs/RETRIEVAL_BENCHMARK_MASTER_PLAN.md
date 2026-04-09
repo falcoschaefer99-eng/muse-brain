@@ -204,6 +204,52 @@ Sample query families:
 - memory significance recall
 - "what mattered most" retrieval
 
+### Benchmark receipts policy (non-negotiable)
+- Every benchmark claim must include:
+  - dataset name + input file
+  - run date
+  - profile table (`native` / `balanced` / `benchmark`)
+  - artifact paths (`artifact.json`, `summary.md`, `miss-analysis.json`, `run-issues.json`)
+- No "we're best" claims without receipts.
+- No cherry-picking single metrics without showing the full profile table.
+
+### Baseline receipt snapshot (April 9, 2026)
+These are the first full Sprint 2 benchmark receipts and should be treated as baseline history.
+
+**LongMemEval (input: `benchmarks/data/longmemeval_s_cleaned.json`)**
+- run window: 2026-04-09T19:07:02Z → 2026-04-09T19:08:33Z
+- artifact path: `benchmarks/results/longmemeval-20260409/`
+- run issues: 0
+
+| Profile | R@1 | R@5 | R@10 | NDCG@10 | Candidate Hit | Evaluated | Skipped |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| native | 0.4644 | 0.8270 | 0.8918 | 0.8023 | 0.9383 | 470 | 30 |
+| balanced | 0.4697 | 0.8280 | 0.8939 | 0.8058 | 0.9404 | 470 | 30 |
+| benchmark | 0.4697 | 0.8280 | 0.8907 | 0.8051 | 0.9383 | 470 | 30 |
+
+**LoCoMo (input: `benchmarks/data/locomo10.json`)**
+- run window: 2026-04-09T19:09:03Z → 2026-04-09T20:04:25Z
+- artifact path: `benchmarks/results/locomo-20260409/`
+- run issues: 0
+
+| Profile | R@1 | R@5 | R@10 | NDCG@10 | Candidate Hit | Evaluated | Skipped |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| native | 0.2310 | 0.3997 | 0.4813 | 0.3566 | 0.5272 | 1982 | 4 |
+| balanced | 0.2295 | 0.3983 | 0.4802 | 0.3551 | 0.5257 | 1982 | 4 |
+| benchmark | 0.2289 | 0.3944 | 0.4753 | 0.3528 | 0.5207 | 1982 | 4 |
+
+### Working target bands for the next release cycle
+These are engineering targets, not marketing claims.
+
+- **LongMemEval**
+  - hold or improve R@10 (target: `>= 0.894`)
+  - improve R@1 toward `>= 0.48`
+  - keep candidate hit `>= 0.94`
+- **LoCoMo**
+  - improve candidate hit from ~0.52 toward `>= 0.60`
+  - improve R@10 from ~0.48 toward `>= 0.55`
+  - improve R@1 from ~0.23 toward `>= 0.27`
+
 ---
 
 ## Sprint Roadmap
@@ -407,6 +453,7 @@ When this lane ships, it should include all of the following:
 - [x] implement profile-based runner
 - [x] save miss analysis logs
 - [x] document honest benchmark methodology
+- [x] record baseline benchmark receipt snapshot in master plan
 
 ### Sprint 3 — Derived Retrieval Hints
 - [ ] define hint artifact schema
