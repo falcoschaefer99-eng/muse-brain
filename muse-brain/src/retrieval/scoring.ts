@@ -132,7 +132,7 @@ export function scoreHybridCandidate(input: HybridCandidateScoreInput): HybridCa
 	}
 
 	if (hint_score > 0) {
-		hintComponent = Math.min(Math.max(hint_score, 0), 1) * 0.12;
+		hintComponent = Math.min(Math.max(hint_score, 0), 1) * profileConfig.hint_component_scale;
 		baseRelevance += hintComponent;
 		matchSources.push("hint");
 	}

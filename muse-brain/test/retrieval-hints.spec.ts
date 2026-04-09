@@ -73,12 +73,14 @@ describe("retrieval hint derivation", () => {
 	it("derives entity hints from entity_id + capitalized terms", () => {
 		const hints = deriveEntityHints({
 			id: "obs_e",
-			content: "Discussed this with Alice Johnson and Rainer.",
+			content: "Discussed this with Alice Johnson and Rainer. Assistant said hello in Session 1.",
 			entity_id: "entity_partner_1"
 		});
 
 		expect(hints.some(h => h.hint_text === "entity_partner_1")).toBe(true);
 		expect(hints.some(h => h.hint_text === "Alice Johnson")).toBe(true);
+		expect(hints.some(h => h.hint_text.toLowerCase() === "assistant")).toBe(false);
+		expect(hints.some(h => h.hint_text.toLowerCase() === "session")).toBe(false);
 	});
 
 	it("builds initial hint pack with deduping", () => {
@@ -132,6 +134,24 @@ describe("retrieval hint derivation", () => {
 		expect(matched.score).toBeGreaterThan(0);
 		expect(matched.matched_hint_types).toContain("temporal_hint");
 		expect(matched.matched_hint_types).toContain("quoted_phrase_hint");
+	});
+
+	it("ignores short or substring-noise hints during matching", () => {
+		const terms = deriveQueryHintTerms({
+			query: "about sabrina and abstract memory"
+		});
+		const noisyHints = [
+			createRetrievalHint({
+				observation_id: "obs_n",
+				hint_type: "entity_hint",
+				hint_text: "ab",
+				confidence: 1,
+				weight: 1
+			})
+		];
+		const matched = computeRetrievalHintMatch(noisyHints, terms);
+		expect(matched.score).toBe(0);
+		expect(matched.matched_terms).toHaveLength(0);
 	});
 });
 

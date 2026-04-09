@@ -132,4 +132,43 @@ describe("retrieval scoring", () => {
 			benchmark?.score_breakdown.layer_b.weighted_multiplier ?? 0
 		);
 	});
+
+	it("applies profile-specific hint component scaling", () => {
+		const observation = makeObservation({
+			content: "quiet note with no direct keyword overlap",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: [],
+				grip: "present",
+				charge_phase: "processing"
+			}
+		});
+		const signals = extractQuerySignals("april memory");
+
+		const native = scoreHybridCandidate({
+			observation,
+			territory: "craft",
+			retrieval_profile: "native",
+			query_signals: signals,
+			hint_score: 1,
+			max_keyword_rank: 0,
+			min_similarity: 0.01
+		});
+		const benchmark = scoreHybridCandidate({
+			observation,
+			territory: "craft",
+			retrieval_profile: "benchmark",
+			query_signals: signals,
+			hint_score: 1,
+			max_keyword_rank: 0,
+			min_similarity: 0.01
+		});
+
+		expect(native).not.toBeNull();
+		expect(benchmark).not.toBeNull();
+		expect((benchmark?.score_breakdown.layer_a.hint_component ?? 0)).toBeGreaterThan(
+			native?.score_breakdown.layer_a.hint_component ?? 0
+		);
+	});
 });

@@ -49,6 +49,7 @@ export interface RetrievalProfileConfig {
 		relevance: number;
 		cognition: number;
 	};
+	hint_component_scale: number;
 	entity_only_base: number;
 	entity_match_boost: number;
 	query_signal_boosts: QuerySignalBoostConfig;
@@ -62,6 +63,7 @@ export const RETRIEVAL_PROFILE_CONFIGS: Record<RetrievalProfile, RetrievalProfil
 		candidate_pool: { vector: 50, keyword: 30, entity: 20 },
 		relevance_mix: { vector: 0.7, keyword: 0.3 },
 		layer_weights: { relevance: 1.0, cognition: 1.0 },
+		hint_component_scale: 0.08,
 		entity_only_base: 0.5,
 		entity_match_boost: 0.08,
 		query_signal_boosts: {
@@ -77,6 +79,7 @@ export const RETRIEVAL_PROFILE_CONFIGS: Record<RetrievalProfile, RetrievalProfil
 		candidate_pool: { vector: 80, keyword: 50, entity: 30 },
 		relevance_mix: { vector: 0.65, keyword: 0.35 },
 		layer_weights: { relevance: 1.1, cognition: 0.8 },
+		hint_component_scale: 0.1,
 		entity_only_base: 0.52,
 		entity_match_boost: 0.1,
 		query_signal_boosts: {
@@ -92,6 +95,7 @@ export const RETRIEVAL_PROFILE_CONFIGS: Record<RetrievalProfile, RetrievalProfil
 		candidate_pool: { vector: 120, keyword: 80, entity: 40 },
 		relevance_mix: { vector: 0.55, keyword: 0.45 },
 		layer_weights: { relevance: 1.2, cognition: 0.5 },
+		hint_component_scale: 0.14,
 		entity_only_base: 0.55,
 		entity_match_boost: 0.12,
 		query_signal_boosts: {

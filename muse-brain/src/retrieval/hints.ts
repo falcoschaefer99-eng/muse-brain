@@ -198,11 +198,32 @@ export function deriveEntityHints(observation: HintExtractionObservation): Retri
 		}));
 	}
 
+	const ENTITY_TERM_BLOCKLIST = new Set([
+		"user",
+		"assistant",
+		"session",
+		"question",
+		"answer",
+		"date",
+		"today",
+		"yesterday",
+		"tomorrow",
+		"monday",
+		"tuesday",
+		"wednesday",
+		"thursday",
+		"friday",
+		"saturday",
+		"sunday"
+	]);
+
 	const capitalizedTerms = unique(
 		Array.from(observation.content.matchAll(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g))
 			.map(match => sanitizeHintText(match[0], 120))
+			.filter(term => term.length >= 4)
+			.filter(term => !ENTITY_TERM_BLOCKLIST.has(term.toLowerCase()))
 			.filter(Boolean)
-	).slice(0, 8);
+	).slice(0, 6);
 
 	for (const term of capitalizedTerms) {
 		hints.push(createRetrievalHint({
@@ -312,10 +333,11 @@ export function computeRetrievalHintMatch(
 	let weightedScore = 0;
 
 	for (const hint of hints) {
-		const hintText = hint.hint_text.toLowerCase();
+		const hintText = hint.hint_text.toLowerCase().trim();
+		if (hintText.length < 4) continue;
 		for (const term of queryTerms) {
 			if (!term) continue;
-			if (hintText === term || hintText.includes(term) || term.includes(hintText)) {
+			if (hintText === term || hintText.includes(term)) {
 				matchedTerms.add(term);
 				matchedTypes.add(hint.hint_type);
 				weightedScore += (hint.weight * 0.7) + (hint.confidence * 0.3);
