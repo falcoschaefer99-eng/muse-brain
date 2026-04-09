@@ -8,7 +8,13 @@ import { createStorage } from "../src/storage/factory";
 
 async function main(): Promise<void> {
 	const options = parseBenchmarkCliArgs(process.argv.slice(2));
-	const raw = JSON.parse(await readFile(options.input, "utf8"));
+	let raw: unknown;
+	try {
+		raw = JSON.parse(await readFile(options.input, "utf8"));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Failed to read or parse benchmark input at ${options.input}: ${message}`);
+	}
 	const cases = adaptBenchmarkDataset(options.dataset, raw);
 	const storage = createStorage(
 		options.backend === "sqlite"

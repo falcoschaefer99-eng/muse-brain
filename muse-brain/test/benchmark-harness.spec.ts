@@ -81,6 +81,38 @@ describe("benchmark adapters", () => {
 		expect(() => adaptBenchmarkDataset("longmemeval", { bad: true })).toThrow(/json array/i);
 		expect(() => adaptBenchmarkDataset("locomo", [null])).toThrow(/contain objects/i);
 	});
+
+	it("handles LongMemEval abstention signals and emits adapter warnings", () => {
+		const abstention = adaptLongMemEval([{
+			question_id: "q_abs",
+			question_type: "abstention",
+			question: "What was never said?",
+			answer: "unknown",
+			haystack_session_ids: ["sess_1", "sess_2"],
+			haystack_dates: ["2026-03-01T00:00:00.000Z"],
+			haystack_sessions: [
+				[{ role: "user", content: "hello" }]
+			],
+			answer_session_ids: []
+		}])[0];
+		expect(abstention.skip_retrieval_reason).toBe("abstention");
+		expect(abstention.metadata?.abstention_source).toBe("question_type");
+		expect((abstention.metadata?.adapter_warnings as string[]).some(w => w.includes("haystack_session_ids"))).toBe(true);
+
+		const missingEvidence = adaptLongMemEval([{
+			question_id: "q_missing",
+			question_type: "single-session-user",
+			question: "What did I say?",
+			answer: "I don't know",
+			haystack_session_ids: ["sess_1"],
+			haystack_dates: ["2026-03-01T00:00:00.000Z"],
+			haystack_sessions: [
+				[{ role: "user", content: "hello" }]
+			],
+			answer_session_ids: []
+		}])[0];
+		expect(missingEvidence.skip_retrieval_reason).toBe("missing_evidence");
+	});
 });
 
 describe("benchmark scoring math", () => {
@@ -190,6 +222,7 @@ describe("benchmark harness integration", () => {
 		expect(artifact.profile_summaries.every(summary => summary.recall_at["1"] === 1)).toBe(true);
 		expect(artifact.case_results).toHaveLength(3);
 		expect(artifact.run_issues).toEqual([]);
+		expect(artifact.profile_comparison[0].recall_at["1"]).toBe(1);
 		expect(renderBenchmarkSummaryMarkdown(artifact)).toContain("Run issues: 0");
 	});
 
@@ -304,6 +337,28 @@ describe("benchmark harness integration", () => {
 
 		expect(artifact.config.vector_enabled).toBe(true);
 		expect(embedded).toEqual(["alpha memory", "alpha"]);
+	});
+
+	it("uses configured top_k values in profile comparison and markdown", async () => {
+		const dbPath = `/tmp/muse-brain-benchmark-topk-${crypto.randomUUID()}.sqlite`;
+		const storage = createStorage({ backend: "sqlite", sqlitePath: dbPath }, "companion");
+		const artifact = await runBenchmarkHarness({
+			storage,
+			backend: "sqlite",
+			run_config: {
+				dataset: "longmemeval",
+				profiles: ["native"],
+				top_k: [2],
+				result_limit: 5,
+				min_similarity: 0.01
+			},
+			cases: [makeCase()]
+		});
+
+		expect(artifact.profile_comparison[0].recall_at["2"]).toBe(1);
+		expect(artifact.profile_comparison[0].ndcg_at["2"]).toBe(1);
+		const markdown = renderBenchmarkSummaryMarkdown(artifact);
+		expect(markdown).toContain("| Profile | R@2 | NDCG@2 | Candidate Hit | Evaluated | Skipped |");
 	});
 });
 

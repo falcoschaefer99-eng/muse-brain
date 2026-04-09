@@ -81,11 +81,11 @@ export interface BenchmarkArtifact {
 	profile_summaries: BenchmarkProfileSummary[];
 	profile_comparison: Array<{
 		profile: RetrievalProfile;
-		recall_at_1?: number;
-		recall_at_5?: number;
-		recall_at_10?: number;
-		ndcg_at_10?: number;
+		recall_at: Record<string, number>;
+		ndcg_at: Record<string, number>;
 		candidate_hit_rate: number;
+		evaluated_cases: number;
+		skipped_cases: number;
 	}>;
 	case_results: BenchmarkCaseResult[];
 	run_issues: BenchmarkRunIssue[];

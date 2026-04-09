@@ -276,6 +276,8 @@ Sample query families:
   - vector lane only when embeddings are explicitly supplied
   - skipped cases are labeled, not hidden (`abstention`, `missing_evidence`)
   - Recall@k uses fractional evidence coverage for multi-evidence questions (not hit@k)
+  - profile comparison output follows configured `top_k` values (not fixed keys)
+  - LongMemEval abstention handling accepts explicit flags / question type signals, with `_abs` kept as compatibility fallback
 
 ---
 

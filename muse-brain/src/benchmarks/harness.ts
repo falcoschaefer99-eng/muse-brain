@@ -16,6 +16,8 @@ function makeObservationFromDocument(doc: BenchmarkCase["documents"][number]): O
 		content: doc.content,
 		territory: "episodic",
 		created: doc.created,
+		// Intentional benchmark neutral texture:
+		// keep Layer B flat for injected benchmark docs so profile deltas are mostly Layer A retrieval behavior.
 		texture: {
 			salience: "background",
 			vividness: "soft",
@@ -304,11 +306,11 @@ export async function runBenchmarkHarness(options: BenchmarkHarnessOptions): Pro
 		profile_summaries: profileSummaries,
 		profile_comparison: profileSummaries.map(summary => ({
 			profile: summary.profile,
-			recall_at_1: summary.recall_at["1"],
-			recall_at_5: summary.recall_at["5"],
-			recall_at_10: summary.recall_at["10"],
-			ndcg_at_10: summary.ndcg_at["10"],
-			candidate_hit_rate: summary.candidate_hit_rate
+			recall_at: summary.recall_at,
+			ndcg_at: summary.ndcg_at,
+			candidate_hit_rate: summary.candidate_hit_rate,
+			evaluated_cases: summary.evaluated_cases,
+			skipped_cases: summary.skipped_cases
 		})),
 		case_results: caseResults,
 		run_issues: runIssues
@@ -316,6 +318,17 @@ export async function runBenchmarkHarness(options: BenchmarkHarnessOptions): Pro
 }
 
 export function renderBenchmarkSummaryMarkdown(artifact: BenchmarkArtifact): string {
+	const topK = Array.from(
+		new Set(
+			(artifact.config.top_k ?? [])
+				.map(value => Number(value))
+				.filter(value => Number.isFinite(value) && value > 0)
+		)
+	).sort((a, b) => a - b);
+	const effectiveTopK = topK.length > 0 ? topK : [1, 5, 10];
+	const recallHeaders = effectiveTopK.map(k => `R@${k}`);
+	const ndcgHeaders = effectiveTopK.map(k => `NDCG@${k}`);
+	const headerColumns = ["Profile", ...recallHeaders, ...ndcgHeaders, "Candidate Hit", "Evaluated", "Skipped"];
 	const lines = [
 		`# MUSE Brain Benchmark Run — ${artifact.dataset}`,
 		"",
@@ -325,12 +338,14 @@ export function renderBenchmarkSummaryMarkdown(artifact: BenchmarkArtifact): str
 		`- Vector enabled: ${artifact.config.vector_enabled}`,
 		`- Run issues: ${artifact.run_issues.length}`,
 		"",
-		"| Profile | R@1 | R@5 | R@10 | NDCG@10 | Candidate Hit | Evaluated | Skipped |",
-		"|---|---:|---:|---:|---:|---:|---:|---:|"
+		`| ${headerColumns.join(" | ")} |`,
+		`| ${["---", ...headerColumns.slice(1).map(() => "---:")].join(" | ")} |`
 	];
 
 	for (const summary of artifact.profile_summaries) {
-		lines.push(`| ${summary.profile} | ${summary.recall_at["1"] ?? 0} | ${summary.recall_at["5"] ?? 0} | ${summary.recall_at["10"] ?? 0} | ${summary.ndcg_at["10"] ?? 0} | ${summary.candidate_hit_rate} | ${summary.evaluated_cases} | ${summary.skipped_cases} |`);
+		const recallCells = effectiveTopK.map(k => summary.recall_at[String(k)] ?? 0);
+		const ndcgCells = effectiveTopK.map(k => summary.ndcg_at[String(k)] ?? 0);
+		lines.push(`| ${summary.profile} | ${[...recallCells, ...ndcgCells, summary.candidate_hit_rate, summary.evaluated_cases, summary.skipped_cases].join(" | ")} |`);
 	}
 
 	return lines.join("\n");
