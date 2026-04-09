@@ -1,4 +1,5 @@
 import type { RetrievalProfile } from "../retrieval/query-signals";
+import { normalizeRetrievalProfile } from "../retrieval/query-signals";
 import type { SupportedBenchmarkDataset } from "./adapters/index";
 
 export interface CliOptions {
@@ -21,7 +22,13 @@ function requireValue(flag: string, value: string | undefined): string {
 
 function parseProfiles(value: string | undefined): RetrievalProfile[] {
 	if (!value || value === "all") return ["native", "balanced", "benchmark"];
-	return value.split(",").map(profile => profile.trim()).filter(Boolean) as RetrievalProfile[];
+	const parsed: RetrievalProfile[] = [];
+	for (const raw of value.split(",")) {
+		const normalized = normalizeRetrievalProfile(raw);
+		if (!normalized) throw new Error(`Invalid profile: ${raw}`);
+		parsed.push(normalized);
+	}
+	return parsed;
 }
 
 export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
@@ -29,6 +36,9 @@ export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
 	for (let i = 0; i < argv.length; i += 1) {
 		const token = argv[i];
 		if (!token.startsWith("--")) continue;
+		if (i + 1 >= argv.length || argv[i + 1].startsWith("--")) {
+			throw new Error(`Missing value for ${token}`);
+		}
 		args.set(token, argv[i + 1]);
 		i += 1;
 	}
@@ -43,13 +53,18 @@ export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
 		throw new Error(`Unsupported backend: ${backend}`);
 	}
 
+	const databaseUrl = args.get("--database-url");
+	if (backend === "postgres" && !databaseUrl) {
+		throw new Error("Missing value for --database-url when --backend postgres");
+	}
+
 	return {
 		dataset,
 		input: requireValue("--input", args.get("--input")),
 		output_dir: args.get("--output-dir") ?? "benchmarks/results/latest",
 		backend,
 		sqlite_path: args.get("--sqlite-path") ?? "benchmarks/results/benchmark.sqlite",
-		database_url: args.get("--database-url"),
+		database_url: databaseUrl,
 		tenant: args.get("--tenant") ?? "companion",
 		profiles: parseProfiles(args.get("--profiles")),
 		result_limit: Number.parseInt(args.get("--result-limit") ?? "10", 10),

@@ -43,7 +43,8 @@ export interface BenchmarkCaseResult {
 	recall_at: Record<string, number>;
 	ndcg_at: Record<string, number>;
 	candidate_hit: boolean;
-	miss_category?: "abstention" | "missing_evidence" | "no_results" | "candidate_miss";
+	miss_category?: "abstention" | "missing_evidence" | "no_results" | "candidate_miss" | "run_error";
+	run_error?: string;
 	top_results: Array<{
 		id: string;
 		score: number;
@@ -60,6 +61,13 @@ export interface BenchmarkProfileSummary {
 	ndcg_at: Record<string, number>;
 	candidate_hit_rate: number;
 	miss_categories: Record<string, number>;
+}
+
+export interface BenchmarkRunIssue {
+	case_id: string;
+	profile?: RetrievalProfile;
+	stage: "insert_documents" | "query" | "delete_documents";
+	message: string;
 }
 
 export interface BenchmarkArtifact {
@@ -80,4 +88,5 @@ export interface BenchmarkArtifact {
 		candidate_hit_rate: number;
 	}>;
 	case_results: BenchmarkCaseResult[];
+	run_issues: BenchmarkRunIssue[];
 }

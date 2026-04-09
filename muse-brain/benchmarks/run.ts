@@ -36,6 +36,7 @@ async function main(): Promise<void> {
 	await writeFile(path.join(outputDir, "artifact.json"), JSON.stringify(artifact, null, 2));
 	await writeFile(path.join(outputDir, "summary.md"), renderBenchmarkSummaryMarkdown(artifact));
 	await writeFile(path.join(outputDir, "miss-analysis.json"), JSON.stringify(missAnalysis, null, 2));
+	await writeFile(path.join(outputDir, "run-issues.json"), JSON.stringify(artifact.run_issues, null, 2));
 }
 
 main().catch(error => {

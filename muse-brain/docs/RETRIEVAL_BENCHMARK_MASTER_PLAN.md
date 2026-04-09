@@ -267,6 +267,7 @@ Sample query families:
   - `artifact.json` — full structured run output
   - `summary.md` — human-readable profile table
   - `miss-analysis.json` — inspectable failed / skipped cases
+  - `run-issues.json` — per-case run failures (insert/query/delete stages)
 - Harness calls the existing `storage.hybridSearch(...)` path directly so benchmark runs stay inside the canonical retrieval implementation.
 - Benchmark methodology for this phase is intentionally honest and narrow:
   - no derived hint artifacts
@@ -274,6 +275,7 @@ Sample query families:
   - no lossy observation replacement
   - vector lane only when embeddings are explicitly supplied
   - skipped cases are labeled, not hidden (`abstention`, `missing_evidence`)
+  - Recall@k uses fractional evidence coverage for multi-evidence questions (not hit@k)
 
 ---
 
