@@ -350,6 +350,16 @@ These are engineering targets, not marketing claims.
 - hints measurably improve recall on selected query classes
 - original observations remain canonical and unchanged
 
+### Sprint 3A implementation decisions (April 9, 2026)
+- Hint schema and helpers live at `src/retrieval/hints.ts`.
+- Detailed schema + storage strategy doc lives at `docs/RETRIEVAL_HINTS_SCHEMA.md`.
+- Hint artifacts are sidecar-only and never overwrite canonical observations.
+- `state_snapshot_hint` is reserved in schema but remains a future lane.
+- First deterministic derivation helpers are scaffolded for:
+  - `quoted_phrase_hint`
+  - `temporal_hint`
+  - `entity_hint`
+
 ---
 
 ## Sprint 4 — Dynamic Weighting & Optional Rerank
@@ -456,8 +466,8 @@ When this lane ships, it should include all of the following:
 - [x] record baseline benchmark receipt snapshot in master plan
 
 ### Sprint 3 — Derived Retrieval Hints
-- [ ] define hint artifact schema
-- [ ] define storage strategy for hint artifacts
+- [x] define hint artifact schema
+- [x] define storage strategy for hint artifacts
 - [ ] add preference hints
 - [ ] add assistant response hints
 - [ ] add temporal hints
