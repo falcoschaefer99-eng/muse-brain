@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"outDir": "../.bench-dist",
+		"rootDir": "..",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"types": ["node", "../worker-configuration.d.ts"]
+	},
+	"include": [
+		"./run.ts",
+		"../src/**/*.ts"
+	]
+}

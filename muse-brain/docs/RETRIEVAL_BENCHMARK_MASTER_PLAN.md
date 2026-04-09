@@ -260,6 +260,21 @@ Sample query families:
 - results are reproducible
 - failures can be inspected rather than hand-waved
 
+### Sprint 2 implementation decisions (April 9, 2026)
+- Benchmark runner lives under `/benchmarks` and is invoked with `npm run benchmark:retrieval`.
+- Dataset adapters normalize LongMemEval and LoCoMo into shared `BenchmarkCase` / `BenchmarkDocument` shapes.
+- Result artifacts are emitted as:
+  - `artifact.json` — full structured run output
+  - `summary.md` — human-readable profile table
+  - `miss-analysis.json` — inspectable failed / skipped cases
+- Harness calls the existing `storage.hybridSearch(...)` path directly so benchmark runs stay inside the canonical retrieval implementation.
+- Benchmark methodology for this phase is intentionally honest and narrow:
+  - no derived hint artifacts
+  - no rerank lane yet
+  - no lossy observation replacement
+  - vector lane only when embeddings are explicitly supplied
+  - skipped cases are labeled, not hidden (`abstention`, `missing_evidence`)
+
 ---
 
 ## Sprint 3 — Derived Retrieval Hints
@@ -381,13 +396,13 @@ When this lane ships, it should include all of the following:
 - [x] decide profile API surface in `mind_query` (`retrieval_profile`, alias `profile`)
 
 ### Sprint 2 — Benchmark Harness
-- [ ] scaffold benchmark directory
-- [ ] implement LongMemEval adapter
-- [ ] implement LoCoMo adapter
-- [ ] define result artifact format
-- [ ] implement profile-based runner
-- [ ] save miss analysis logs
-- [ ] document honest benchmark methodology
+- [x] scaffold benchmark directory
+- [x] implement LongMemEval adapter
+- [x] implement LoCoMo adapter
+- [x] define result artifact format
+- [x] implement profile-based runner
+- [x] save miss analysis logs
+- [x] document honest benchmark methodology
 
 ### Sprint 3 — Derived Retrieval Hints
 - [ ] define hint artifact schema
