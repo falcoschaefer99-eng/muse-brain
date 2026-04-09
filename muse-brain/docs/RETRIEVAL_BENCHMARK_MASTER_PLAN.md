@@ -360,6 +360,13 @@ These are engineering targets, not marketing claims.
   - `temporal_hint`
   - `entity_hint`
 
+### Sprint 3B implementation decisions (April 10, 2026)
+- SQLite retrieval path now derives and persists sidecar hints on observation write/delete cycles.
+- Hybrid search candidate generation now includes hint-driven candidates (`hint` source) in addition to vector/keyword/entity paths.
+- Hint matches are weighted as a light Layer A component to improve candidate recall without overwhelming ranking.
+- Postgres hybrid search includes optional `retrieval_hints` join path with safe fallback when the table is absent.
+- Hint-derived match sources are surfaced for diagnostics (`hint`, plus matched hint types).
+
 ---
 
 ## Sprint 4 — Dynamic Weighting & Optional Rerank
@@ -470,9 +477,9 @@ When this lane ships, it should include all of the following:
 - [x] define storage strategy for hint artifacts
 - [ ] add preference hints
 - [ ] add assistant response hints
-- [ ] add temporal hints
-- [ ] add quoted phrase hints
-- [ ] add entity hints
+- [x] add temporal hints
+- [x] add quoted phrase hints
+- [x] add entity hints
 - [ ] add relational context hints
 - [ ] define future state snapshot hint lane
 

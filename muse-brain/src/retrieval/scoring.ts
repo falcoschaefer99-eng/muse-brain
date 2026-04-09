@@ -32,6 +32,7 @@ export interface HybridScoreBreakdown {
 		base_relevance: number;
 		vector_component: number;
 		keyword_component: number;
+		hint_component: number;
 		entity_component: number;
 		signal_boost: number;
 		adjusted_relevance: number;
@@ -65,6 +66,7 @@ export interface HybridCandidateScoreInput {
 	max_keyword_rank: number;
 	vector_similarity?: number;
 	keyword_rank?: number;
+	hint_score?: number;
 	entity_matched?: boolean;
 	novelty_score?: number;
 	circadian_bias_matched?: boolean;
@@ -92,6 +94,7 @@ export function scoreHybridCandidate(input: HybridCandidateScoreInput): HybridCa
 		max_keyword_rank,
 		vector_similarity,
 		keyword_rank,
+		hint_score = 0,
 		entity_matched = false,
 		novelty_score,
 		circadian_bias_matched = false,
@@ -108,6 +111,7 @@ export function scoreHybridCandidate(input: HybridCandidateScoreInput): HybridCa
 	let baseRelevance = 0;
 	let vectorComponent = 0;
 	let keywordComponent = 0;
+	let hintComponent = 0;
 	let entityComponent = 0;
 
 	if (vector_similarity !== undefined && keyword_rank !== undefined) {
@@ -125,6 +129,12 @@ export function scoreHybridCandidate(input: HybridCandidateScoreInput): HybridCa
 		matchSources.push("keyword");
 	} else if (entity_matched) {
 		baseRelevance = profileConfig.entity_only_base;
+	}
+
+	if (hint_score > 0) {
+		hintComponent = Math.min(Math.max(hint_score, 0), 1) * 0.12;
+		baseRelevance += hintComponent;
+		matchSources.push("hint");
 	}
 
 	if (entity_matched) {
@@ -177,6 +187,7 @@ export function scoreHybridCandidate(input: HybridCandidateScoreInput): HybridCa
 				base_relevance: baseRelevance,
 				vector_component: vectorComponent,
 				keyword_component: keywordComponent,
+				hint_component: hintComponent,
 				entity_component: entityComponent,
 				signal_boost: signalMatch.total_boost,
 				adjusted_relevance: adjustedRelevance

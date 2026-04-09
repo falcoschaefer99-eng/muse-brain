@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	computeRetrievalHintMatch,
+	deriveQueryHintTerms,
 	RETRIEVAL_HINT_STORAGE_STRATEGY,
 	buildInitialRetrievalHints,
 	createRetrievalHint,
@@ -92,6 +94,44 @@ describe("retrieval hint derivation", () => {
 		expect(hints.some(h => h.hint_type === "quoted_phrase_hint")).toBe(true);
 		expect(hints.some(h => h.hint_type === "temporal_hint")).toBe(true);
 		expect(hints.some(h => h.hint_type === "entity_hint")).toBe(true);
+	});
+
+	it("derives query hint terms and matches hint artifacts", () => {
+		const terms = deriveQueryHintTerms({
+			query: 'What happened in April 2026 with "memory palace"?',
+			quoted_phrases: ["memory palace"],
+			proper_names: ["Alice Johnson"],
+			temporal: {
+				years: [2026],
+				months: [4]
+			}
+		});
+		expect(terms).toContain("memory palace");
+		expect(terms).toContain("alice johnson");
+		expect(terms).toContain("2026");
+		expect(terms).toContain("april");
+
+		const hints = [
+			createRetrievalHint({
+				observation_id: "obs_1",
+				hint_type: "temporal_hint",
+				hint_text: "april",
+				confidence: 0.9,
+				weight: 0.8
+			}),
+			createRetrievalHint({
+				observation_id: "obs_1",
+				hint_type: "quoted_phrase_hint",
+				hint_text: "memory palace",
+				confidence: 0.9,
+				weight: 0.8
+			})
+		];
+
+		const matched = computeRetrievalHintMatch(hints, terms);
+		expect(matched.score).toBeGreaterThan(0);
+		expect(matched.matched_hint_types).toContain("temporal_hint");
+		expect(matched.matched_hint_types).toContain("quoted_phrase_hint");
 	});
 });
 

@@ -166,6 +166,32 @@ describe('sqlite storage backend', () => {
 		expect(benchmark[0].match_sources).toContain('quoted_phrase');
 	});
 
+	it('surfaces hint-only temporal candidates in balanced/benchmark retrieval', async () => {
+		const dbPath = `/tmp/muse-brain-test-${crypto.randomUUID()}.sqlite`;
+		const storage = createStorage({ backend: 'sqlite', sqlitePath: dbPath }, 'companion');
+
+		await storage.appendToTerritory('craft', {
+			id: 'obs_temporal_hint_only',
+			content: 'meeting recap with no explicit month token',
+			territory: 'craft',
+			created: '2026-04-09T10:00:00.000Z',
+			texture: { salience: 'active', vividness: 'vivid', charge: [], grip: 'present', charge_phase: 'fresh' },
+			access_count: 0
+		});
+
+		const results = await storage.hybridSearch({
+			query: 'what happened in april 2026',
+			retrieval_profile: 'benchmark',
+			limit: 10,
+			min_similarity: 0.01
+		});
+
+		expect(results.some(result => result.observation.id === 'obs_temporal_hint_only')).toBe(true);
+		const target = results.find(result => result.observation.id === 'obs_temporal_hint_only');
+		expect(target?.match_sources).toContain('hint');
+		expect(target?.match_sources).toContain('temporal_hint');
+	});
+
 	it('rejects invalid tenant at constructor boundary', () => {
 		expect(() => new SQLiteBrainStorage('/tmp/muse-brain-test.sqlite', 'invalid-tenant')).toThrow(/Invalid tenant/);
 	});

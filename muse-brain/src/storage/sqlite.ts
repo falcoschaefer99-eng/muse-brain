@@ -64,6 +64,12 @@ import {
 	extractQuerySignals
 } from "../retrieval/query-signals";
 import { scoreHybridCandidate } from "../retrieval/scoring";
+import type { RetrievalHintArtifact } from "../retrieval/hints";
+import {
+	buildInitialRetrievalHints,
+	computeRetrievalHintMatch,
+	deriveQueryHintTerms
+} from "../retrieval/hints";
 
 import type {
 	IBrainStorage,
@@ -132,7 +138,8 @@ const KV_KEYS = {
 	runtime_sessions: "runtime_sessions",
 	runtime_runs: "runtime_runs",
 	runtime_policies: "runtime_policies",
-	memory_cascade: "memory_cascade"
+	memory_cascade: "memory_cascade",
+	retrieval_hints: "retrieval_hints"
 } as const;
 
 function deepClone<T>(value: T): T {
@@ -272,6 +279,16 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		};
 	}
 
+	private deriveHintsForObservation(obs: StoredObservation): RetrievalHintArtifact[] {
+		return buildInitialRetrievalHints({
+			id: obs.id,
+			content: obs.content,
+			created: obs.created,
+			entity_id: obs.entity_id,
+			tags: obs.tags
+		});
+	}
+
 	private async readValue<T>(key: string, fallback: T): Promise<T> {
 		const db = await this.db();
 		const row = db.prepare("SELECT value FROM kv_store WHERE tenant_id = ? AND key = ? LIMIT 1").get(this.tenant, key) as { value?: string } | undefined;
@@ -404,6 +421,13 @@ export class SQLiteBrainStorage implements IBrainStorage {
 
 	async writeTerritory(territory: string, observations: Observation[]): Promise<void> {
 		this.validateTerritory(territory);
+		const existingTerritoryIds = new Set(
+			(await this.readCollection<StoredObservation>(KV_KEYS.observations))
+				.map(o => this.normalizeObservation(o))
+				.filter(o => o.territory === territory)
+				.map(o => o.id)
+		);
+
 		await this.withObservations(async all => {
 			for (let i = all.length - 1; i >= 0; i--) {
 				if (all[i].territory === territory) all.splice(i, 1);
@@ -412,13 +436,25 @@ export class SQLiteBrainStorage implements IBrainStorage {
 				all.push(this.normalizeObservation({ ...obs, territory } as StoredObservation));
 			}
 		});
+
+		const hints = await this.readCollection<RetrievalHintArtifact>(KV_KEYS.retrieval_hints);
+		const filtered = hints.filter(hint => !existingTerritoryIds.has(hint.observation_id));
+		const replacementHints = observations.flatMap(obs =>
+			this.deriveHintsForObservation(this.normalizeObservation({ ...obs, territory } as StoredObservation))
+		);
+		await this.writeCollection(KV_KEYS.retrieval_hints, [...filtered, ...replacementHints]);
 	}
 
 	async appendToTerritory(territory: string, observation: Observation): Promise<void> {
 		this.validateTerritory(territory);
+		const normalized = this.normalizeObservation({ ...observation, territory } as StoredObservation);
 		await this.withObservations(async all => {
-			all.push(this.normalizeObservation({ ...observation, territory } as StoredObservation));
+			all.push(normalized);
 		});
+
+		const hints = await this.readCollection<RetrievalHintArtifact>(KV_KEYS.retrieval_hints);
+		const filtered = hints.filter(hint => hint.observation_id !== normalized.id);
+		await this.writeCollection(KV_KEYS.retrieval_hints, [...filtered, ...this.deriveHintsForObservation(normalized)]);
 	}
 
 	async readAllTerritories(): Promise<{ territory: string; observations: Observation[] }[]> {
@@ -545,6 +581,9 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		const processing = await this.readCollection<ProcessingEntry>(KV_KEYS.processing_log);
 		await this.writeCollection(KV_KEYS.processing_log, processing.filter(p => p.observation_id !== id));
 
+		const hints = await this.readCollection<RetrievalHintArtifact>(KV_KEYS.retrieval_hints);
+		await this.writeCollection(KV_KEYS.retrieval_hints, hints.filter(h => h.observation_id !== id));
+
 		return true;
 	}
 
@@ -629,9 +668,22 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		const minSimilarity = options.min_similarity ?? 0.3;
 		const querySignals = options.query_signals ?? extractQuerySignals(options.query || "");
 		const queryTokens = tokenize(options.query || "");
+		const queryHintTerms = deriveQueryHintTerms({
+			query: options.query || "",
+			quoted_phrases: querySignals.quoted_phrases,
+			proper_names: querySignals.proper_names,
+			temporal: querySignals.temporal
+		});
 		const circadianBias = options.circadian_phase ? new Set(CIRCADIAN_PHASES[options.circadian_phase]?.retrieval_bias ?? []) : new Set<string>();
 
 		let rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
+		const hints = await this.readCollection<RetrievalHintArtifact>(KV_KEYS.retrieval_hints);
+		const hintsByObservation = new Map<string, RetrievalHintArtifact[]>();
+		for (const hint of hints) {
+			const bucket = hintsByObservation.get(hint.observation_id);
+			if (bucket) bucket.push(hint);
+			else hintsByObservation.set(hint.observation_id, [hint]);
+		}
 
 		if (options.territory) rows = rows.filter(o => o.territory === options.territory);
 		if (options.grip?.length) rows = rows.filter(o => options.grip!.includes(o.texture?.grip ?? "present"));
@@ -642,6 +694,8 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			keywordRank: number;
 			vectorSimilarity?: number;
 			hasEntityMatch: boolean;
+			hintScore: number;
+			hintMatchedTypes: string[];
 		}
 		const seeds: CandidateSeed[] = [];
 		for (const obs of rows) {
@@ -660,8 +714,19 @@ export class SQLiteBrainStorage implements IBrainStorage {
 				: undefined;
 
 			const hasEntityMatch = Boolean(options.entity_id && obs.entity_id === options.entity_id);
-			if ((vectorSimilarity ?? 0) <= 0 && keywordRank <= 0 && !hasEntityMatch) continue;
-			seeds.push({ obs, keywordRank, vectorSimilarity, hasEntityMatch });
+			const observationHints = hintsByObservation.get(obs.id) ?? this.deriveHintsForObservation(obs);
+			const hintMatch = computeRetrievalHintMatch(observationHints, queryHintTerms);
+			const hintScore = hintMatch.score;
+
+			if ((vectorSimilarity ?? 0) <= 0 && keywordRank <= 0 && !hasEntityMatch && hintScore <= 0) continue;
+			seeds.push({
+				obs,
+				keywordRank,
+				vectorSimilarity,
+				hasEntityMatch,
+				hintScore,
+				hintMatchedTypes: hintMatch.matched_hint_types
+			});
 		}
 
 		const candidateMap = new Map<string, CandidateSeed>();
@@ -677,8 +742,29 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			.filter(seed => seed.hasEntityMatch)
 			.sort((a, b) => toMillis(b.obs.created) - toMillis(a.obs.created))
 			.slice(0, profileConfig.candidate_pool.entity);
-		for (const seed of [...vectorSeeds, ...keywordSeeds, ...entitySeeds]) {
-			candidateMap.set(seed.obs.id, seed);
+		const hintSeeds = seeds
+			.filter(seed => seed.hintScore > 0)
+			.sort((a, b) => b.hintScore - a.hintScore)
+			.slice(0, Math.max(12, Math.floor(profileConfig.candidate_pool.keyword * 0.7)));
+
+		const mergeSeed = (seed: CandidateSeed): void => {
+			const existing = candidateMap.get(seed.obs.id);
+			if (!existing) {
+				candidateMap.set(seed.obs.id, {
+					...seed,
+					hintMatchedTypes: Array.from(new Set(seed.hintMatchedTypes))
+				});
+				return;
+			}
+			existing.vectorSimilarity = Math.max(existing.vectorSimilarity ?? 0, seed.vectorSimilarity ?? 0) || undefined;
+			existing.keywordRank = Math.max(existing.keywordRank, seed.keywordRank);
+			existing.hasEntityMatch = existing.hasEntityMatch || seed.hasEntityMatch;
+			existing.hintScore = Math.max(existing.hintScore, seed.hintScore);
+			existing.hintMatchedTypes = Array.from(new Set([...existing.hintMatchedTypes, ...seed.hintMatchedTypes]));
+		};
+
+		for (const seed of [...vectorSeeds, ...keywordSeeds, ...entitySeeds, ...hintSeeds]) {
+			mergeSeed(seed);
 		}
 
 		let maxKeywordRank = 0;
@@ -688,7 +774,7 @@ export class SQLiteBrainStorage implements IBrainStorage {
 
 		const results: HybridSearchResult[] = [];
 		for (const seed of candidateMap.values()) {
-			const { obs, keywordRank, vectorSimilarity, hasEntityMatch } = seed;
+			const { obs, keywordRank, vectorSimilarity, hasEntityMatch, hintScore, hintMatchedTypes } = seed;
 			const scored = scoreHybridCandidate({
 				observation: this.toPublicObservation(obs),
 				territory: obs.territory,
@@ -697,6 +783,7 @@ export class SQLiteBrainStorage implements IBrainStorage {
 				max_keyword_rank: maxKeywordRank,
 				vector_similarity: vectorSimilarity,
 				keyword_rank: keywordRank > 0 ? keywordRank : undefined,
+				hint_score: hintScore > 0 ? hintScore : undefined,
 				entity_matched: hasEntityMatch,
 				novelty_score: typeof obs.novelty_score === "number"
 					? obs.novelty_score
@@ -710,7 +797,9 @@ export class SQLiteBrainStorage implements IBrainStorage {
 				observation: this.toPublicObservation(obs),
 				territory: obs.territory,
 				score: scored.score,
-				match_sources: scored.match_sources,
+				match_sources: hintMatchedTypes.length > 0
+					? Array.from(new Set([...scored.match_sources, ...hintMatchedTypes]))
+					: scored.match_sources,
 				vector_similarity: vectorSimilarity,
 				keyword_rank: keywordRank > 0 ? keywordRank : undefined,
 				score_breakdown: scored.score_breakdown

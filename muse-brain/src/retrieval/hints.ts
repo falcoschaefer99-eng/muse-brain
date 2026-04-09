@@ -235,3 +235,104 @@ export function buildInitialRetrievalHints(observation: HintExtractionObservatio
 	}
 	return deduped;
 }
+
+export interface QueryHintSignalsInput {
+	query: string;
+	quoted_phrases?: string[];
+	proper_names?: string[];
+	temporal?: {
+		iso_dates?: string[];
+		years?: number[];
+		months?: number[];
+	};
+}
+
+export function deriveQueryHintTerms(input: QueryHintSignalsInput): string[] {
+	const out = new Set<string>();
+	const quoted = Array.isArray(input.quoted_phrases) ? input.quoted_phrases : [];
+	const names = Array.isArray(input.proper_names) ? input.proper_names : [];
+	const isoDates = Array.isArray(input.temporal?.iso_dates) ? input.temporal!.iso_dates! : [];
+	const years = Array.isArray(input.temporal?.years) ? input.temporal!.years! : [];
+
+	for (const phrase of quoted) {
+		const clean = sanitizeHintText(phrase, 160).toLowerCase();
+		if (clean) out.add(clean);
+	}
+
+	for (const name of names) {
+		const clean = sanitizeHintText(name, 120).toLowerCase();
+		if (clean) out.add(clean);
+	}
+
+	for (const value of isoDates) {
+		const clean = sanitizeHintText(value, 20).toLowerCase();
+		if (clean) out.add(clean);
+	}
+
+	for (const value of years) {
+		if (Number.isFinite(value)) out.add(String(value));
+	}
+
+	const monthMap: Record<number, string> = {
+		1: "january", 2: "february", 3: "march", 4: "april", 5: "may", 6: "june",
+		7: "july", 8: "august", 9: "september", 10: "october", 11: "november", 12: "december"
+	};
+	const months = Array.isArray(input.temporal?.months) ? input.temporal!.months! : [];
+	for (const month of months) {
+		const token = monthMap[month];
+		if (token) out.add(token);
+	}
+
+	const rawTokens = String(input.query ?? "")
+		.toLowerCase()
+		.split(/[^a-z0-9_\-]+/)
+		.map(token => token.trim())
+		.filter(token => token.length >= 3);
+	for (const token of rawTokens) out.add(token);
+
+	return Array.from(out);
+}
+
+export interface RetrievalHintMatchResult {
+	score: number;
+	matched_terms: string[];
+	matched_hint_types: RetrievalHintType[];
+}
+
+export function computeRetrievalHintMatch(
+	hints: RetrievalHintArtifact[],
+	queryTerms: string[]
+): RetrievalHintMatchResult {
+	if (!hints.length || !queryTerms.length) {
+		return { score: 0, matched_terms: [], matched_hint_types: [] };
+	}
+
+	const matchedTerms = new Set<string>();
+	const matchedTypes = new Set<RetrievalHintType>();
+	let weightedScore = 0;
+
+	for (const hint of hints) {
+		const hintText = hint.hint_text.toLowerCase();
+		for (const term of queryTerms) {
+			if (!term) continue;
+			if (hintText === term || hintText.includes(term) || term.includes(hintText)) {
+				matchedTerms.add(term);
+				matchedTypes.add(hint.hint_type);
+				weightedScore += (hint.weight * 0.7) + (hint.confidence * 0.3);
+				break;
+			}
+		}
+	}
+
+	if (matchedTerms.size === 0) {
+		return { score: 0, matched_terms: [], matched_hint_types: [] };
+	}
+
+	// Normalize by term count and clamp to [0, 1].
+	const normalized = Math.min(weightedScore / Math.max(queryTerms.length, 1), 1);
+	return {
+		score: normalized,
+		matched_terms: Array.from(matchedTerms),
+		matched_hint_types: Array.from(matchedTypes)
+	};
+}

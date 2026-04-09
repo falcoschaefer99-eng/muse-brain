@@ -83,6 +83,7 @@ import {
 	extractQuerySignals
 } from "../retrieval/query-signals";
 import { scoreHybridCandidate } from "../retrieval/scoring";
+import { deriveQueryHintTerms } from "../retrieval/hints";
 
 import type {
 	IBrainStorage,
@@ -2173,6 +2174,12 @@ export class PostgresBrainStorage implements IBrainStorage {
 		const limit = Math.min(options.limit ?? 10, 50);
 		const minSimilarity = options.min_similarity ?? 0.3;
 		const querySignals = options.query_signals ?? extractQuerySignals(options.query ?? "");
+		const queryHintTerms = deriveQueryHintTerms({
+			query: options.query ?? "",
+			quoted_phrases: querySignals.quoted_phrases,
+			proper_names: querySignals.proper_names,
+			temporal: querySignals.temporal
+		});
 
 		// ---- Phase 1: Candidate Generation ----
 
@@ -2182,6 +2189,8 @@ export class PostgresBrainStorage implements IBrainStorage {
 			territory: string;
 			vector_sim?: number;
 			keyword_rank?: number;
+			hint_score?: number;
+			hint_types?: string[];
 			novelty_score_raw?: number;
 			surface_count_raw?: number;
 			/** Candidate came in only via the entity query (no vector or keyword match). */
@@ -2349,7 +2358,111 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 		})();
 
-		const [vectorRows, keywordRows, entityRows] = await Promise.all([vectorPromise, keywordPromise, entityPromise]);
+		// 4. Retrieval-hint candidates (Sprint 3B)
+		const hintPromise: Promise<Record<string, unknown>[]> = (async () => {
+			if (queryHintTerms.length === 0) return [];
+			const hintLimit = Math.max(12, Math.floor(profileConfig.candidate_pool.keyword * 0.7));
+			const ilikePatterns = queryHintTerms.map(term => `%${term.replace(/[%_]/g, "\\$&")}%`);
+			try {
+				let rows: Record<string, unknown>[];
+				if (options.territory && options.grip?.length) {
+					rows = await this.sql`
+						SELECT
+							o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+							o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+							o.novelty_score, o.surface_count, o.entity_id,
+							MAX((rh.weight * 0.7 + rh.confidence * 0.3))::float AS hint_score,
+							array_agg(DISTINCT rh.hint_type)::text[] AS hint_types
+						FROM observations o
+						JOIN retrieval_hints rh
+						  ON rh.tenant_id = o.tenant_id
+						 AND rh.observation_id = o.id
+						WHERE o.tenant_id = ${this.tenant}
+						  AND rh.hint_text ILIKE ANY(${ilikePatterns})
+						  AND o.territory = ${options.territory}
+						  AND (o.texture->>'grip') = ANY(${options.grip})
+						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+						         o.novelty_score, o.surface_count, o.entity_id
+						ORDER BY hint_score DESC
+						LIMIT ${hintLimit}
+					` as Record<string, unknown>[];
+				} else if (options.territory) {
+					rows = await this.sql`
+						SELECT
+							o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+							o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+							o.novelty_score, o.surface_count, o.entity_id,
+							MAX((rh.weight * 0.7 + rh.confidence * 0.3))::float AS hint_score,
+							array_agg(DISTINCT rh.hint_type)::text[] AS hint_types
+						FROM observations o
+						JOIN retrieval_hints rh
+						  ON rh.tenant_id = o.tenant_id
+						 AND rh.observation_id = o.id
+						WHERE o.tenant_id = ${this.tenant}
+						  AND rh.hint_text ILIKE ANY(${ilikePatterns})
+						  AND o.territory = ${options.territory}
+						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+						         o.novelty_score, o.surface_count, o.entity_id
+						ORDER BY hint_score DESC
+						LIMIT ${hintLimit}
+					` as Record<string, unknown>[];
+				} else if (options.grip?.length) {
+					rows = await this.sql`
+						SELECT
+							o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+							o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+							o.novelty_score, o.surface_count, o.entity_id,
+							MAX((rh.weight * 0.7 + rh.confidence * 0.3))::float AS hint_score,
+							array_agg(DISTINCT rh.hint_type)::text[] AS hint_types
+						FROM observations o
+						JOIN retrieval_hints rh
+						  ON rh.tenant_id = o.tenant_id
+						 AND rh.observation_id = o.id
+						WHERE o.tenant_id = ${this.tenant}
+						  AND rh.hint_text ILIKE ANY(${ilikePatterns})
+						  AND (o.texture->>'grip') = ANY(${options.grip})
+						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+						         o.novelty_score, o.surface_count, o.entity_id
+						ORDER BY hint_score DESC
+						LIMIT ${hintLimit}
+					` as Record<string, unknown>[];
+				} else {
+					rows = await this.sql`
+						SELECT
+							o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+							o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+							o.novelty_score, o.surface_count, o.entity_id,
+							MAX((rh.weight * 0.7 + rh.confidence * 0.3))::float AS hint_score,
+							array_agg(DISTINCT rh.hint_type)::text[] AS hint_types
+						FROM observations o
+						JOIN retrieval_hints rh
+						  ON rh.tenant_id = o.tenant_id
+						 AND rh.observation_id = o.id
+						WHERE o.tenant_id = ${this.tenant}
+						  AND rh.hint_text ILIKE ANY(${ilikePatterns})
+						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
+						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
+						         o.novelty_score, o.surface_count, o.entity_id
+						ORDER BY hint_score DESC
+						LIMIT ${hintLimit}
+					` as Record<string, unknown>[];
+				}
+				return rows as Record<string, unknown>[];
+			} catch (err) {
+				const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+				// Backward-compatible fallback for tenants that haven't created retrieval_hints yet.
+				if (message.includes("retrieval_hints") || message.includes("relation") || message.includes("does not exist")) {
+					return [];
+				}
+				console.error("hybridSearch hint query failed:", err instanceof Error ? err.message : "unknown error");
+				return [];
+			}
+		})();
+
+		const [vectorRows, keywordRows, entityRows, hintRows] = await Promise.all([vectorPromise, keywordPromise, entityPromise, hintPromise]);
 
 		// Merge into candidates map — dedup by id, keep both scores if present.
 		for (const row of vectorRows) {
@@ -2380,6 +2493,26 @@ export class PostgresBrainStorage implements IBrainStorage {
 					territory: row.territory as string,
 					vector_sim: undefined,
 					keyword_rank: row.text_rank as number,
+					novelty_score_raw: row.novelty_score as number,
+					surface_count_raw: row.surface_count as number
+				});
+			}
+		}
+
+		for (const row of hintRows) {
+			const id = row.id as string;
+			const existing = candidates.get(id);
+			if (existing) {
+				existing.hint_score = Math.max(existing.hint_score ?? 0, Number(row.hint_score ?? 0)) || undefined;
+				existing.hint_types = Array.from(new Set([...(existing.hint_types ?? []), ...((row.hint_types as string[] | null) ?? [])]));
+			} else {
+				candidates.set(id, {
+					observation: rowToObservation(row),
+					territory: row.territory as string,
+					vector_sim: undefined,
+					keyword_rank: undefined,
+					hint_score: Number(row.hint_score ?? 0) || undefined,
+					hint_types: ((row.hint_types as string[] | null) ?? []).filter(Boolean),
 					novelty_score_raw: row.novelty_score as number,
 					surface_count_raw: row.surface_count as number
 				});
@@ -2431,7 +2564,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 		const results: HybridSearchResult[] = [];
 
 		for (const [, cand] of candidates) {
-			const { observation, territory, vector_sim, keyword_rank } = cand;
+			const { observation, territory, vector_sim, keyword_rank, hint_score, hint_types } = cand;
 			const scored = scoreHybridCandidate({
 				observation,
 				territory,
@@ -2440,6 +2573,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 				max_keyword_rank: maxKeywordRank,
 				vector_similarity: vector_sim,
 				keyword_rank,
+				hint_score,
 				entity_matched: Boolean(cand._entity_only || cand._entity_matched || (options.entity_id && observation.entity_id === options.entity_id)),
 				novelty_score: cand.novelty_score_raw,
 				circadian_bias_matched: circadianBiasSet.has(territory),
@@ -2451,7 +2585,9 @@ export class PostgresBrainStorage implements IBrainStorage {
 				observation,
 				territory,
 				score: scored.score,
-				match_sources: scored.match_sources,
+				match_sources: hint_types?.length
+					? Array.from(new Set([...scored.match_sources, ...hint_types]))
+					: scored.match_sources,
 				vector_similarity: vector_sim,
 				keyword_rank,
 				score_breakdown: scored.score_breakdown
