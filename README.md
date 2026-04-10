@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="muse-brain/docs/images/banner.gif" alt="MUSE Brain — Rainer creative orchestrator" width="800" />
+  <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
 <p align="center">
