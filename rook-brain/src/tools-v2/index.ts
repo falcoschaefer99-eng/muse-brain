@@ -117,16 +117,45 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 	mind_skill: handleSkill
 };
 
+const TOOL_ALIASES: Record<string, { canonical: string; defaultArgs?: Record<string, unknown> }> = {
+	// Legacy comms aliases (older clients / cached schemas)
+	mind_write_letter: { canonical: "mind_letter", defaultArgs: { action: "write" } },
+	write_letter: { canonical: "mind_letter", defaultArgs: { action: "write" } },
+	mind_read_letters: { canonical: "mind_letter", defaultArgs: { action: "read" } },
+	read_letters: { canonical: "mind_letter", defaultArgs: { action: "read" } },
+	mind_set_context: { canonical: "mind_context", defaultArgs: { action: "set" } },
+	set_context: { canonical: "mind_context", defaultArgs: { action: "set" } },
+	mind_get_context: { canonical: "mind_context", defaultArgs: { action: "get" } },
+	get_context: { canonical: "mind_context", defaultArgs: { action: "get" } }
+};
+
+function normalizeToolInvocation(name: string, args: any): { name: string; args: any } {
+	const alias = TOOL_ALIASES[name];
+	if (!alias) {
+		return { name, args };
+	}
+
+	if (!alias.defaultArgs || args?.action !== undefined) {
+		return { name: alias.canonical, args };
+	}
+
+	return {
+		name: alias.canonical,
+		args: { ...alias.defaultArgs, ...(args ?? {}) }
+	};
+}
+
 // ============ EXECUTE TOOL ============
 
 export async function executeTool(name: string, args: any, context: ToolContext): Promise<any> {
-	const handler = TOOL_MODULES[name];
+	const normalized = normalizeToolInvocation(name, args ?? {});
+	const handler = TOOL_MODULES[normalized.name];
 
 	if (!handler) {
 		throw new Error(`Unknown tool: ${name}. Available: ${Object.keys(TOOL_MODULES).join(", ")}`);
 	}
 
-	return handler(name, args ?? {}, context);
+	return handler(normalized.name, normalized.args, context);
 }
 
 // ============ EXPORTS ============

@@ -295,7 +295,16 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					if (!ALLOWED_TENANTS.includes(recipient as any)) {
 						return { error: `Unknown brain: ${recipient}. Known: ${ALLOWED_TENANTS.join(", ")}` };
 					}
+					// Rate limit: max 200 cross-tenant letters per day per sender
 					const recipientStorage = storage.forTenant(recipient);
+					const todayLetters = await recipientStorage.readLetters();
+					const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+					const recentFromSender = todayLetters.filter(l =>
+						l.from_context === storage.getTenant() && l.timestamp > oneDayAgo
+					);
+					if (recentFromSender.length >= 200) {
+						return { error: "Daily cross-tenant letter limit reached (200/day)" };
+					}
 					await recipientStorage.appendLetter(letter);
 					return { sent: true, id: letter.id, to_brain: recipient, to_context: args.to_context };
 				}
