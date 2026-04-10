@@ -366,7 +366,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		}
 
 		case "mind_query": {
-			const limit = Math.min(args.limit || 10, 50);
+			const limit = Math.min(Math.max(1, args.limit ?? 10), 50);
 			const confidenceThreshold = parseConfidenceThreshold(args.confidence_threshold);
 			if (args.confidence_threshold !== undefined && confidenceThreshold === undefined) {
 				return { error: "confidence_threshold must be a number between 0 and 1" };

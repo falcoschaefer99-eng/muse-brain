@@ -118,7 +118,8 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 	} catch (error: any) {
 		console.error("MCP error:", error);
 		const safeErrors = ["Invalid territory", "Missing required parameter", "Observation content too large"];
-		const msg = safeErrors.find(e => error.message?.includes(e)) || "Internal error";
+		const msg = error.message?.includes("Unknown tool:") ? "Unknown tool" :
+			safeErrors.find(e => error.message?.includes(e)) || "Internal error";
 		return { jsonrpc: "2.0", id, error: { code: -32603, message: msg } };
 	}
 }
@@ -142,6 +143,7 @@ export default {
 			return new Response(null, { headers: corsHeaders });
 		}
 
+		// Intentionally unauthenticated — required for uptime monitors (e.g. Cloudflare health checks)
 		if (url.pathname === "/health") {
 			let storage_ok = false;
 			try {
@@ -155,10 +157,10 @@ export default {
 			});
 		}
 
-		// Auth (timing-safe comparison) — Bearer header preferred, query param fallback
-		// Query param needed for Desktop app connectors (no custom header support)
+		// Auth (timing-safe comparison) — Bearer header only
+		// Query param auth removed — keys in URLs leak to analytics, browser history, proxy logs
 		const authHeader = request.headers.get("Authorization");
-		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (url.searchParams.get("key") || "");
+		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
 		const configuredKey = env.API_KEY?.trim() || "";
 		if (!configuredKey) {
 			console.error("API_KEY missing or empty");
@@ -178,7 +180,7 @@ export default {
 			});
 		}
 
-		// Per-IP rate limiting (in-memory, resets on Worker cold start)
+		// Per-IP rate limiting (in-memory, per-isolate only — not shared across Workers instances. Defense-in-depth, not a security boundary)
 		const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
 		const now = Date.now();
 		const limit = rateLimitMap.get(clientIp);
@@ -200,7 +202,16 @@ export default {
 			}
 		}
 
-		// Request size limit (1MB) — read actual bytes, don't trust Content-Length header
+		// Pre-flight size check — reject obviously oversized requests before buffering
+		const contentLength = parseInt(request.headers.get("Content-Length") || "0", 10);
+		if (contentLength > 1_048_576) {
+			return new Response(JSON.stringify({ error: "Payload too large" }), {
+				status: 413,
+				headers: { "Content-Type": "application/json", ...corsHeaders }
+			});
+		}
+
+		// Request size limit (1MB) — verify actual bytes after buffering
 		const rawBody = await request.arrayBuffer();
 		if (rawBody.byteLength > 1_048_576) {
 			return new Response(JSON.stringify({ error: "Payload too large" }), {
@@ -269,8 +280,13 @@ export default {
 			ctx.waitUntil((async () => {
 				await writer.write(encoder.encode(`event: endpoint\ndata: /mcp?tenant=${tenant}\n\n`));
 				const interval = setInterval(async () => {
-					try { await writer.write(encoder.encode(`: ping\n\n`)); } catch { clearInterval(interval); }
+					try { await writer.write(encoder.encode(`: ping\n\n`)); } catch { clearInterval(interval); clearTimeout(maxDuration); }
 				}, 15000);
+				// Max 30-minute connection duration to prevent connection exhaustion
+				const maxDuration = setTimeout(() => {
+					clearInterval(interval);
+					try { writer.close(); } catch {}
+				}, 30 * 60 * 1000);
 			})());
 
 			return new Response(readable, {
@@ -317,8 +333,6 @@ export default {
 		if (url.pathname === "/") {
 			return new Response(JSON.stringify({
 				name: "MUSE Brain",
-				version: "1.4.0", // keep in sync with package.json
-				tools: TOOLS.length,
 				phase: getCurrentCircadianPhase().phase
 			}), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 		}

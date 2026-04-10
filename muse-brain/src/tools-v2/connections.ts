@@ -117,10 +117,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 				const visited = new Set<string>();
 				const chain: any[] = [];
-				const maxDepth = args.depth || 2;
+				const maxDepth = Math.min(args.depth || 2, 5); // Clamp depth to prevent dense-graph explosion
 
 				function trace(id: string, depth: number) {
-					if (depth <= 0 || visited.has(id)) return;
+					if (depth <= 0 || visited.has(id) || visited.size >= 100) return; // Max-node guard
 					visited.add(id);
 
 					const found = obsMap.get(id);
@@ -148,7 +148,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (action === "chain") {
 				if (!args.start_id) return { error: "start_id is required for action=chain" };
 
-				const allObs: any[] = [];
+				let allObs: any[] = [];
 				let startObs: any = null;
 
 				const territoryData = await storage.readAllTerritories();
@@ -161,10 +161,12 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						}
 					}
 				}
+				// Cap pool to prevent memory pressure at scale
+				if (allObs.length > 5000) allObs = allObs.slice(0, 5000);
 
 				if (!startObs) return { error: `Observation ${args.start_id} not found` };
 
-				const maxDepth = args.max_depth || 5;
+				const maxDepth = Math.min(args.max_depth || 5, 10); // Clamp depth
 				const chain: any[] = [{
 					step: 0,
 					id: startObs.id,
