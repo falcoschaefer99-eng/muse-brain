@@ -283,6 +283,11 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		return buildInitialRetrievalHints({
 			id: obs.id,
 			content: obs.content,
+			summary: obs.summary,
+			context: obs.context,
+			mood: obs.mood,
+			territory: obs.territory,
+			type: obs.type,
 			created: obs.created,
 			entity_id: obs.entity_id,
 			tags: obs.tags

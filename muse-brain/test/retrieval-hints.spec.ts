@@ -4,10 +4,14 @@ import {
 	computeRetrievalHintMatch,
 	deriveQueryHintTerms,
 	RETRIEVAL_HINT_STORAGE_STRATEGY,
+	STATE_SNAPSHOT_HINT_LANE,
 	buildInitialRetrievalHints,
 	createRetrievalHint,
+	deriveAssistantResponseHints,
 	deriveEntityHints,
+	derivePreferenceHints,
 	deriveQuotedPhraseHints,
+	deriveRelationalContextHints,
 	deriveTemporalHints,
 	normalizeRetrievalHintType,
 	sanitizeHintText
@@ -83,12 +87,62 @@ describe("retrieval hint derivation", () => {
 		expect(hints.some(h => h.hint_text.toLowerCase() === "session")).toBe(false);
 	});
 
+	it("derives preference hints from preference tags and language cues", () => {
+		const hints = derivePreferenceHints({
+			id: "obs_pref",
+			content: "I prefer deep work blocks and I love dark mode.",
+			tags: ["preference: quiet mornings", "topic:workflow"]
+		});
+		const texts = hints.map(h => h.hint_text);
+
+		expect(texts).toContain("quiet mornings");
+		expect(texts.some(text => text.includes("deep work"))).toBe(true);
+		expect(texts.some(text => text.includes("dark mode"))).toBe(true);
+		expect(hints.every(h => h.hint_type === "preference_hint")).toBe(true);
+	});
+
+	it("derives assistant response hints only for assistant-authored observations", () => {
+		const assistantHints = deriveAssistantResponseHints({
+			id: "obs_asst",
+			content: "Assistant: benchmark lane needs honest receipts and miss analysis.",
+			summary: "recommend benchmark receipts",
+			type: "assistant_response",
+			tags: ["assistant"]
+		});
+		expect(assistantHints.length).toBeGreaterThan(0);
+		expect(assistantHints.every(h => h.hint_type === "assistant_response_hint")).toBe(true);
+
+		const userHints = deriveAssistantResponseHints({
+			id: "obs_user",
+			content: "I wrote this note myself about benchmarks.",
+			type: "journal"
+		});
+		expect(userHints).toHaveLength(0);
+	});
+
+	it("derives relational context hints from territory and relational cues", () => {
+		const hints = deriveRelationalContextHints({
+			id: "obs_rel",
+			content: "We had a conflict and then moved toward repair after the apology.",
+			context: "relationship rupture and repair",
+			territory: "us"
+		});
+		const texts = hints.map(h => h.hint_text);
+
+		expect(texts).toContain("relationship");
+		expect(texts).toContain("conflict");
+		expect(texts).toContain("repair");
+		expect(hints.every(h => h.hint_type === "relational_context_hint")).toBe(true);
+	});
+
 	it("builds initial hint pack with deduping", () => {
 		const hints = buildInitialRetrievalHints({
 			id: "obs_all",
-			content: 'Alice said "Never fake receipts."',
+			content: 'Assistant: Alice said "Never fake receipts." I prefer clear deltas.',
 			created: "2026-04-09T12:34:56.000Z",
-			entity_id: "entity_partner_1"
+			entity_id: "entity_partner_1",
+			type: "assistant_response",
+			territory: "us"
 		});
 
 		const keyCount = new Set(hints.map(h => `${h.hint_type}::${h.hint_text.toLowerCase()}`)).size;
@@ -96,6 +150,9 @@ describe("retrieval hint derivation", () => {
 		expect(hints.some(h => h.hint_type === "quoted_phrase_hint")).toBe(true);
 		expect(hints.some(h => h.hint_type === "temporal_hint")).toBe(true);
 		expect(hints.some(h => h.hint_type === "entity_hint")).toBe(true);
+		expect(hints.some(h => h.hint_type === "preference_hint")).toBe(true);
+		expect(hints.some(h => h.hint_type === "assistant_response_hint")).toBe(true);
+		expect(hints.some(h => h.hint_type === "relational_context_hint")).toBe(true);
 	});
 
 	it("derives query hint terms and matches hint artifacts", () => {
@@ -215,5 +272,11 @@ describe("retrieval hint storage strategy", () => {
 		expect(RETRIEVAL_HINT_STORAGE_STRATEGY.canonical_observations_unchanged).toBe(true);
 		expect(RETRIEVAL_HINT_STORAGE_STRATEGY.postgres.table).toBe("retrieval_hints");
 		expect(RETRIEVAL_HINT_STORAGE_STRATEGY.sqlite.kv_key).toBe("retrieval_hints");
+	});
+
+	it("defines state snapshot hint lane as reserved-only in sprint 3", () => {
+		expect(STATE_SNAPSHOT_HINT_LANE.status).toBe("reserved");
+		expect(STATE_SNAPSHOT_HINT_LANE.implemented).toBe(false);
+		expect(STATE_SNAPSHOT_HINT_LANE.rules.length).toBeGreaterThan(0);
 	});
 });

@@ -366,6 +366,11 @@ These are engineering targets, not marketing claims.
 - Hint matches are weighted as a light Layer A component to improve candidate recall without overwhelming ranking.
 - Postgres hybrid search includes optional `retrieval_hints` join path with safe fallback when the table is absent.
 - Hint-derived match sources are surfaced for diagnostics (`hint`, plus matched hint types).
+- Additional deterministic hint generators now included:
+  - `preference_hint`
+  - `assistant_response_hint`
+  - `relational_context_hint`
+- `state_snapshot_hint` lane is now explicitly defined as **reserved-only** (no generation in Sprint 3; future opt-in/auditable lane).
 
 ---
 
@@ -475,13 +480,13 @@ When this lane ships, it should include all of the following:
 ### Sprint 3 — Derived Retrieval Hints
 - [x] define hint artifact schema
 - [x] define storage strategy for hint artifacts
-- [ ] add preference hints
-- [ ] add assistant response hints
+- [x] add preference hints
+- [x] add assistant response hints
 - [x] add temporal hints
 - [x] add quoted phrase hints
 - [x] add entity hints
-- [ ] add relational context hints
-- [ ] define future state snapshot hint lane
+- [x] add relational context hints
+- [x] define future state snapshot hint lane
 
 ### Sprint 4 — Dynamic Weighting & Rerank
 - [ ] define baseline profile weights

@@ -128,6 +128,11 @@ export function createRetrievalHint(input: CreateRetrievalHintInput): RetrievalH
 export interface HintExtractionObservation {
 	id: string;
 	content: string;
+	summary?: string;
+	context?: string;
+	mood?: string;
+	territory?: string;
+	type?: string;
 	created?: string;
 	entity_id?: string;
 	tags?: string[];
@@ -142,6 +147,46 @@ function unique(values: string[]): string[] {
 		out.push(value);
 	}
 	return out;
+}
+
+const ENTITY_TERM_BLOCKLIST = new Set([
+	"user",
+	"assistant",
+	"session",
+	"question",
+	"answer",
+	"date",
+	"today",
+	"yesterday",
+	"tomorrow",
+	"monday",
+	"tuesday",
+	"wednesday",
+	"thursday",
+	"friday",
+	"saturday",
+	"sunday"
+]);
+
+const PREFERENCE_STOPWORDS = new Set([
+	"this", "that", "with", "from", "into", "about", "really", "very", "just", "kind", "sort"
+]);
+
+const ASSISTANT_HINT_STOPWORDS = new Set([
+	"the", "and", "that", "with", "from", "this", "what", "when", "where", "which", "who", "why", "how",
+	"your", "you", "have", "has", "had", "been", "were", "would", "should", "could", "about", "into", "there", "here",
+	"assistant", "rainer", "rook"
+]);
+
+function compactHintTokens(raw: string, minLength: number, stopwords: Set<string>): string[] {
+	return unique(
+		String(raw ?? "")
+			.toLowerCase()
+			.split(/[^a-z0-9_\-]+/)
+			.map(token => token.trim())
+			.filter(token => token.length >= minLength)
+			.filter(token => !stopwords.has(token))
+	);
 }
 
 export function deriveQuotedPhraseHints(observation: HintExtractionObservation): RetrievalHintArtifact[] {
@@ -198,25 +243,6 @@ export function deriveEntityHints(observation: HintExtractionObservation): Retri
 		}));
 	}
 
-	const ENTITY_TERM_BLOCKLIST = new Set([
-		"user",
-		"assistant",
-		"session",
-		"question",
-		"answer",
-		"date",
-		"today",
-		"yesterday",
-		"tomorrow",
-		"monday",
-		"tuesday",
-		"wednesday",
-		"thursday",
-		"friday",
-		"saturday",
-		"sunday"
-	]);
-
 	const capitalizedTerms = unique(
 		Array.from(observation.content.matchAll(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g))
 			.map(match => sanitizeHintText(match[0], 120))
@@ -239,11 +265,148 @@ export function deriveEntityHints(observation: HintExtractionObservation): Retri
 	return hints;
 }
 
+export function derivePreferenceHints(observation: HintExtractionObservation): RetrievalHintArtifact[] {
+	const hints: RetrievalHintArtifact[] = [];
+	const candidates: string[] = [];
+	const content = String(observation.content ?? "");
+	const tags = Array.isArray(observation.tags) ? observation.tags : [];
+
+	for (const tag of tags) {
+		const normalized = String(tag ?? "").trim();
+		const prefTag = normalized.match(/^(?:pref|preference|likes?|dislikes?|favorite)[:=]\s*(.+)$/i);
+		if (prefTag?.[1]) candidates.push(prefTag[1]);
+	}
+
+	const preferencePatterns = [
+		/\b(?:i|we)\s+(?:really\s+)?(?:like|love|prefer|enjoy|need|want)\s+([^.;\n]{3,120})/gi,
+		/\b(?:i|we)\s+(?:do\s+not|don't|never)\s+(?:like|want|enjoy)\s+([^.;\n]{3,120})/gi,
+		/\bmy\s+favorite\s+([^.;\n]{2,80})/gi
+	];
+	for (const pattern of preferencePatterns) {
+		for (const match of content.matchAll(pattern)) {
+			if (match[1]) candidates.push(match[1]);
+		}
+	}
+
+	const normalizedCandidates = unique(
+		candidates
+			.map(raw => sanitizeHintText(raw, 120).toLowerCase())
+			.map(raw => raw.replace(/^(?:to|for|about)\s+/, "").trim())
+			.filter(Boolean)
+			.filter(value => !PREFERENCE_STOPWORDS.has(value))
+	).slice(0, 8);
+
+	for (const text of normalizedCandidates) {
+		hints.push(createRetrievalHint({
+			observation_id: observation.id,
+			hint_type: "preference_hint",
+			hint_text: text,
+			confidence: 0.82,
+			weight: 0.62,
+			metadata: { extraction: "preference_pattern" }
+		}));
+	}
+
+	return hints;
+}
+
+function isAssistantAuthored(observation: HintExtractionObservation): boolean {
+	const type = String(observation.type ?? "").toLowerCase();
+	const context = String(observation.context ?? "").toLowerCase();
+	const tags = (observation.tags ?? []).map(tag => String(tag).toLowerCase());
+	const content = String(observation.content ?? "").trim().toLowerCase();
+
+	if (/(assistant|reply|response)/.test(type)) return true;
+	if (/(assistant|rainer|rook)/.test(context)) return true;
+	if (tags.some(tag => /(assistant|ai|response|reply|rainer|rook)/.test(tag))) return true;
+	if (/^(assistant|rainer|rook)\s*:/.test(content)) return true;
+	return false;
+}
+
+export function deriveAssistantResponseHints(observation: HintExtractionObservation): RetrievalHintArtifact[] {
+	if (!isAssistantAuthored(observation)) return [];
+
+	const source = `${observation.content ?? ""}\n${observation.summary ?? ""}`;
+	const keywordTokens = compactHintTokens(source, 5, ASSISTANT_HINT_STOPWORDS).slice(0, 10);
+	const hints = keywordTokens.map(token =>
+		createRetrievalHint({
+			observation_id: observation.id,
+			hint_type: "assistant_response_hint",
+			hint_text: token,
+			confidence: 0.74,
+			weight: 0.58,
+			metadata: { extraction: "assistant_keyword" }
+		})
+	);
+
+	return hints;
+}
+
+const RELATIONAL_SIGNAL_CUES: Record<string, string[]> = {
+	conflict: ["conflict", "argument", "fight", "rupture", "tension", "clash"],
+	repair: ["repair", "reconcile", "apology", "forgive", "resolution", "made up"],
+	grief: ["grief", "loss", "mourning", "sadness", "heartbroken", "hurt"],
+	intimacy: ["intimacy", "vulnerable", "closeness", "yearning", "desire"],
+	devotion: ["devotion", "care", "support", "commitment", "vow", "love"],
+	trust: ["trust", "safety", "secure", "rely", "reliable"]
+};
+
+export function deriveRelationalContextHints(observation: HintExtractionObservation): RetrievalHintArtifact[] {
+	const hints: RetrievalHintArtifact[] = [];
+	const haystack = `${observation.content ?? ""}\n${observation.context ?? ""}\n${(observation.tags ?? []).join(" ")}`.toLowerCase();
+	const territory = String(observation.territory ?? "").toLowerCase();
+
+	const territoryHints = new Map<string, string>([
+		["us", "relationship"],
+		["kin", "family"],
+		["emotional", "emotional-state"]
+	]);
+	const territoryHint = territoryHints.get(territory);
+	if (territoryHint) {
+		hints.push(createRetrievalHint({
+			observation_id: observation.id,
+			hint_type: "relational_context_hint",
+			hint_text: territoryHint,
+			confidence: 0.83,
+			weight: 0.64,
+			metadata: { extraction: "territory_context" }
+		}));
+	}
+
+	for (const [signal, cues] of Object.entries(RELATIONAL_SIGNAL_CUES)) {
+		if (cues.some(cue => haystack.includes(cue))) {
+			hints.push(createRetrievalHint({
+				observation_id: observation.id,
+				hint_type: "relational_context_hint",
+				hint_text: signal,
+				confidence: 0.76,
+				weight: 0.6,
+				metadata: { extraction: "relational_cue" }
+			}));
+		}
+	}
+
+	return hints;
+}
+
+export const STATE_SNAPSHOT_HINT_LANE = {
+	status: "reserved",
+	implemented: false,
+	rules: [
+		"State snapshot hints are defined as a future lane only.",
+		"No state-derived hints are generated in Sprint 3.",
+		"Any future implementation must be opt-in and auditable."
+	]
+} as const;
+
 export function buildInitialRetrievalHints(observation: HintExtractionObservation): RetrievalHintArtifact[] {
 	const hints = [
 		...deriveQuotedPhraseHints(observation),
 		...deriveTemporalHints(observation),
-		...deriveEntityHints(observation)
+		...deriveEntityHints(observation),
+		...derivePreferenceHints(observation),
+		...deriveAssistantResponseHints(observation),
+		...deriveRelationalContextHints(observation)
 	];
 
 	const seen = new Set<string>();

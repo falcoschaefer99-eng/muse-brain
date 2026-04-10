@@ -91,3 +91,13 @@ Supported `hint_type` values:
 Implementation tests:
 
 - `test/retrieval-hints.spec.ts`
+
+## Sprint 3B extension notes (April 10, 2026)
+
+- Additional deterministic generators are active:
+  - `preference_hint`
+  - `assistant_response_hint`
+  - `relational_context_hint`
+- `state_snapshot_hint` remains explicitly **reserved**:
+  - no automatic generation in current retrieval path
+  - future lane requires explicit opt-in and auditable policy hooks
