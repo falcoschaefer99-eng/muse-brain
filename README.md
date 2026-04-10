@@ -1,7 +1,5 @@
 <p align="center">
-  <video src="muse-brain/docs/images/banner.mp4" width="800" autoplay loop muted playsinline>
-    <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
-  </video>
+  <img src="muse-brain/docs/images/banner.gif" alt="MUSE Brain — Rainer creative orchestrator" width="800" />
 </p>
 
 <p align="center">
