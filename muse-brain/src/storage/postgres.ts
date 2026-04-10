@@ -2362,6 +2362,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 		const hintPromise: Promise<Record<string, unknown>[]> = (async () => {
 			if (queryHintTerms.length === 0) return [];
 			const hintLimit = Math.max(12, Math.floor(profileConfig.candidate_pool.keyword * 0.7));
+			const hintStrengthFloor = 0.55;
 			const ilikePatterns = queryHintTerms.map(term => `%${term.replace(/[%_]/g, "\\$&")}%`);
 			try {
 				let rows: Record<string, unknown>[];
@@ -2384,6 +2385,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
 						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
 						         o.novelty_score, o.surface_count, o.entity_id
+						HAVING MAX((rh.weight * 0.7 + rh.confidence * 0.3)) >= ${hintStrengthFloor}
 						ORDER BY hint_score DESC
 						LIMIT ${hintLimit}
 					` as Record<string, unknown>[];
@@ -2405,6 +2407,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
 						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
 						         o.novelty_score, o.surface_count, o.entity_id
+						HAVING MAX((rh.weight * 0.7 + rh.confidence * 0.3)) >= ${hintStrengthFloor}
 						ORDER BY hint_score DESC
 						LIMIT ${hintLimit}
 					` as Record<string, unknown>[];
@@ -2426,6 +2429,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
 						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
 						         o.novelty_score, o.surface_count, o.entity_id
+						HAVING MAX((rh.weight * 0.7 + rh.confidence * 0.3)) >= ${hintStrengthFloor}
 						ORDER BY hint_score DESC
 						LIMIT ${hintLimit}
 					` as Record<string, unknown>[];
@@ -2446,6 +2450,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 						GROUP BY o.id, o.content, o.territory, o.created_at, o.texture, o.context, o.mood,
 						         o.last_accessed_at, o.access_count, o.links, o.summary, o.type, o.tags,
 						         o.novelty_score, o.surface_count, o.entity_id
+						HAVING MAX((rh.weight * 0.7 + rh.confidence * 0.3)) >= ${hintStrengthFloor}
 						ORDER BY hint_score DESC
 						LIMIT ${hintLimit}
 					` as Record<string, unknown>[];

@@ -743,7 +743,7 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			.sort((a, b) => toMillis(b.obs.created) - toMillis(a.obs.created))
 			.slice(0, profileConfig.candidate_pool.entity);
 		const hintSeeds = seeds
-			.filter(seed => seed.hintScore > 0)
+			.filter(seed => seed.hintScore >= 0.08)
 			.sort((a, b) => b.hintScore - a.hintScore)
 			.slice(0, Math.max(12, Math.floor(profileConfig.candidate_pool.keyword * 0.7)));
 

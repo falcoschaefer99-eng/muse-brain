@@ -268,6 +268,13 @@ export interface QueryHintSignalsInput {
 	};
 }
 
+const QUERY_HINT_STOPWORDS = new Set([
+	"the", "and", "for", "with", "from", "that", "this", "what", "when", "where", "which", "who", "whom", "why", "how",
+	"did", "does", "do", "was", "were", "is", "are", "am", "be", "been", "being", "can", "could", "should", "would",
+	"have", "has", "had", "my", "your", "their", "our", "his", "her", "its", "about", "into", "onto", "over", "under",
+	"before", "after", "during", "between", "again", "also", "then", "than", "there", "here"
+]);
+
 export function deriveQueryHintTerms(input: QueryHintSignalsInput): string[] {
 	const out = new Set<string>();
 	const quoted = Array.isArray(input.quoted_phrases) ? input.quoted_phrases : [];
@@ -304,12 +311,17 @@ export function deriveQueryHintTerms(input: QueryHintSignalsInput): string[] {
 		if (token) out.add(token);
 	}
 
-	const rawTokens = String(input.query ?? "")
-		.toLowerCase()
-		.split(/[^a-z0-9_\-]+/)
-		.map(token => token.trim())
-		.filter(token => token.length >= 3);
-	for (const token of rawTokens) out.add(token);
+	// Fallback tokens are intentionally conservative to reduce broad/noisy hint matching.
+	if (out.size === 0) {
+		const rawTokens = String(input.query ?? "")
+			.toLowerCase()
+			.split(/[^a-z0-9_\-]+/)
+			.map(token => token.trim())
+			.filter(token => token.length >= 4)
+			.filter(token => !QUERY_HINT_STOPWORDS.has(token))
+			.slice(0, 12);
+		for (const token of rawTokens) out.add(token);
+	}
 
 	return Array.from(out);
 }
@@ -331,16 +343,28 @@ export function computeRetrievalHintMatch(
 	const matchedTerms = new Set<string>();
 	const matchedTypes = new Set<RetrievalHintType>();
 	let weightedScore = 0;
+	const typeWeight: Record<RetrievalHintType, number> = {
+		preference_hint: 0.75,
+		assistant_response_hint: 0.75,
+		temporal_hint: 0.9,
+		entity_hint: 0.55,
+		quoted_phrase_hint: 1.0,
+		relational_context_hint: 0.7,
+		contradiction_hint: 0.7,
+		territory_salience_hint: 0.65,
+		state_snapshot_hint: 0.65
+	};
 
 	for (const hint of hints) {
 		const hintText = hint.hint_text.toLowerCase().trim();
 		if (hintText.length < 4) continue;
 		for (const term of queryTerms) {
-			if (!term) continue;
+			if (!term || term.length < 4) continue;
 			if (hintText === term || hintText.includes(term)) {
 				matchedTerms.add(term);
 				matchedTypes.add(hint.hint_type);
-				weightedScore += (hint.weight * 0.7) + (hint.confidence * 0.3);
+				const base = (hint.weight * 0.7) + (hint.confidence * 0.3);
+				weightedScore += base * (typeWeight[hint.hint_type] ?? 0.7);
 				break;
 			}
 		}

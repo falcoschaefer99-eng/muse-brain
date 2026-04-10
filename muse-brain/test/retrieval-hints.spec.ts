@@ -136,6 +136,60 @@ describe("retrieval hint derivation", () => {
 		expect(matched.matched_hint_types).toContain("quoted_phrase_hint");
 	});
 
+	it("keeps query-term fallback conservative when explicit signals already exist", () => {
+		const terms = deriveQueryHintTerms({
+			query: "What did Caroline do in April 2026?",
+			proper_names: ["Caroline"],
+			temporal: {
+				years: [2026],
+				months: [4]
+			}
+		});
+
+		expect(terms).toContain("caroline");
+		expect(terms).toContain("2026");
+		expect(terms).toContain("april");
+		expect(terms).not.toContain("what");
+		expect(terms).not.toContain("did");
+	});
+
+	it("uses filtered raw query tokens only as a fallback", () => {
+		const terms = deriveQueryHintTerms({
+			query: "what happened about abstract memory retrieval here"
+		});
+
+		expect(terms).toContain("abstract");
+		expect(terms).toContain("memory");
+		expect(terms).toContain("retrieval");
+		expect(terms).not.toContain("what");
+		expect(terms).not.toContain("about");
+		expect(terms).not.toContain("here");
+	});
+
+	it("weights quoted phrase hint matches higher than generic entity hints", () => {
+		const terms = ["caroline"];
+		const entity = computeRetrievalHintMatch([
+			createRetrievalHint({
+				observation_id: "obs_entity",
+				hint_type: "entity_hint",
+				hint_text: "caroline",
+				confidence: 0.9,
+				weight: 0.8
+			})
+		], terms);
+		const quoted = computeRetrievalHintMatch([
+			createRetrievalHint({
+				observation_id: "obs_quote",
+				hint_type: "quoted_phrase_hint",
+				hint_text: "caroline",
+				confidence: 0.9,
+				weight: 0.8
+			})
+		], terms);
+
+		expect(quoted.score).toBeGreaterThan(entity.score);
+	});
+
 	it("ignores short or substring-noise hints during matching", () => {
 		const terms = deriveQueryHintTerms({
 			query: "about sabrina and abstract memory"
