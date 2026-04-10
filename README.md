@@ -172,6 +172,24 @@ Full setup guide: **[docs/SETUP.md](muse-brain/docs/SETUP.md)**
 
 ---
 
+## Testing
+
+155 tests across unit, integration, and shell-based scenarios.
+
+```bash
+# From muse-brain/
+npm run test              # 118 unit tests (vitest)
+npm run test:workers      # cloudflare worker pool tests
+
+# From runner/
+npm test                  # 18 runner tests
+
+# Integration (requires live worker)
+./muse-brain/test.sh      # 19 scenarios — health, auth, security, tools
+```
+
+---
+
 ## Telegram + voice stack (included, opt-in)
 
 `runner/` ships with Telegram integration out of the box:
