@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="docs/banner.png" alt="MUSE Brain" width="800" />
+  <video src="docs/banner.mp4" width="800" autoplay loop muted playsinline>
+    <img src="docs/banner.png" alt="MUSE Brain" width="800" />
+  </video>
 </p>
 
 <p align="center">
