@@ -31,6 +31,6 @@
 |---|---|---|
 | R1 | Merge audited s6b4 tightening to main | done |
 | R2 | Final green gate (typecheck + unit tests) | done |
-| R3 | Release notes + benchmark receipt bundle + StoryScope writing-quality pass | pending |
+| R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | pending |
 | R4 | Version/tag decision (v6 label + semver) | pending |
 | R5 | Public release/deploy announcement | pending |
