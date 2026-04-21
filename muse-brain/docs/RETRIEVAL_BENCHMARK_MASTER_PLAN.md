@@ -451,6 +451,32 @@ These are engineering targets, not marketing claims.
 
 ---
 
+## Post-v6 Follow-up — External Agent Benchmark Alignment
+**Why it matters:** Public memory-system discourse is increasingly measured on task-agent suites (for example WebArena and SWE-Bench-style evaluations). We should map MUSE receipts to that landscape without making apples-to-oranges claims.
+
+### Scope note
+- This lane is **important**, but **not a blocker** for v6 release.
+- Current MUSE receipts (LongMemEval / LoCoMo / Cognitive Advantage) and external agent-suite receipts are different measurement surfaces.
+
+### Goals
+- add a comparable external alignment lane for agent-task outcomes
+- measure memory impact on task success, efficiency, and cost
+- publish an honest translation layer: where metrics align, where they do not
+
+### Deliverables
+- external-alignment benchmark plan doc
+- first-run receipts on one browser-task benchmark and one software-task benchmark
+- with/without memory comparison lane
+- with/without rerank comparison lane
+- interpretation notes that explicitly avoid over-claiming cross-benchmark parity
+
+### Exit criteria
+- at least one reproducible external alignment run with artifact receipts
+- success/steps/cost deltas captured with and without memory
+- release docs include “not directly comparable” caveat language where appropriate
+
+---
+
 ## Release Documentation Requirements
 
 When this lane ships, it should include all of the following:
@@ -530,6 +556,14 @@ When this lane ships, it should include all of the following:
 - [ ] prepare benchmark summary page
 - [ ] update architecture and capabilities docs
 - [ ] publish limitations and honest claims
+
+### Post-v6 — External Agent Benchmark Alignment
+- [ ] define external alignment benchmark scope (task types, datasets, run budgets)
+- [ ] define alignment metrics (success rate, steps per task, tool/cost footprint)
+- [ ] implement with/without memory comparison lane
+- [ ] implement with/without rerank comparison lane
+- [ ] run first external alignment receipts
+- [ ] publish interpretation guide with explicit apples-to-oranges caveats
 
 ---
 
