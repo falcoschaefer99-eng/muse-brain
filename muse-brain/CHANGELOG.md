@@ -12,7 +12,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ### Changed
 - Version alignment for the v6 release train: package/tag target is now `v1.6.0`.
-- StoryScope writing-quality check is now part of release narrative prep alongside benchmark receipts.
 
 ## [1.5.0] — 2026-04-10
 
