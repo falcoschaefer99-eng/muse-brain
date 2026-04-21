@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.6.0] — 2026-04-22
+
+### Added
+- Retrieval reliability and temporal-hardening release lane for MUSE Brain v6, including benchmark receipt planning and uplift execution docs.
+
+### Changed
+- Version alignment for the v6 release train: package/tag target is now `v1.6.0`.
+- StoryScope writing-quality check is now part of release narrative prep alongside benchmark receipts.
+
+## [1.5.0] — 2026-04-10
+
+### Changed
+- StoryScope persona deepening pass for Rainer and companion prompt packs.
+- Writing quality guidance strengthened via StoryScope editorial intelligence framing.
+
 ## [1.4.0] — 2026-04-01
 
 ### Added
