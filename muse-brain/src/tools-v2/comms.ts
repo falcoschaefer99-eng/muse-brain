@@ -5,7 +5,8 @@ import type { Letter, Observation } from "../types";
 import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
-import { cleanText } from "./utils";
+import { cleanText, normalizeLookupText } from "./utils";
+import { parseOptionalPositiveInt } from "./confidence-utils";
 
 const MAX_LETTER_CONTENT_LENGTH = 4000;
 const MAX_CONTEXT_OPEN_THREAD_TASKS = 20;
@@ -17,6 +18,10 @@ const MAX_FACT_CONTENT_LENGTH = 2_000;
 const MAX_RECALL_CONTRACTS = 25;
 const MIN_RECALL_AFTER_HOURS = 1;
 const MAX_RECALL_AFTER_HOURS = 24 * 30;
+const MAX_LETTER_LIST_LIMIT = 50;
+const DEFAULT_LETTER_LIST_LIMIT = 20;
+const DEFAULT_LETTER_PREVIEW_CHARS = 180;
+const MAX_LETTER_PREVIEW_CHARS = 1000;
 
 const TASK_PRIORITIES = ["burning", "high", "normal", "low", "someday"] as const;
 const RECALL_SCOPES = ["task", "proposal"] as const;
@@ -172,30 +177,32 @@ function truncateText(input: string, max = 120): string {
 	return `${clean.slice(0, max - 1)}…`;
 }
 
+function parseLetterLimit(value: unknown, fallback = DEFAULT_LETTER_LIST_LIMIT): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+	return Math.min(MAX_LETTER_LIST_LIMIT, Math.max(1, Math.floor(value)));
+}
+
+function parsePreviewChars(value: unknown): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_LETTER_PREVIEW_CHARS;
+	return Math.min(MAX_LETTER_PREVIEW_CHARS, Math.max(40, Math.floor(value)));
+}
+
 function isCommitEligibleFact(fact: ExtractedFact, threshold: number): boolean {
 	if (fact.confidence < threshold) return false;
 	return fact.fact_type === "decision" || fact.fact_type === "deadline";
 }
 
-function parseOptionalPositiveInt(value: unknown, min: number, max: number): number | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-	if (!Number.isInteger(value)) return undefined;
-	if (value < min || value > max) return undefined;
-	return value;
-}
-
 export const TOOL_DEFS = [
 	{
 		name: "mind_letter",
-		description: "Write or read letters. action=write sends a letter to a context or another brain. action=read returns unread letters for a context.",
+		description: "Write, list, get, search, or read letters. action=write sends a letter. action=list returns paginated summaries. action=get returns a single full letter by id. action=search runs keyword search across letters. action=read remains as backward-compatible unread fetch.",
 		inputSchema: {
 			type: "object",
 			properties: {
 				action: {
 					type: "string",
-					enum: ["write", "read"],
-					description: "write: send a letter. read: read incoming letters."
+					enum: ["write", "list", "get", "search", "read"],
+					description: "write: send a letter. list: paginated summaries. get: full letter by id. search: keyword search. read: backward-compatible unread fetch."
 				},
 				// write params
 				to_context: { type: "string", description: "[write] Recipient context (e.g., 'phone', 'future', 'desktop', 'chat')" },
@@ -203,9 +210,18 @@ export const TOOL_DEFS = [
 				content: { type: "string", description: "[write] Letter content" },
 				charges: { type: "array", items: { type: "string" }, description: "[write] Emotional charges" },
 				letter_type: { type: "string", enum: ["personal", "handoff", "proposal"], description: "[write] Letter type — personal (default), handoff (task delegation), proposal (suggestion)" },
-				// read params
-				context: { type: "string", default: "chat", description: "[read] Which context to read letters for" },
-				unread_only: { type: "boolean", default: true, description: "[read] Only show unread letters" }
+				// list/search/read params
+				context: { type: "string", default: "chat", description: "[list/search/read] Which context to inspect" },
+				unread_only: { type: "boolean", default: true, description: "[list/read] Only unread letters" },
+				from: { type: "string", description: "[list/search] Filter by sender" },
+				limit: { type: "number", default: DEFAULT_LETTER_LIST_LIMIT, description: "[list/search/read] Max results (1-50)" },
+				cursor: { type: "string", description: "[list/search] Pagination cursor (letter id)" },
+				preview_chars: { type: "number", default: DEFAULT_LETTER_PREVIEW_CHARS, description: "[list/search] Preview snippet length" },
+				include_full_content: { type: "boolean", default: false, description: "[list/search] Include full content in each row (default false)" },
+				// get params
+				id: { type: "string", description: "[get] Letter id" },
+				// search params
+				query: { type: "string", description: "[search] Keyword query string" }
 			},
 			required: ["action"]
 		}
@@ -289,23 +305,22 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					letter_type: args.letter_type || undefined
 				};
 
-				// Cross-brain delivery
-				if (args.to) {
-					const recipient = args.to as string;
-					if (!ALLOWED_TENANTS.includes(recipient as any)) {
-						return { error: `Unknown brain: ${recipient}. Known: ${ALLOWED_TENANTS.join(", ")}` };
-					}
-					// Rate limit: max 200 cross-tenant letters per day per sender
-					const recipientStorage = storage.forTenant(recipient);
-					const todayLetters = await recipientStorage.readLetters();
-					const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-					const recentFromSender = todayLetters.filter(l =>
-						l.from_context === storage.getTenant() && l.timestamp > oneDayAgo
-					);
-					if (recentFromSender.length >= 200) {
-						return { error: "Daily cross-tenant letter limit reached (200/day)" };
-					}
-					await recipientStorage.appendLetter(letter);
+					// Cross-brain delivery
+					if (args.to) {
+						const recipient = args.to as string;
+						if (!ALLOWED_TENANTS.includes(recipient as any)) {
+							return { error: `Unknown brain: ${recipient}. Known: ${ALLOWED_TENANTS.join(", ")}` };
+						}
+						// Rate limit: max 200 cross-tenant letters per day per sender
+						const recipientStorage = storage.forTenant(recipient);
+						const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+						const recentFromSenderCount = typeof recipientStorage.countLettersFromSince === "function"
+							? await recipientStorage.countLettersFromSince(storage.getTenant(), oneDayAgo)
+							: (await recipientStorage.readLetters()).filter(l => l.from_context === storage.getTenant() && l.timestamp > oneDayAgo).length;
+						if (recentFromSenderCount >= 200) {
+							return { error: "Daily cross-tenant letter limit reached (200/day)" };
+						}
+						await recipientStorage.appendLetter(letter);
 					return { sent: true, id: letter.id, to_brain: recipient, to_context: args.to_context };
 				}
 
@@ -313,16 +328,196 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return { sent: true, id: letter.id, to: args.to_context };
 			}
 
-			if (action === "read") {
-				const letters = await storage.readLetters();
-				const recipientContext = args.context || "chat";
+			const recipientContext = args.context || "chat";
+			if (action === "get") {
+				if (!args.id || typeof args.id !== "string") return { error: "id is required for action=get" };
+				let found = typeof storage.getLetterById === "function"
+					? await storage.getLetterById(args.id, recipientContext)
+					: null;
+				if (!found) {
+					const letters = await storage.readLetters();
+					found = letters.find(letter => letter.id === args.id && letter.to_context === recipientContext) ?? null;
+				}
+				if (!found) return { error: "Letter not found", id: args.id };
+				let targetLetter: Letter = found;
 
-				let relevant = letters.filter(l => l.to_context === recipientContext);
-				if (args.unread_only !== false) {
-					relevant = relevant.filter(l => !l.read);
+				// Mark as read when opened directly.
+				if (!targetLetter.read) {
+					if (typeof storage.markLettersRead === "function") {
+						await storage.markLettersRead([targetLetter.id]);
+					} else {
+						const letters = await storage.readLetters();
+						const idx = letters.findIndex(letter => letter.id === targetLetter.id);
+						if (idx !== -1) {
+							letters[idx].read = true;
+							await storage.writeLetters(letters);
+						}
+					}
+					targetLetter = { ...targetLetter, read: true };
 				}
 
-				// Mark as read
+				return {
+					found: true,
+					letter: {
+						id: targetLetter.id,
+						from: targetLetter.from_context,
+						to: targetLetter.to_context,
+						content: targetLetter.content,
+						timestamp: targetLetter.timestamp,
+						read: true,
+						charges: targetLetter.charges,
+						letter_type: targetLetter.letter_type
+					}
+				};
+			}
+
+			if (action === "list" || action === "search") {
+				const limit = parseLetterLimit(args.limit);
+				const previewChars = parsePreviewChars(args.preview_chars);
+				const includeFull = args.include_full_content === true;
+				const from = typeof args.from === "string" && args.from.trim() ? args.from.trim() : undefined;
+				const cursor = typeof args.cursor === "string" && args.cursor.trim() ? args.cursor.trim() : undefined;
+				let query: string | undefined;
+				if (action === "search") {
+					if (typeof args.query !== "string" || !args.query.trim()) {
+						return { error: "query is required for action=search" };
+					}
+					if (args.query.length > 2000) {
+						return { error: "query too long (max 2000 chars)" };
+					}
+					query = args.query.trim();
+				}
+
+				if (typeof storage.listLettersPaged === "function") {
+					const page = await storage.listLettersPaged({
+						context: recipientContext,
+						limit,
+						cursor,
+						unread_only: args.unread_only === true,
+						from,
+						query
+					});
+
+					return {
+						context: recipientContext,
+						action,
+						count: page.letters.length,
+						has_more: page.has_more,
+						next_cursor: page.next_cursor,
+						letters: page.letters.map(letter => ({
+							id: letter.id,
+							from: letter.from_context,
+							to: letter.to_context,
+							timestamp: letter.timestamp,
+							read: letter.read,
+							charges: letter.charges,
+							letter_type: letter.letter_type,
+							preview: truncateText(letter.content, previewChars),
+							...(includeFull ? { content: letter.content } : {})
+						}))
+					};
+				}
+
+				const letters = await storage.readLetters();
+				let relevant = letters
+					.filter(letter => letter.to_context === recipientContext)
+					.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+				if (args.unread_only === true) relevant = relevant.filter(letter => !letter.read);
+				if (from) {
+					const normalizedFrom = from.toLowerCase();
+					relevant = relevant.filter(letter => letter.from_context.toLowerCase() === normalizedFrom);
+				}
+				if (query) {
+					const normalizedQuery = normalizeLookupText(query);
+					const queryTokens = normalizedQuery.split(" ").filter(Boolean);
+					relevant = relevant.filter(letter => {
+						const haystack = normalizeLookupText(`${letter.content} ${(letter.charges ?? []).join(" ")}`);
+						if (haystack.includes(normalizedQuery)) return true;
+						if (queryTokens.length === 0) return false;
+						let matched = 0;
+						for (const token of queryTokens) if (haystack.includes(token)) matched += 1;
+						return matched >= Math.max(1, Math.ceil(queryTokens.length / 2));
+					});
+				}
+				if (cursor) {
+					const cursorIndex = relevant.findIndex(letter => letter.id === cursor);
+					if (cursorIndex >= 0) relevant = relevant.slice(cursorIndex + 1);
+				}
+
+				const paged = relevant.slice(0, limit);
+				const nextCursor = relevant.length > limit ? paged[paged.length - 1]?.id : null;
+
+				return {
+					context: recipientContext,
+					action,
+					count: paged.length,
+					has_more: relevant.length > limit,
+					next_cursor: nextCursor,
+					letters: paged.map(letter => ({
+						id: letter.id,
+						from: letter.from_context,
+						to: letter.to_context,
+						timestamp: letter.timestamp,
+						read: letter.read,
+						charges: letter.charges,
+						letter_type: letter.letter_type,
+						preview: truncateText(letter.content, previewChars),
+						...(includeFull ? { content: letter.content } : {})
+					}))
+				};
+			}
+
+			if (action === "read") {
+				// Backward-compatible unread fetch, now bounded to avoid payload explosions.
+				const limit = parseLetterLimit(args.limit);
+				if (typeof storage.listLettersPaged === "function") {
+					const page = await storage.listLettersPaged({
+						context: recipientContext,
+						limit,
+						unread_only: args.unread_only !== false,
+						from: typeof args.from === "string" && args.from.trim() ? args.from.trim() : undefined
+					});
+					const relevant = page.letters;
+
+					if (relevant.length > 0) {
+						if (typeof storage.markLettersRead === "function") {
+							await storage.markLettersRead(relevant.map(letter => letter.id));
+						} else {
+							const letters = await storage.readLetters();
+							for (const letter of relevant) {
+								const idx = letters.findIndex(l => l.id === letter.id);
+								if (idx !== -1) letters[idx].read = true;
+							}
+							await storage.writeLetters(letters);
+						}
+					}
+
+					return {
+						context: recipientContext,
+						count: relevant.length,
+						has_more: page.has_more,
+						letters: relevant.map(letter => ({
+							id: letter.id,
+							from: letter.from_context,
+							content: letter.content,
+							timestamp: letter.timestamp,
+							charges: letter.charges,
+							letter_type: letter.letter_type
+						}))
+					};
+				}
+
+				const letters = await storage.readLetters();
+				const byContext = letters
+					.filter(letter => letter.to_context === recipientContext)
+					.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+				let relevant = byContext;
+				if (args.unread_only !== false) {
+					relevant = relevant.filter(letter => !letter.read);
+				}
+				relevant = relevant.slice(0, limit);
+
+				// Mark returned rows as read.
 				if (relevant.length > 0) {
 					for (const letter of relevant) {
 						const idx = letters.findIndex(l => l.id === letter.id);
@@ -334,18 +529,19 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return {
 					context: recipientContext,
 					count: relevant.length,
-					letters: relevant.map(l => ({
-						id: l.id,
-						from: l.from_context,
-						content: l.content,
-						timestamp: l.timestamp,
-						charges: l.charges,
-						letter_type: l.letter_type
+					has_more: byContext.length > relevant.length,
+					letters: relevant.map(letter => ({
+						id: letter.id,
+						from: letter.from_context,
+						content: letter.content,
+						timestamp: letter.timestamp,
+						charges: letter.charges,
+						letter_type: letter.letter_type
 					}))
 				};
 			}
 
-			return { error: `Unknown action: ${action}. Must be write or read.` };
+			return { error: `Unknown action: ${action}. Must be write, list, get, search, or read.` };
 		}
 
 		case "mind_context": {
@@ -544,7 +740,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 									proposal_type: "fact_commitment",
 									source_id: suggestion.source_observation_id,
 									target_id: targetId,
-									confidence: Math.min(0.95, Math.round((suggestion.confidence + 0.08) * 100) / 100),
+									confidence: Math.min(0.95, Math.round((Math.min(suggestion.confidence, 0.87) + 0.08) * 100) / 100),
 									rationale: `Fact→commitment bridge (${suggestion.fact_type})`,
 									metadata: {
 										title: suggestion.title,

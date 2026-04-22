@@ -37,6 +37,15 @@ export function normalizeMetadata(
 	}
 }
 
+export function normalizeLookupText(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/['’]/g, "")
+		.replace(/[_-]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 export function normalizeOptionalTimestamp(value: unknown): string | undefined {
 	if (value === undefined) return undefined;
 	if (typeof value !== "string") return undefined;
