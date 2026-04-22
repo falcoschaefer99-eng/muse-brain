@@ -704,6 +704,80 @@ describe("mind_pull universal ID resolver", () => {
 		expect(result.hint).toMatch(/letter_/i);
 		expect(storage.findObservation).not.toHaveBeenCalled();
 	});
+
+	it("returns a typed hint for missing task IDs", async () => {
+		const storage = {
+			getTask: vi.fn(async () => null),
+			findObservation: vi.fn(async () => null),
+			getLetterById: vi.fn(async () => null),
+			readLetters: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_pull", { id: "task_missing" }, { storage: storage as any });
+		expect(result.error).toMatch(/not found/i);
+		expect(result.hint).toMatch(/task_/i);
+		expect(storage.findObservation).not.toHaveBeenCalled();
+	});
+
+	it("returns a typed hint for missing entity IDs", async () => {
+		const storage = {
+			findEntityById: vi.fn(async () => null),
+			findObservation: vi.fn(async () => null),
+			getLetterById: vi.fn(async () => null),
+			readLetters: vi.fn(async () => []),
+			getTask: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_pull", { id: "ent_missing" }, { storage: storage as any });
+		expect(result.error).toMatch(/not found/i);
+		expect(result.hint).toMatch(/ent_/i);
+		expect(storage.findObservation).not.toHaveBeenCalled();
+	});
+
+	it("preserves observation process:true behavior for trimmed IDs", async () => {
+		const obs = makeObservation("obs_proc", new Date(Date.now() - 3600_000).toISOString(), {
+			content: "processing lane observation",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: ["focus"],
+				grip: "present",
+				charge_phase: "active"
+			}
+		});
+
+		const storage = {
+			findObservation: vi.fn(async (id: string) => id === "obs_proc" ? { observation: obs, territory: "craft" } : null),
+			updateObservationAccess: vi.fn(async () => undefined),
+			createProcessingEntry: vi.fn(async () => undefined),
+			incrementProcessingCount: vi.fn(async () => 2),
+			advanceChargePhase: vi.fn(async () => ({ advanced: true, new_phase: "integrated" })),
+			getLetterById: vi.fn(async () => null),
+			readLetters: vi.fn(async () => []),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_pull", {
+			id: "  obs_proc  ",
+			process: true,
+			processing_note: "holding this memory",
+			charge: ["calm"]
+		}, { storage: storage as any });
+
+		expect(result.id).toBe("obs_proc");
+		expect(result.processing.recorded).toBe(true);
+		expect(result.processing.phase_advanced).toBe(true);
+		expect(storage.updateObservationAccess).toHaveBeenCalledWith("obs_proc");
+		expect(storage.createProcessingEntry).toHaveBeenCalledWith(expect.objectContaining({
+			observation_id: "obs_proc",
+			processing_note: "holding this memory",
+			charge_at_processing: ["calm"]
+		}));
+		expect(storage.incrementProcessingCount).toHaveBeenCalledWith("obs_proc");
+		expect(storage.advanceChargePhase).toHaveBeenCalledWith("obs_proc");
+	});
 });
 
 // ============ TEST 7: Recency through delegation (mind_memory action=search with days) ============

@@ -1359,13 +1359,25 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			if (prefixedAsTask) {
 				const task = await storage.getTask(id, true);
-				if (!task) return { error: "Memory item not found", id };
+				if (!task) {
+					return {
+						error: "Memory item not found",
+						id,
+						hint: "ID prefix 'task_' detected — verify the task exists for this tenant."
+					};
+				}
 				return { found: true, type: "task", data: task };
 			}
 
 			if (prefixedAsEntity) {
 				const entity = await storage.findEntityById(id);
-				if (!entity) return { error: "Memory item not found", id };
+				if (!entity) {
+					return {
+						error: "Memory item not found",
+						id,
+						hint: "ID prefix 'ent_' detected — verify the entity exists for this tenant."
+					};
+				}
 				const dossier = entity.entity_type === "project"
 					? await storage.getProjectDossier(entity.id)
 					: null;
