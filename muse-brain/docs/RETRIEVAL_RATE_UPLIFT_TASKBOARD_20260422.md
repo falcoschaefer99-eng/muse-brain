@@ -34,3 +34,4 @@
 | R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | pending |
 | R4 | Version/tag decision (v6 label + semver) | pending |
 | R5 | Public release/deploy announcement | pending |
+| R6 | Agent Learning Bridge: backfill specialist local memory into brain + enable repeat sync script | in_progress |
