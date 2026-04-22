@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ### Added
 - Retrieval reliability and temporal-hardening release lane for MUSE Brain v6, including benchmark receipt planning and uplift execution docs.
+- Agent learning bridge addendum: `scripts/agent-memory-sync.mjs` to backfill/sync local specialist memory files into brain observations via authenticated MCP calls.
 
 ### Changed
 - Version alignment for the v6 release train: package/tag target is now `v1.6.0`.

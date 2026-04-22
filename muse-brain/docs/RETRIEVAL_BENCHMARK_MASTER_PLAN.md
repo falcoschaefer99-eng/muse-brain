@@ -557,6 +557,14 @@ When this lane ships, it should include all of the following:
 - [ ] update architecture and capabilities docs
 - [ ] publish limitations and honest claims
 
+### Sprint 6A — Agent Learning Bridge (v6 reliability addendum)
+- [ ] add explicit bridge contract: subagent local memory -> brain observations
+- [ ] ship ingestion bridge script (`scripts/agent-memory-sync.mjs`) for immediate backfill + repeat sync
+- [ ] define idempotent sync state strategy (hash ledger) to avoid duplicate memory spam
+- [ ] run first backfill for named specialists (Michael, Dupin, June, Kit, Reeve, Quinn)
+- [ ] link backfilled observations to agent entities and verify queryability via `mind_query`
+- [ ] publish honest language in release notes: direct in-run subagent MCP writes are pending; bridge is active now
+
 ### Post-v6 — External Agent Benchmark Alignment
 - [ ] define external alignment benchmark scope (task types, datasets, run budgets)
 - [ ] define alignment metrics (success rate, steps per task, tool/cost footprint)

@@ -10,6 +10,7 @@
 		"test:unit": "vitest -c vitest.unit.config.mts",
 		"test:reliability": "vitest -c vitest.unit.config.mts --run test/mind-memory-unified.spec.ts test/mind-letter-edges.spec.ts",
 		"test:workers": "vitest",
+		"agent-memory:sync": "node scripts/agent-memory-sync.mjs",
 		"cf-typegen": "wrangler types",
 		"benchmark:retrieval": "tsc -p benchmarks/tsconfig.json && node .bench-dist/benchmarks/run.js",
 		"benchmark:cognitive-lane": "node benchmarks/scripts/cognitive-lane.mjs",
