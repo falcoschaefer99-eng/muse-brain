@@ -12,6 +12,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ### Changed
 - Version alignment for the v6 release train: package/tag target is now `v1.6.0`.
+- `mind_pull` now acts as a universal ID resolver (`obs_`, `letter_`, `task_`, `ent_`) so direct letter/task/entity retrieval works in a single call.
+- `mind_memory action=get` now routes through the same `mind_pull` read path to avoid tool-routing drift.
+
+### Fixed
+- Letter retrieval reliability gap where `letter_` IDs could fail through observation-only pull paths.
+- Added a dedicated reliability lane command: `npm run test:reliability` (tool-contract retrieval checks for unified memory + letters).
 
 ## [1.5.0] — 2026-04-10
 

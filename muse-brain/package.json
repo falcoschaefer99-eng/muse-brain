@@ -8,6 +8,7 @@
 		"start": "wrangler dev",
 		"test": "vitest -c vitest.unit.config.mts",
 		"test:unit": "vitest -c vitest.unit.config.mts",
+		"test:reliability": "vitest -c vitest.unit.config.mts --run test/mind-memory-unified.spec.ts test/mind-letter-edges.spec.ts",
 		"test:workers": "vitest",
 		"cf-typegen": "wrangler types",
 		"benchmark:retrieval": "tsc -p benchmarks/tsconfig.json && node .bench-dist/benchmarks/run.js",
