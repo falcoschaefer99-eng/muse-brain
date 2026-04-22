@@ -32,6 +32,14 @@
 | R1 | Merge audited s6b4 tightening to main | done |
 | R2 | Final green gate (typecheck + unit tests) | done |
 | R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | pending |
-| R4 | Version/tag decision (v6 label + semver) | pending |
+| R4 | Version/tag decision (v6 label + semver) | done |
 | R5 | Public release/deploy announcement | pending |
-| R6 | Agent Learning Bridge: backfill specialist local memory into brain + enable repeat sync script | in_progress |
+| R6 | Agent Learning Bridge: backfill specialist local memory into brain + enable repeat sync script | done |
+| R7 | Public claim boundary in release notes: Michael is the released specialist baseline; other squad agents are internal preview | pending |
+| R8 | Post-deploy smoke probes: `mind_pull(letter_)`, `mind_pull(task_)`, `mind_memory get(letter_)` | pending |
+
+### R6 receipt (completed)
+- Backfill run executed against `rook.funkatorium.org`.
+- Sync totals: `sent=106`, `failed=0`.
+- Idempotency verification rerun: `0 new learning entries`.
+- Coverage includes builder + creative agent memory folders (29 files discovered).

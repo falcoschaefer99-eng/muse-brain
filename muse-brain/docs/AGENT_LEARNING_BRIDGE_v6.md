@@ -1,7 +1,7 @@
 # Agent Learning Bridge (v6 Addendum)
 
 **Date:** 2026-04-22  
-**Status:** In progress (bridge live, direct subagent MCP access pending)
+**Status:** Active baseline (bridge live + first full backfill complete; direct subagent MCP access pending)
 
 ## Why this exists
 
@@ -27,6 +27,7 @@ This bridge closes that gap now.
    - Run backfill once for core specialists.
    - Run sync regularly (or after major specialist runs).
    - Verify via `mind_query` and `mind_entity` observation links.
+   - Normalize agent identity mapping so synced rows attach to canonical `entity_type=agent` entities.
 
 3. **Honest claim boundary**
    - Current: bridge-based synchronization (local memory -> brain)
@@ -59,14 +60,28 @@ Optional flags:
 
 ## Verification checklist
 
-- [ ] dry-run shows expected entries
-- [ ] sync reports successful writes
-- [ ] `mind_query query=\"<agent> learning\"` returns new observations
-- [ ] agent entities show linked observations
-- [ ] rerun sync produces near-zero duplicates (idempotent ledger works)
+- [x] dry-run shows expected entries
+- [x] sync reports successful writes
+- [x] `mind_query query=\"<agent> learning\"` returns new observations
+- [ ] canonical agent entities show linked observations (normalization pass pending)
+- [x] rerun sync produces near-zero duplicates (idempotent ledger works)
+
+### First production receipt (April 22, 2026)
+
+- Endpoint: `https://rook.funkatorium.org`
+- Tenant: `rainer`
+- Result: `106 sent / 0 failed`
+- Idempotency rerun: `0 new`
+- Source scan: 29 local agent memory files
 
 ---
 
 ## Next step (post-v6)
 
 Implement direct Agent API ingest (`/api/v1/agent/observe`) with agent-scoped keys and audit trails so subagents can log in real time without proxy scripting.
+
+## v7 extension (Kit intelligence layer)
+
+- Promote consolidation from manual run hygiene to daemonized `agent_learning_consolidate`.
+- Merge repetitive per-agent learnings into synthesis observations + optional `mind_skill` artifacts.
+- Treat `token_budget` as prompt-retrieval budget, not durable storage cap.

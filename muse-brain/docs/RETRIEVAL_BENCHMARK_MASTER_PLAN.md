@@ -513,12 +513,24 @@ When this lane ships, it should include all of the following:
 - [ ] publish limitations and honest claims
 
 ### Sprint 6A — Agent Learning Bridge (v6 reliability addendum)
-- [ ] add explicit bridge contract: subagent local memory -> brain observations
-- [ ] ship ingestion bridge script (`scripts/agent-memory-sync.mjs`) for immediate backfill + repeat sync
-- [ ] define idempotent sync state strategy (hash ledger) to avoid duplicate memory spam
-- [ ] run first backfill for named specialists (Michael, Dupin, June, Kit, Reeve, Quinn)
+- [x] add explicit bridge contract: subagent local memory -> brain observations
+- [x] ship ingestion bridge script (`scripts/agent-memory-sync.mjs`) for immediate backfill + repeat sync
+- [x] define idempotent sync state strategy (hash ledger) to avoid duplicate memory spam
+- [x] run first backfill for named specialists (Michael, Dupin, June, Kit, Reeve, Quinn)
 - [ ] link backfilled observations to agent entities and verify queryability via `mind_query`
 - [ ] publish honest language in release notes: direct in-run subagent MCP writes are pending; bridge is active now
+
+#### Sprint 6A execution receipt (April 22, 2026)
+- Live bridge sync completed: `106 sent / 0 failed`.
+- Idempotency verification rerun: `0 new`.
+- Confirmed `mind_query` retrieval for synced entries (example: Michael backfill rows).
+- Remaining gap: canonical `entity_type=agent` mapping for all specialist names (current auto-created concept entities must be normalized).
+
+### v6 scope lock — release narrative guardrails
+- v6 is a **major retrieval + reliability** release with benchmark receipts and contract hardening.
+- Agent-memory bridge in v6 provides **cloud ingestion baseline** across environments (Codex/Claude/API paths).
+- Public agent-release claim for this cycle anchors on **Michael** as the released specialist baseline.
+- Other squad agents may have synced learnings but remain internal-preview until their public release docs are shipped.
 
 ### Post-v6 — External Agent Benchmark Alignment
 - [ ] define external alignment benchmark scope (task types, datasets, run budgets)
