@@ -1149,6 +1149,26 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	async getLetterById(id: string, recipientContext: string): Promise<Letter | null> {
+		const scopedContext = recipientContext.trim();
+		if (!scopedContext) return null;
+		try {
+			const rows = await this.sql`
+				SELECT id, from_context, to_context, content, timestamp, read, charges, letter_type
+				FROM letters
+				WHERE id = ${id}
+				  AND tenant_id = ${this.tenant}
+				  AND to_context = ${scopedContext}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return rowToLetter(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("getLetterById failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
 	async writeLetters(letters: Letter[]): Promise<void> {
 		try {
 			await this.sql.begin(async (sql: any) => {

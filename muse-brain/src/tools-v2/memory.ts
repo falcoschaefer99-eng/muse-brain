@@ -31,7 +31,7 @@ import {
 	normalizeRetrievalProfile,
 	extractQuerySignals
 } from "../retrieval/query-signals";
-import { normalizeLookupText } from "./utils";
+import { lookupLetterById, normalizeLookupText, resolveLetterContext } from "./utils";
 
 // ============ HELPERS ============
 
@@ -283,6 +283,7 @@ export const TOOL_DEFS = [
 					description: "get: direct by id, recent: recency-first filter path, lookup: literal keyword/tags, search: hybrid semantic."
 				},
 				id: { type: "string", description: "[get] obs_/journal_/whisper_/letter_/task_/ent_ id" },
+				context: { type: "string", description: "[get] Letter recipient context for scoped letter ID reads (default: chat)." },
 				days: { type: "number", description: "[recent] filter to last N days" },
 				hours: { type: "number", description: "[recent] filter to last N hours (overrides days)" },
 				project: { type: "string", description: "[recent/lookup] project slug or alias" },
@@ -372,6 +373,7 @@ export const TOOL_DEFS = [
 			type: "object",
 			properties: {
 				id: { type: "string", description: "Direct ID to resolve (obs_/journal_/whisper_/letter_/task_/ent_)." },
+				context: { type: "string", description: "[letter only] Recipient context for scoped letter lookups (default: chat)." },
 				process: { type: "boolean", default: false, description: "[observation only] Record a processing engagement in the processing log. Advances charge_phase when threshold met (3 processings, or 2 if linked to a burning paradox loop)." },
 				processing_note: { type: "string", description: "[process=true] What you're noticing or holding while engaging with this observation" },
 				charge: { type: "array", items: { type: "string" }, description: "[process=true] Emotional state during processing" }
@@ -678,7 +680,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (action === "get") {
 				if (!args.id || typeof args.id !== "string") return { error: "id is required for action=get" };
 				const id = args.id.trim();
-				const pulled = await handleTool("mind_pull", { id }, context);
+				const pulled = await handleTool("mind_pull", {
+					id,
+					...(args.context !== undefined ? { context: args.context } : {})
+				}, context);
 				if ((pulled as Record<string, unknown>).error) {
 					const base: Record<string, unknown> = {
 						found: false,
@@ -1338,15 +1343,14 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (!args.id) return { error: "id is required" };
 			const id = String(args.id).trim();
 			if (!id) return { error: "id is required" };
+			const letterContext = resolveLetterContext(args.context);
 
 			const prefixedAsLetter = id.startsWith("letter_");
 			const prefixedAsTask = id.startsWith("task_");
 			const prefixedAsEntity = id.startsWith("ent_");
 
 			if (prefixedAsLetter) {
-				const letter = typeof storage.getLetterById === "function"
-					? await storage.getLetterById(id)
-					: (await storage.readLetters()).find(item => item.id === id) ?? null;
+				const letter = await lookupLetterById(storage, id, letterContext);
 				if (!letter) {
 					return {
 						error: "Memory item not found",
@@ -1391,9 +1395,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			const pulledResult = await storage.findObservation(id);
 			if (!pulledResult) {
 				// Fallback chain for unprefixed IDs.
-				const letter = typeof storage.getLetterById === "function"
-					? await storage.getLetterById(id)
-					: (await storage.readLetters()).find(item => item.id === id) ?? null;
+				const letter = await lookupLetterById(storage, id, letterContext);
 				if (letter) return { found: true, type: "letter", data: letter };
 
 				const task = await storage.getTask(id, true);
@@ -1415,7 +1417,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			}
 
 			// Increment access count + stamp last_accessed — no destructive territory rewrite.
-			await storage.updateObservationAccess(id);
+			const accessUpdate = storage.updateObservationAccess(id).catch(err =>
+				console.error("mind_pull updateObservationAccess failed:", err instanceof Error ? err.message : "unknown error")
+			);
+			if (context.waitUntil) context.waitUntil(accessUpdate);
 
 			const baseResult: Record<string, unknown> = {
 				...pulledResult.observation,

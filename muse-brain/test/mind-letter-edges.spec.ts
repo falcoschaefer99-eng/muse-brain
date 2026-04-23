@@ -158,6 +158,31 @@ describe("mind_letter action=list cursor behavior", () => {
 });
 
 describe("mind_letter optimized storage lanes", () => {
+	it("uses getLetterById lane when available for get action", async () => {
+		const getLetterById = vi.fn(async (id: string, recipientContext: string) =>
+			id === "letter_get_lane" && recipientContext === "chat"
+				? makeLetter("letter_get_lane", "from fast lane", "2026-04-14T12:00:00.000Z", false)
+				: null
+		);
+		const markLettersRead = vi.fn(async () => undefined);
+		const storage = {
+			getLetterById,
+			markLettersRead,
+			readLetters: vi.fn(async () => [])
+		};
+
+		const result = await handleCommsTool("mind_letter", {
+			action: "get",
+			context: "chat",
+			id: "letter_get_lane"
+		}, { storage: storage as any });
+
+		expect(getLetterById).toHaveBeenCalledWith("letter_get_lane", "chat");
+		expect(storage.readLetters).not.toHaveBeenCalled();
+		expect(markLettersRead).toHaveBeenCalledWith(["letter_get_lane"]);
+		expect(result.found).toBe(true);
+	});
+
 	it("uses listLettersPaged lane when available for list action", async () => {
 		const listLettersPaged = vi.fn(async () => ({
 			letters: [makeLetter("letter_fast", "fast lane", "2026-04-14T12:00:00.000Z")],

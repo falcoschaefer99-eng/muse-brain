@@ -900,6 +900,13 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		return await this.readCollection<Letter>(KV_KEYS.letters);
 	}
 
+	async getLetterById(id: string, recipientContext: string): Promise<Letter | null> {
+		const scopedContext = recipientContext.trim();
+		if (!scopedContext) return null;
+		const letters = await this.readCollection<Letter>(KV_KEYS.letters);
+		return letters.find(letter => letter.id === id && letter.to_context === scopedContext) ?? null;
+	}
+
 	async writeLetters(letters: Letter[]): Promise<void> {
 		await this.writeCollection(KV_KEYS.letters, letters);
 	}

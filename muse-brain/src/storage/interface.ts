@@ -271,6 +271,7 @@ export interface IBrainStorage {
 	// --- Letters ---
 
 	readLetters(): Promise<Letter[]>;
+	getLetterById?(id: string, recipientContext: string): Promise<Letter | null>;
 	writeLetters(letters: Letter[]): Promise<void>;
 	appendLetter(letter: Letter): Promise<void>;
 

@@ -1,6 +1,9 @@
 // ============ TOOL UTILITIES (v2) ============
 // Shared sanitization / normalization helpers for tool modules.
 
+import type { IBrainStorage } from "../storage/interface";
+import type { Letter } from "../types";
+
 const DEFAULT_METADATA_MAX_BYTES = 64 * 1024;
 
 export function cleanText(value: unknown): string | undefined {
@@ -52,4 +55,26 @@ export function normalizeOptionalTimestamp(value: unknown): string | undefined {
 	const parsed = new Date(value.trim());
 	if (Number.isNaN(parsed.getTime())) return undefined;
 	return parsed.toISOString();
+}
+
+export function resolveLetterContext(value: unknown, fallback = "chat"): string {
+	const cleaned = cleanText(value);
+	return cleaned ?? fallback;
+}
+
+export async function lookupLetterById(
+	storage: IBrainStorage,
+	id: string,
+	recipientContext: string
+): Promise<Letter | null> {
+	const normalizedId = cleanText(id);
+	const normalizedContext = cleanText(recipientContext);
+	if (!normalizedId || !normalizedContext) return null;
+
+	if (typeof storage.getLetterById === "function") {
+		return storage.getLetterById(normalizedId, normalizedContext);
+	}
+
+	const letters = await storage.readLetters();
+	return letters.find(letter => letter.id === normalizedId && letter.to_context === normalizedContext) ?? null;
 }

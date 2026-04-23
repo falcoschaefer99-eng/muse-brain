@@ -5,7 +5,7 @@ import type { Letter, Observation } from "../types";
 import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
-import { cleanText, normalizeLookupText } from "./utils";
+import { cleanText, lookupLetterById, normalizeLookupText, resolveLetterContext } from "./utils";
 import { parseOptionalPositiveInt } from "./confidence-utils";
 
 const MAX_LETTER_CONTENT_LENGTH = 4000;
@@ -328,16 +328,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return { sent: true, id: letter.id, to: args.to_context };
 			}
 
-			const recipientContext = args.context || "chat";
+			const recipientContext = resolveLetterContext(args.context);
 			if (action === "get") {
 				if (!args.id || typeof args.id !== "string") return { error: "id is required for action=get" };
-				let found = typeof storage.getLetterById === "function"
-					? await storage.getLetterById(args.id, recipientContext)
-					: null;
-				if (!found) {
-					const letters = await storage.readLetters();
-					found = letters.find(letter => letter.id === args.id && letter.to_context === recipientContext) ?? null;
-				}
+				const found = await lookupLetterById(storage, args.id, recipientContext);
 				if (!found) return { error: "Letter not found", id: args.id };
 				let targetLetter: Letter = found;
 

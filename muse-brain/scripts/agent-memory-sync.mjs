@@ -23,13 +23,15 @@ const DEFAULT_SOURCE = path.join(os.homedir(), ".claude", "agents", "memory");
 const DEFAULT_STATE_NAME = ".brain-sync-state.json";
 const MAX_OBSERVE_CONTENT = 50_000;
 const CHUNK_SIZE = 40_000;
+const SOURCE_ALLOWLIST_ROOTS = [path.resolve(DEFAULT_SOURCE)];
+const LOCAL_HTTP_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 function parseArgs(argv) {
 	const options = {
 		source: DEFAULT_SOURCE,
 		endpoint: process.env.MUSE_BRAIN_BASE_URL || "http://127.0.0.1:8787",
 		tenant: process.env.MUSE_BRAIN_TENANT || "rainer",
-		apiKey: process.env.MUSE_BRAIN_API_KEY || process.env.ROOK_BRAIN_API_KEY || process.env.BRAIN_API_KEY || "",
+		apiKey: process.env.MUSE_BRAIN_API_KEY || "",
 		agents: [],
 		dryRun: false,
 		limit: undefined,
@@ -52,8 +54,8 @@ function parseArgs(argv) {
 			console.log(`Usage: node scripts/agent-memory-sync.mjs [options]
 
 Options:
-  --source <path>      Source root (default: ${DEFAULT_SOURCE})
-  --endpoint <url>     Brain base URL or /mcp URL
+  --source <path>      Source root inside allowlist (default: ${DEFAULT_SOURCE})
+  --endpoint <url>     Brain base URL or /mcp URL (https required for non-local hosts)
   --tenant <name>      Tenant header value (default: rainer)
   --api-key <key>      Brain API key (or use env MUSE_BRAIN_API_KEY)
   --agent <name>       Agent filter (repeatable)
@@ -71,8 +73,40 @@ Options:
 
 function normalizeMcpUrl(endpoint) {
 	const trimmed = endpoint.trim().replace(/\/+$/, "");
-	if (trimmed.endsWith("/mcp")) return trimmed;
-	return `${trimmed}/mcp`;
+	if (!trimmed) throw new Error("Endpoint cannot be empty.");
+
+	const withPath = trimmed.endsWith("/mcp") ? trimmed : `${trimmed}/mcp`;
+	let url;
+	try {
+		url = new URL(withPath);
+	} catch {
+		throw new Error(`Invalid endpoint URL: ${endpoint}`);
+	}
+
+	if (url.protocol !== "https:" && url.protocol !== "http:") {
+		throw new Error("Endpoint must use http or https.");
+	}
+
+	if (url.protocol === "http:" && !LOCAL_HTTP_HOSTS.has(url.hostname.toLowerCase())) {
+		throw new Error("Plain http endpoint is only allowed for localhost/127.0.0.1/::1. Use https for remote hosts.");
+	}
+
+	url.hash = "";
+	return url.toString().replace(/\/+$/, "");
+}
+
+function isWithinRoot(candidatePath, allowedRoot) {
+	const relative = path.relative(allowedRoot, candidatePath);
+	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function resolveAndValidateSourceRoot(source) {
+	const resolved = path.resolve(source);
+	const allowed = SOURCE_ALLOWLIST_ROOTS.some(root => isWithinRoot(resolved, root));
+	if (!allowed) {
+		throw new Error(`--source must be within allowlisted roots: ${SOURCE_ALLOWLIST_ROOTS.join(", ")}`);
+	}
+	return resolved;
 }
 
 function hashKey(input) {
@@ -270,7 +304,7 @@ async function callMindObserve(mcpUrl, apiKey, tenant, entry, id) {
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
 	const mcpUrl = normalizeMcpUrl(options.endpoint);
-	const sourceRoot = path.resolve(options.source);
+	const sourceRoot = resolveAndValidateSourceRoot(options.source);
 	const statePath = path.resolve(options.statePath || path.join(sourceRoot, DEFAULT_STATE_NAME));
 
 	const files = await collectAgentFiles(sourceRoot, options.agents);

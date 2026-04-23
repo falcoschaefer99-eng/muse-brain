@@ -555,7 +555,7 @@ describe("mind_memory action=get", () => {
 
 		const storage = {
 			findObservation: vi.fn(async () => null),
-			getLetterById: vi.fn(async (id: string) => id === "letter_abc123" ? letter : null),
+			getLetterById: vi.fn(async (id: string, recipientContext: string) => id === "letter_abc123" && recipientContext === "chat" ? letter : null),
 			readLetters: vi.fn(async () => []),
 			getTask: vi.fn(async () => null),
 			findEntityById: vi.fn(async () => null)
@@ -569,6 +569,7 @@ describe("mind_memory action=get", () => {
 		expect(result.found).toBe(true);
 		expect(result.type).toBe("letter");
 		expect(result.data.id).toBe("letter_abc123");
+		expect(storage.getLetterById).toHaveBeenCalledWith("letter_abc123", "chat");
 	});
 
 	it("retrieves a task by task_ prefix", async () => {
@@ -600,15 +601,16 @@ describe("mind_memory action=get", () => {
 		expect(result.data.id).toBe("task_xyz");
 	});
 
-	it("retrieves an entity by ent_ prefix", async () => {
+	it("retrieves a project entity+dossier bundle by ent_ prefix", async () => {
 		const entity = makeEntity("ent_proj99", "Project 99");
+		const dossier = makeDossier("dossier_proj99", "ent_proj99");
 
 		const storage = {
 			findObservation: vi.fn(async () => null),
 			readLetters: vi.fn(async () => []),
 			getTask: vi.fn(async () => null),
 			findEntityById: vi.fn(async (id: string) => id === "ent_proj99" ? entity : null),
-			getProjectDossier: vi.fn(async () => null)
+			getProjectDossier: vi.fn(async (id: string) => id === "ent_proj99" ? dossier : null)
 		};
 
 		const result = await handleMemoryTool("mind_memory", {
@@ -618,6 +620,8 @@ describe("mind_memory action=get", () => {
 
 		expect(result.found).toBe(true);
 		expect(result.type).toBe("project");
+		expect(result.data.entity.id).toBe("ent_proj99");
+		expect(result.data.dossier.id).toBe("dossier_proj99");
 	});
 
 	it("returns found:false for a non-existent ID", async () => {
@@ -649,7 +653,7 @@ describe("mind_pull universal ID resolver", () => {
 		};
 
 		const storage = {
-			getLetterById: vi.fn(async (id: string) => id === "letter_123" ? letter : null),
+			getLetterById: vi.fn(async (id: string, recipientContext: string) => id === "letter_123" && recipientContext === "chat" ? letter : null),
 			readLetters: vi.fn(async () => []),
 			findObservation: vi.fn(async () => null),
 			getTask: vi.fn(async () => null),
@@ -660,7 +664,32 @@ describe("mind_pull universal ID resolver", () => {
 		expect(result.found).toBe(true);
 		expect(result.type).toBe("letter");
 		expect(result.data.id).toBe("letter_123");
+		expect(storage.getLetterById).toHaveBeenCalledWith("letter_123", "chat");
 		expect(storage.findObservation).not.toHaveBeenCalled();
+	});
+
+	it("scopes letter lookups by provided context", async () => {
+		const letter = {
+			id: "letter_ctx",
+			from_context: "rook",
+			to_context: "phone",
+			content: "for phone context",
+			timestamp: "2026-04-21T22:33:41.000Z",
+			read: false
+		};
+		const storage = {
+			getLetterById: vi.fn(async (_id: string, recipientContext: string) => recipientContext === "phone" ? letter : null),
+			readLetters: vi.fn(async () => []),
+			findObservation: vi.fn(async () => null),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_pull", { id: "letter_ctx", context: "phone" }, { storage: storage as any });
+
+		expect(result.found).toBe(true);
+		expect(result.type).toBe("letter");
+		expect(storage.getLetterById).toHaveBeenCalledWith("letter_ctx", "phone");
 	});
 
 	it("resolves task IDs in one call", async () => {
@@ -735,6 +764,59 @@ describe("mind_pull universal ID resolver", () => {
 		expect(storage.findObservation).not.toHaveBeenCalled();
 	});
 
+	it("covers unprefixed fallback chain letter -> task -> entity", async () => {
+		const letter = {
+			id: "shared_id",
+			from_context: "rook",
+			to_context: "chat",
+			content: "letter fallback",
+			timestamp: "2026-04-21T22:33:41.000Z",
+			read: false
+		};
+		const task = {
+			id: "shared_id",
+			tenant_id: "rainer",
+			title: "task fallback",
+			status: "open",
+			priority: "normal",
+			linked_entity_ids: [],
+			created_at: "2026-04-21T22:33:41.000Z",
+			updated_at: "2026-04-21T22:33:41.000Z"
+		};
+		const entity = makeEntity("shared_id", "entity fallback");
+
+		const letterStorage = {
+			findObservation: vi.fn(async () => null),
+			getLetterById: vi.fn(async () => letter),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+		const letterResult = await handleMemoryTool("mind_pull", { id: "shared_id" }, { storage: letterStorage as any });
+		expect(letterResult.type).toBe("letter");
+		expect(letterStorage.getTask).not.toHaveBeenCalled();
+		expect(letterStorage.findEntityById).not.toHaveBeenCalled();
+
+		const taskStorage = {
+			findObservation: vi.fn(async () => null),
+			getLetterById: vi.fn(async () => null),
+			getTask: vi.fn(async () => task),
+			findEntityById: vi.fn(async () => null)
+		};
+		const taskResult = await handleMemoryTool("mind_pull", { id: "shared_id" }, { storage: taskStorage as any });
+		expect(taskResult.type).toBe("task");
+		expect(taskStorage.findEntityById).not.toHaveBeenCalled();
+
+		const entityStorage = {
+			findObservation: vi.fn(async () => null),
+			getLetterById: vi.fn(async () => null),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => entity),
+			getProjectDossier: vi.fn(async () => null)
+		};
+		const entityResult = await handleMemoryTool("mind_pull", { id: "shared_id" }, { storage: entityStorage as any });
+		expect(entityResult.type).toBe("project");
+	});
+
 	it("preserves observation process:true behavior for trimmed IDs", async () => {
 		const obs = makeObservation("obs_proc", new Date(Date.now() - 3600_000).toISOString(), {
 			content: "processing lane observation",
@@ -768,6 +850,7 @@ describe("mind_pull universal ID resolver", () => {
 
 		expect(result.id).toBe("obs_proc");
 		expect(result.processing.recorded).toBe(true);
+		expect(result.processing.processing_count).toBe(2);
 		expect(result.processing.phase_advanced).toBe(true);
 		expect(storage.updateObservationAccess).toHaveBeenCalledWith("obs_proc");
 		expect(storage.createProcessingEntry).toHaveBeenCalledWith(expect.objectContaining({
@@ -777,6 +860,40 @@ describe("mind_pull universal ID resolver", () => {
 		}));
 		expect(storage.incrementProcessingCount).toHaveBeenCalledWith("obs_proc");
 		expect(storage.advanceChargePhase).toHaveBeenCalledWith("obs_proc");
+	});
+
+	it("process:true keeps new_phase absent when phase does not advance", async () => {
+		const obs = makeObservation("obs_proc_no_advance", new Date(Date.now() - 3600_000).toISOString(), {
+			content: "non-advance processing lane",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: ["focus"],
+				grip: "present",
+				charge_phase: "active"
+			}
+		});
+
+		const storage = {
+			findObservation: vi.fn(async (id: string) => id === "obs_proc_no_advance" ? { observation: obs, territory: "craft" } : null),
+			updateObservationAccess: vi.fn(async () => undefined),
+			createProcessingEntry: vi.fn(async () => undefined),
+			incrementProcessingCount: vi.fn(async () => 1),
+			advanceChargePhase: vi.fn(async () => ({ advanced: false })),
+			getLetterById: vi.fn(async () => null),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_pull", {
+			id: "obs_proc_no_advance",
+			process: true
+		}, { storage: storage as any });
+
+		expect(result.processing.recorded).toBe(true);
+		expect(result.processing.processing_count).toBe(1);
+		expect(result.processing.phase_advanced).toBe(false);
+		expect(result.processing.new_phase).toBeUndefined();
 	});
 });
 
