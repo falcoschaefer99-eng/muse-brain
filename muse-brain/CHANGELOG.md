@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.6.1] — 2026-04-23
+
+### Added
+- Scoped letter lookup contract in storage: optional `getLetterById(id, recipientContext)` on `IBrainStorage`, with backend implementations for Postgres and SQLite.
+- New release-lane script alias: `npm run test:contracts` (and `test:reliability` now points to this contract lane).
+
+### Changed
+- `mind_pull` and `mind_letter action=get` now route letter reads through a shared context-scoped lookup helper to avoid unbounded table/list fallbacks.
+- `mind_memory action=get` now passes optional letter context through to `mind_pull` for symmetric scoped reads.
+- Observation access updates in `mind_pull` are now non-blocking and `waitUntil`-aware.
+- Agent-memory sync bridge hardening:
+  - source root allowlist guard on `--source`
+  - endpoint URL/scheme validation (`https` required for non-local hosts)
+  - API key source narrowed to `MUSE_BRAIN_API_KEY` (legacy fallback chain removed)
+
+### Fixed
+- Eliminated hidden full-scan fallback on letter ID reads when storage lacked a dedicated lookup capability.
+- Restored letter context isolation on direct-ID lookups by requiring `to_context` scope in backend queries.
+- Added regression coverage for:
+  - `process:true` non-advance branch (`new_phase` absent) and explicit `processing_count` assertions
+  - unprefixed fallback chain behavior (`letter -> task -> entity`)
+  - `ent_` project+dossier return shape
+  - `mind_letter action=get` optimized `getLetterById` lane
+
 ## [1.6.0] — 2026-04-22
 
 ### Added
