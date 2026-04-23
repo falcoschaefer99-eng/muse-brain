@@ -1,7 +1,7 @@
 # Agent Learning Bridge (v6 Addendum)
 
 **Date:** 2026-04-22  
-**Status:** Active baseline (bridge live + first full backfill complete; direct subagent MCP access pending)
+**Status:** Active baseline (bridge live + full backfill + delta sync complete; direct subagent MCP access pending)
 
 ## Why this exists
 
@@ -63,8 +63,9 @@ Optional flags:
 - [x] dry-run shows expected entries
 - [x] sync reports successful writes
 - [x] `mind_query query=\"<agent> learning\"` returns new observations
-- [ ] canonical agent entities show linked observations (normalization pass pending)
+- [x] agent entities show linked observations (`mind_entity get(name=\"june\", include_observations=true)` verified)
 - [x] rerun sync produces near-zero duplicates (idempotent ledger works)
+- [ ] canonical `entity_type=agent` normalization complete for all specialists
 
 ### First production receipt (April 22, 2026)
 
@@ -73,6 +74,15 @@ Optional flags:
 - Result: `106 sent / 0 failed`
 - Idempotency rerun: `0 new`
 - Source scan: 29 local agent memory files
+
+### Delta production receipt (April 23, 2026)
+
+- Endpoint: `https://rook.funkatorium.org`
+- Tenant: `rainer`
+- Result: `10 sent / 0 failed` (Dupin + June additions)
+- Cumulative synced total: `116`
+- Idempotency rerun: `0 new`
+- Source coverage: 31 agent directories, 29 markdown-bearing files (6 empty scaffolds awaiting first writes)
 
 ---
 

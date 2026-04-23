@@ -31,15 +31,15 @@
 |---|---|---|
 | R1 | Merge audited s6b4 tightening to main | done |
 | R2 | Final green gate (typecheck + unit tests) | done |
-| R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | pending |
+| R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | done |
 | R4 | Version/tag decision (v6 label + semver) | done |
 | R5 | Public release/deploy announcement | pending |
 | R6 | Agent Learning Bridge: backfill specialist local memory into brain + enable repeat sync script | done |
-| R7 | Public claim boundary in release notes: Michael is the released specialist baseline; other squad agents are internal preview | pending |
-| R8 | Post-deploy smoke probes: `mind_pull(letter_)`, `mind_pull(task_)`, `mind_memory get(letter_)` | pending |
+| R7 | Public claim boundary in release notes: Michael is the released specialist baseline; other squad agents are internal preview | done |
+| R8 | Post-deploy smoke probes: `mind_pull(letter_)`, `mind_pull(task_)`, `mind_memory get(letter_)` | done |
 
 ### R6 receipt (completed)
 - Backfill run executed against `rook.funkatorium.org`.
-- Sync totals: `sent=106`, `failed=0`.
+- Sync totals: `sent=116`, `failed=0` (initial 106 + incremental 10 on 2026-04-23).
 - Idempotency verification rerun: `0 new learning entries`.
-- Coverage includes builder + creative agent memory folders (29 files discovered).
+- Coverage includes builder + creative agent memory folders (`31` dirs; `29` markdown-bearing files).

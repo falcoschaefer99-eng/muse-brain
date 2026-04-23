@@ -505,25 +505,33 @@ When this lane ships, it should include all of the following:
 - [ ] write interpretation guidance
 
 ### Sprint 6 — Release Narrative
-- [ ] write changelog entry draft
+- [x] write changelog entry draft
 - [ ] write retrieval philosophy page draft
-- [ ] write release notes draft
+- [x] write release notes draft
 - [ ] prepare benchmark summary page
 - [ ] update architecture and capabilities docs
-- [ ] publish limitations and honest claims
+- [x] publish limitations and honest claims
 
 ### Sprint 6A — Agent Learning Bridge (v6 reliability addendum)
 - [x] add explicit bridge contract: subagent local memory -> brain observations
 - [x] ship ingestion bridge script (`scripts/agent-memory-sync.mjs`) for immediate backfill + repeat sync
 - [x] define idempotent sync state strategy (hash ledger) to avoid duplicate memory spam
 - [x] run first backfill for named specialists (Michael, Dupin, June, Kit, Reeve, Quinn)
-- [ ] link backfilled observations to agent entities and verify queryability via `mind_query`
-- [ ] publish honest language in release notes: direct in-run subagent MCP writes are pending; bridge is active now
+- [x] link backfilled observations to entities and verify queryability via `mind_query` / `mind_entity`
+- [x] publish honest language in release notes: direct in-run subagent MCP writes are pending; bridge is active now
+- [ ] normalize canonical `entity_type=agent` mapping for all specialist entities (auto-created concept entities still need migration)
 
 #### Sprint 6A execution receipt (April 22, 2026)
 - Live bridge sync completed: `106 sent / 0 failed`.
 - Idempotency verification rerun: `0 new`.
 - Confirmed `mind_query` retrieval for synced entries (example: Michael backfill rows).
+
+#### Sprint 6A delta receipt (April 23, 2026)
+- Incremental bridge sync completed: `10 sent / 0 failed` (Dupin + June additions).
+- Cumulative bridge sync total: `116 sent / 0 failed`.
+- Idempotency verification rerun: `0 new`.
+- Entity-link verification: confirmed linked observations under `mind_entity get(name=\"june\", include_observations=true)`.
+- Local memory coverage snapshot: `31` agent directories discovered, `29` markdown-bearing (empty scaffolds: florence, monet, paloma, remy, richter, voss).
 - Remaining gap: canonical `entity_type=agent` mapping for all specialist names (current auto-created concept entities must be normalized).
 
 ### v6 scope lock — release narrative guardrails
