@@ -1,8 +1,7 @@
 # MUSE Brain — Retrieval & Benchmark Master Plan
 
 **Status:** Working design spec  
-**Date:** April 8, 2026  
-**Purpose:** Durable master design for retrieval upgrades, benchmark competitiveness, release narrative, and cross-session execution.
+**Date:** April 8, 2026
 
 ---
 
@@ -31,7 +30,7 @@ That means the retrieval system must support both:
      - "What did I say during that rupture?"
      - "Which memory contradicts this current self-story?"
 
-The architecture must preserve MUSE's identity while making the recall lane sharper.
+The architecture must preserve MUSE's identity while making recall sharper.
 
 ---
 
@@ -50,10 +49,10 @@ The architecture must preserve MUSE's identity while making the recall lane shar
    We publish standard benchmark results clearly, including what is reranked, what is held out, and what is profile-tuned.
 
 5. **Publish the philosophy next to the code**  
-   Every release in this lane should ship with narrative framing, changelog notes, and benchmark receipts so the architecture is understandable, not merely implemented.
+   Every release in this effort ships with narrative framing, changelog notes, and benchmark receipts so the architecture is understandable, not merely implemented.
 
-6. **Build the moat, not just the match**  
-   Matching verbatim recall matters. Surpassing it on relational/contextual memory is the larger opportunity.
+6. **Match, then surpass**  
+   Matching verbatim recall matters. Surpassing it on relational and contextual memory is the larger opportunity.
 
 ---
 
@@ -127,7 +126,7 @@ Examples:
 - check-in context
 - no-contact or return-after-absence context
 
-This should be treated as a later architecture lane and designed carefully so state enriches retrieval without becoming a privacy-unsafe or noisy shortcut.
+Design this carefully as a later lane — state must enrich retrieval without becoming a privacy or noise risk.
 
 ---
 
@@ -287,7 +286,7 @@ These are engineering targets, not marketing claims.
 ---
 
 ## Sprint 2 — Benchmark Harness
-**Why it matters:** Produce honest receipts on standard benchmarks while keeping the relational architecture legible.
+**Why it matters:** Produce honest receipts on standard benchmarks without obscuring the relational architecture.
 
 ### Goals
 - create dataset adapters for LongMemEval and LoCoMo
@@ -434,7 +433,7 @@ These are engineering targets, not marketing claims.
 
 ## Release Documentation Requirements
 
-When this lane ships, it should include all of the following:
+When this effort ships, it should include all of the following:
 
 - **CHANGELOG entry** describing retrieval architecture changes
 - **philosophy page** explaining the difference between recall accuracy and relational relevance
@@ -551,21 +550,15 @@ When this lane ships, it should include all of the following:
 
 ## Cross-Session Working Rules
 
-This document is the **master design reference** for this lane.
+This document is the **master design reference** for the retrieval and benchmark effort.
 
 ### Rainer / Rook handoff rules
-- use this file as the canonical roadmap
-- append changes here before sprint scope drifts
-- keep philosophy and engineering notes in the same document lineage
-- if a sprint changes the architecture, update both the checklist and the rationale
-- if a benchmark insight is important, log it and fold it back into this plan
+Keep this file current. Architecture changes, benchmark insights, and scope shifts all fold back here so philosophy and engineering stay in the same document lineage.
 
-### Session-start protocol for this lane
-1. open this master plan
-2. identify current sprint
-3. convert checked/unchecked items into immediate execution tasks
-4. update project/context memory with any decisions made
-5. only then begin implementation
+### Session-start protocol
+1. Open this master plan and identify the current sprint.
+2. Convert checked/unchecked items into execution tasks.
+3. Update project/context memory with any decisions made.
 
 ---
 

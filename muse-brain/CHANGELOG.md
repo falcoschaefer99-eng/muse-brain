@@ -1,6 +1,5 @@
 # Changelog
 
-All notable changes to MUSE Brain are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
@@ -9,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ### Added
 - Scoped letter lookup contract in storage: optional `getLetterById(id, recipientContext)` on `IBrainStorage`, with backend implementations for Postgres and SQLite.
-- New release-lane script alias: `npm run test:contracts` (and `test:reliability` now points to this contract lane).
+- New test script: `npm run test:contracts` (replaces `test:reliability`; the old name is aliased for backward compatibility).
 
 ### Changed
 - `mind_pull` and `mind_letter action=get` now route letter reads through a shared context-scoped lookup helper to avoid unbounded table/list fallbacks.
@@ -29,11 +28,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
   - `ent_` project+dossier return shape
   - `mind_letter action=get` optimized `getLetterById` lane
 
-## [1.6.0] — 2026-04-22
+## [1.6.0] — 2026-04-23
 
 ### Added
-- Retrieval reliability and temporal-hardening release lane for MUSE Brain v6, including benchmark receipt planning and uplift execution docs.
-- Agent learning bridge addendum: `scripts/agent-memory-sync.mjs` to backfill/sync local specialist memory files into brain observations via authenticated MCP calls.
+- Retrieval reliability release: universal ID resolver, letter-path correctness, and the benchmark receipt foundation.
+- Agent learning bridge: `scripts/agent-memory-sync.mjs` backfills local specialist memory into brain observations via authenticated MCP calls.
 
 ### Changed
 - Version alignment for the v6 release train: package/tag target is now `v1.6.0`.
@@ -43,7 +42,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ### Fixed
 - Letter retrieval reliability gap where `letter_` IDs could fail through observation-only pull paths.
-- Added a dedicated reliability lane command: `npm run test:reliability` (tool-contract retrieval checks for unified memory + letters).
+- Added a dedicated contract-retrieval test command: `npm run test:reliability` (checks unified memory + letter resolver paths).
 - Typed miss hints are now symmetric for prefixed resolver misses (`letter_`, `task_`, `ent_`).
 
 ## [1.5.0] — 2026-04-10

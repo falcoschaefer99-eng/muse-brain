@@ -4,10 +4,6 @@
 - **v6 release is not blocked by this board.**
 - This board is for **post-v6 uplift (v6.x)** execution.
 
-## Version naming recommendation
-- Public release label: **MUSE Brain v6**
-- Semver tag/package: **v1.6.0** (baseline prior release is `v1.5.0`)
-
 ---
 
 ## Active Tasks
@@ -22,6 +18,7 @@
 | U6 | Write-path retrieval hygiene pass (summary/tag/entity/project-link quality checks) | Rainer | 1 day | checklist + spot-check probes | open |
 | U7 | Full receipts rerun (base + rerank + family notes) | Rainer | 1 day | consolidated benchmark packet | open |
 | U8 | Uplift interpretation doc (wins/losses/unchanged + honest limits) | Rainer | 0.5 day | `docs/` report update | open |
+| U9 | Normalize all specialist entities to canonical `entity_type=agent` (migrate auto-created concept entities) | Rainer | 1 day | migration diff + `mind_entity` verification for full squad | open |
 
 ---
 
@@ -30,8 +27,8 @@
 | Step | Item | Status |
 |---|---|---|
 | R1 | Merge audited s6b4 tightening to main | done |
-| R2 | Final green gate (typecheck + unit tests) | done |
-| R3 | Release notes + benchmark receipt bundle + editorial writing-quality pass | done |
+| R2 | Typecheck + unit tests passing | done |
+| R3 | Release notes + benchmark receipts + editorial pass | done |
 | R4 | Version/tag decision (v6 label + semver) | done |
 | R5 | Public release/deploy announcement | pending |
 | R6 | Agent Learning Bridge: backfill specialist local memory into brain + enable repeat sync script | done |

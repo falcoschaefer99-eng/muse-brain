@@ -5,13 +5,7 @@
 
 ## Why this exists
 
-Named specialists already learn in local files:
-
-`~/.claude/agents/memory/<agent>/*.md`
-
-But Claude Code subagents do not directly call MCP tools in-run, so those learnings are not automatically written to brain observations unless a parent agent proxies them.
-
-This bridge closes that gap now.
+Named specialists learn in local files (`~/.claude/agents/memory/<agent>/*.md`), but Claude Code subagents can't call MCP in-run — so those learnings don't reach the brain unless a parent proxies them. This bridge closes the gap.
 
 ---
 
