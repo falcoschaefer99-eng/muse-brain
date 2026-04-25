@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.6.2] — 2026-04-26
+
+### Changed
+- Default daemon cron reduced from every 15 minutes to daily (`0 3 * * *`). Cuts ~99% of background compute on managed Postgres tiers with CU-hour billing. Interactive brain operations (observe, query, pull, search) are unaffected — they run on-demand. Self-hosters can adjust the frequency in `wrangler.jsonc` to match their compute budget.
+
 ## [1.6.1] — 2026-04-23
 
 ### Added

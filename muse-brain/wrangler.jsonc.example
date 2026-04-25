@@ -8,7 +8,7 @@
   "compatibility_date": "2025-09-27",
   "compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
   "observability": { "enabled": true },
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "triggers": { "crons": ["0 3 * * *"] },
   "ai": { "binding": "AI" },
   "hyperdrive": [
     {
