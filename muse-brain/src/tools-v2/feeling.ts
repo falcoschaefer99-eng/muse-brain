@@ -165,7 +165,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			if (action === "feel") {
 				const result = await writeRelationalFeeling(storage, args);
-				if ((result as Record<string, unknown>).error) return result;
+				if ("error" in result) return result;
 				return result;
 			}
 

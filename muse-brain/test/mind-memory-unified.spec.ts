@@ -585,6 +585,7 @@ describe("mind_observe optional relational payload", () => {
 		expect(result.relation.intensity).toBe(0.84);
 		expect(storage.readRelationalState).toHaveBeenCalledTimes(1);
 		expect(storage.writeRelationalState).toHaveBeenCalledTimes(1);
+		expect(storage.appendToTerritory).toHaveBeenCalledTimes(1);
 		expect(states[0]).toEqual(expect.objectContaining({
 			entity: "rook",
 			direction: "toward",
@@ -628,6 +629,200 @@ describe("mind_observe optional relational payload", () => {
 		}));
 		expect(storage.readRelationalState).not.toHaveBeenCalled();
 		expect(storage.writeRelationalState).not.toHaveBeenCalled();
+		expect(storage.appendToTerritory).toHaveBeenCalledTimes(1);
+	});
+
+	it("supports relate_only sync mode without writing an observation", async () => {
+		const states: any[] = [];
+		const storage = {
+			readRelationalState: vi.fn(async () => states),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				states.splice(0, states.length, ...next);
+			}),
+			appendToTerritory: vi.fn(async () => undefined)
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			relation: {
+				entity: "rook",
+				feeling: "respect",
+				intensity: 0.76,
+				sync_mode: "relate_only"
+			}
+		}, { storage: storage as any });
+
+		expect(result.observed).toBe(false);
+		expect(result.relation).toEqual(expect.objectContaining({
+			recorded: true,
+			sync_mode: "relate_only",
+			created: true,
+			entity: "rook",
+			feeling: "respect",
+			intensity: 0.76
+		}));
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		expect(storage.readRelationalState).toHaveBeenCalledTimes(1);
+		expect(storage.writeRelationalState).toHaveBeenCalledTimes(1);
+	});
+
+	it("updates existing relational state and keeps previous feeling in history", async () => {
+		const rookEntity = makeEntity("ent_rook", "rook");
+		const states: any[] = [];
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => storage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => states),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				states.splice(0, states.length, ...next);
+			}),
+			findEntityByName: vi.fn(async () => rookEntity),
+			createEntity: vi.fn(async () => rookEntity)
+		};
+
+		await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "First relational beat",
+			territory: "us",
+			relation: { entity: "rook", feeling: "trust", intensity: 0.72 }
+		}, { storage: storage as any });
+		const second = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Second relational beat",
+			territory: "us",
+			relation: { entity: "rook", feeling: "deeper trust", intensity: 0.86 }
+		}, { storage: storage as any });
+
+		expect(second.relation).toEqual(expect.objectContaining({
+			recorded: true,
+			updated: true,
+			entity: "rook",
+			feeling: "deeper trust",
+			intensity: 0.86,
+			history_depth: 1
+		}));
+		expect(states).toHaveLength(1);
+		expect(states[0].history[0]).toEqual(expect.objectContaining({
+			feeling: "trust",
+			intensity: 0.72
+		}));
+	});
+
+	it("logs consent when relation set_level changes relationship level", async () => {
+		const rookEntity = makeEntity("ent_rook", "rook");
+		const states: any[] = [];
+		const consent = {
+			user_consent: [],
+			ai_boundaries: { hard: [], relationship_gated: {} },
+			relationship_level: "familiar" as const,
+			log: []
+		};
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => storage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => states),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				states.splice(0, states.length, ...next);
+			}),
+			readConsent: vi.fn(async () => consent),
+			writeConsent: vi.fn(async () => undefined),
+			findEntityByName: vi.fn(async () => rookEntity),
+			createEntity: vi.fn(async () => rookEntity)
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Relationship level changed after trust moment",
+			territory: "us",
+			relation: {
+				entity: "rook",
+				feeling: "trust",
+				set_level: "close",
+				context: "audit confidence"
+			}
+		}, { storage: storage as any });
+
+		expect(result.relation.relationship_level).toEqual({ updated: true, from: "familiar", to: "close" });
+		expect(consent.relationship_level).toBe("close");
+		expect(consent.log).toEqual([
+			expect.objectContaining({
+				domain: "relationship_level",
+				action: "granted",
+				level: "close",
+				context: "audit confidence"
+			})
+		]);
+		expect(storage.writeConsent).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns validation errors for malformed relation payloads before writing", async () => {
+		const storage = {
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => [])
+		};
+
+		const malformed = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad relation",
+			relation: "nope"
+		}, { storage: storage as any });
+		const badSync = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad sync",
+			relation: { sync_mode: "sometimes" }
+		}, { storage: storage as any });
+		const badDirection = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad direction",
+			relation: { entity: "rook", feeling: "trust", direction: "sideways" }
+		}, { storage: storage as any });
+
+		expect(malformed.error).toMatch(/relation must be an object/i);
+		expect(badSync.error).toMatch(/sync_mode/i);
+		expect(badDirection.error).toMatch(/direction/i);
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
+	});
+
+	it("enforces relational length caps for feeling, context, and charges", async () => {
+		const storage = {
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => [])
+		};
+
+		const tooLongFeeling = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad feeling",
+			relation: { entity: "rook", feeling: "x".repeat(501) }
+		}, { storage: storage as any });
+		const tooLongContext = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad context",
+			relation: { entity: "rook", feeling: "trust", context: "x".repeat(2001) }
+		}, { storage: storage as any });
+		const tooManyCharges = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "too many charges",
+			relation: { entity: "rook", feeling: "trust", charges: Array.from({ length: 21 }, (_, i) => `c${i}`) }
+		}, { storage: storage as any });
+		const tooLongCharge = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "too long charge",
+			relation: { entity: "rook", feeling: "trust", charges: ["x".repeat(101)] }
+		}, { storage: storage as any });
+
+		expect(tooLongFeeling.error).toMatch(/feeling too long/i);
+		expect(tooLongContext.error).toMatch(/context too long/i);
+		expect(tooManyCharges.error).toMatch(/at most 20/i);
+		expect(tooLongCharge.error).toMatch(/100 characters/i);
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
 	});
 
 	it("matches legacy mind_relate feel semantics for relational writes", async () => {
@@ -679,6 +874,15 @@ describe("mind_observe optional relational payload", () => {
 			feeling: legacyResult.feeling,
 			intensity: legacyResult.intensity,
 			charges: legacyResult.charges
+		}));
+		expect(memoryStates[0]).toEqual(expect.objectContaining({
+			entity: legacyStates[0].entity,
+			direction: legacyStates[0].direction,
+			feeling: legacyStates[0].feeling,
+			intensity: legacyStates[0].intensity,
+			charges: legacyStates[0].charges,
+			context: legacyStates[0].context,
+			history: []
 		}));
 	});
 });

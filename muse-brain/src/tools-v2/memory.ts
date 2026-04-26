@@ -579,7 +579,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			if (relationOnly) {
 				const relationResult = await writeRelationalFeeling(storage, relationPayload);
-				if ((relationResult as Record<string, unknown>).error) return relationResult;
+				if ("error" in relationResult) return relationResult;
 				return {
 					observed: false,
 					relation: {
@@ -704,8 +704,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (relationPayload) {
 				if (shouldWriteRelation) {
 					const relationResult = await writeRelationalFeeling(storage, relationPayload);
-					if ((relationResult as Record<string, unknown>).error) {
-						result.relation = { recorded: false, sync_mode: relationSyncMode, error: (relationResult as Record<string, unknown>).error };
+					if ("error" in relationResult) {
+						result.relation = { recorded: false, sync_mode: relationSyncMode, error: relationResult.error };
 					} else {
 						result.relation = {
 							recorded: true,

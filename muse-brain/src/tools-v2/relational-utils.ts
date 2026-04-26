@@ -8,6 +8,11 @@ import { generateId, getTimestamp, toStringArray } from "../helpers";
 
 const RELATION_DIRECTIONS = ["toward", "from", "mutual"] as const;
 type RelationDirection = typeof RELATION_DIRECTIONS[number];
+const MAX_ENTITY_LENGTH = 100;
+const MAX_FEELING_LENGTH = 500;
+const MAX_CONTEXT_LENGTH = 2_000;
+const MAX_CHARGES = 20;
+const MAX_CHARGE_LENGTH = 100;
 
 export interface RelationalWriteInput {
 	entity?: unknown;
@@ -30,6 +35,51 @@ interface NormalizedRelationalWrite {
 	setLevel?: "stranger" | "familiar" | "close" | "bonded";
 }
 
+export type RelationalWriteResult =
+	| { error: string }
+	| {
+		created: true;
+		id: string;
+		entity: string;
+		direction: RelationDirection;
+		feeling: string;
+		intensity: number;
+		charges: string[];
+		relationship_level?: Record<string, unknown>;
+		note: string;
+	}
+	| {
+		updated: true;
+		entity: string;
+		direction: RelationDirection;
+		feeling: string;
+		intensity: number;
+		charges: string[];
+		history_depth: number;
+		relationship_level?: Record<string, unknown>;
+		note: string;
+	};
+
+function trimConsentLog<T extends { log: unknown[] }>(consent: T): void {
+	if (consent.log.length > 100) consent.log = consent.log.slice(-100);
+}
+
+function normalizeCharges(value: unknown): string[] | { error: string } {
+	const raw = toStringArray(value)
+		.filter((item): item is string => typeof item === "string")
+		.map(item => item.trim())
+		.filter(Boolean);
+
+	if (raw.length > MAX_CHARGES) return { error: `charges may include at most ${MAX_CHARGES} entries` };
+
+	for (const charge of raw) {
+		if (charge.length > MAX_CHARGE_LENGTH) return { error: `charge entries must be ${MAX_CHARGE_LENGTH} characters or fewer` };
+		if (/[\x00-\x1f]/.test(charge)) return { error: "charge entries contain invalid characters" };
+	}
+
+	return raw;
+}
+
 function normalizeRelationalWrite(input: RelationalWriteInput): NormalizedRelationalWrite | { error: string } {
 	if (typeof input.entity !== "string" || typeof input.feeling !== "string") {
 		return { error: "entity and feeling are required for relational write" };
@@ -41,8 +91,10 @@ function normalizeRelationalWrite(input: RelationalWriteInput): NormalizedRelati
 
 	if (!entityLower) return { error: "Missing required parameter: entity" };
 	if (!feeling) return { error: "Missing required parameter: feeling" };
-	if (entityLower.length > 100) return { error: "Entity name too long (max 100 characters)" };
-	if (/[<>\0]/.test(entity)) return { error: "Entity name contains invalid characters" };
+	if (entityLower.length > MAX_ENTITY_LENGTH) return { error: `Entity name too long (max ${MAX_ENTITY_LENGTH} characters)` };
+	if (feeling.length > MAX_FEELING_LENGTH) return { error: `feeling too long (max ${MAX_FEELING_LENGTH} characters)` };
+	if (/[\x00-\x1f<>]/.test(entity)) return { error: "Entity name contains invalid characters" };
+	if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(feeling)) return { error: "feeling contains invalid characters" };
 
 	let intensity = 0.7;
 	if (input.intensity !== undefined) {
@@ -65,16 +117,23 @@ function normalizeRelationalWrite(input: RelationalWriteInput): NormalizedRelati
 		setLevel = input.set_level as NormalizedRelationalWrite["setLevel"];
 	}
 
-	const context = typeof input.context === "string" && input.context.trim()
-		? input.context.trim()
-		: undefined;
+	let context: string | undefined;
+	if (input.context !== undefined) {
+		if (typeof input.context !== "string") return { error: "context must be a string when provided" };
+		context = input.context.trim() || undefined;
+		if (context && context.length > MAX_CONTEXT_LENGTH) return { error: `context too long (max ${MAX_CONTEXT_LENGTH} characters)` };
+		if (context && /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(context)) return { error: "context contains invalid characters" };
+	}
+
+	const charges = normalizeCharges(input.charges);
+	if ("error" in charges) return charges;
 
 	return {
 		entity,
 		entityLower,
 		feeling,
 		intensity,
-		charges: toStringArray(input.charges),
+		charges,
 		direction: direction as RelationDirection,
 		context,
 		setLevel
@@ -87,10 +146,30 @@ export function validateRelationalWrite(input: RelationalWriteInput): { valid: t
 	return { valid: true };
 }
 
+async function updateRelationshipLevel(
+	storage: IBrainStorage,
+	setLevel: "stranger" | "familiar" | "close" | "bonded",
+	context?: string
+): Promise<Record<string, unknown>> {
+	const consent = await storage.readConsent();
+	const oldLevel = consent.relationship_level;
+	consent.relationship_level = setLevel;
+	consent.log.push({
+		timestamp: getTimestamp(),
+		domain: "relationship_level",
+		action: "granted",
+		level: setLevel,
+		context: context || `${oldLevel} → ${setLevel}`
+	});
+	trimConsentLog(consent);
+	await storage.writeConsent(consent);
+	return { updated: true, from: oldLevel, to: setLevel };
+}
+
 export async function writeRelationalFeeling(
 	storage: IBrainStorage,
 	input: RelationalWriteInput
-): Promise<Record<string, unknown>> {
+): Promise<RelationalWriteResult> {
 	const normalized = normalizeRelationalWrite(input);
 	if ("error" in normalized) return { error: normalized.error };
 
@@ -111,13 +190,7 @@ export async function writeRelationalFeeling(
 
 		await storage.writeRelationalState(states);
 
-		if (normalized.setLevel) {
-			const consent = await storage.readConsent();
-			const oldLevel = consent.relationship_level;
-			consent.relationship_level = normalized.setLevel;
-			await storage.writeConsent(consent);
-			relationshipLevel = { updated: true, from: oldLevel, to: normalized.setLevel };
-		}
+		if (normalized.setLevel) relationshipLevel = await updateRelationshipLevel(storage, normalized.setLevel, normalized.context);
 
 		return {
 			updated: true,
@@ -148,13 +221,7 @@ export async function writeRelationalFeeling(
 	states.push(newState);
 	await storage.writeRelationalState(states);
 
-	if (normalized.setLevel) {
-		const consent = await storage.readConsent();
-		const oldLevel = consent.relationship_level;
-		consent.relationship_level = normalized.setLevel;
-		await storage.writeConsent(consent);
-		relationshipLevel = { updated: true, from: oldLevel, to: normalized.setLevel };
-	}
+	if (normalized.setLevel) relationshipLevel = await updateRelationshipLevel(storage, normalized.setLevel, normalized.context);
 
 	return {
 		created: true,
