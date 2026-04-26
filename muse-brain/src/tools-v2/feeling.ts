@@ -1,10 +1,11 @@
 // ============ FEELING TOOLS (v2) ============
 // mind_desire (action: create/list/feel), mind_relate (action: feel/toward/level), mind_state (read/write)
 
-import type { Desire, RelationalState } from "../types";
+import type { Desire } from "../types";
 import { DESIRE_STATUSES, RELATIONSHIP_LEVELS } from "../constants";
 import { getTimestamp, generateId, toStringArray, getCurrentCircadianPhase } from "../helpers";
 import type { ToolContext } from "./context";
+import { writeRelationalFeeling } from "./relational-utils";
 
 export const TOOL_DEFS = [
 	{
@@ -163,53 +164,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			const action = args.action;
 
 			if (action === "feel") {
-				if (!args.entity || !args.feeling) return { error: "entity and feeling are required for action=feel" };
-
-				const states = await storage.readRelationalState();
-				const entityLower = args.entity?.toLowerCase().trim() || "";
-
-				if (!entityLower) return { error: "Missing required parameter: entity" };
-				if (entityLower.length > 100) return { error: "Entity name too long (max 100 characters)" };
-				if (/[<>\0]/.test(args.entity)) return { error: "Entity name contains invalid characters" };
-
-				const charges = toStringArray(args.charges);
-				const now = getTimestamp();
-				const direction = args.direction || "toward";
-
-				const existing = states.find(s => s.entity.toLowerCase() === entityLower && s.direction === direction);
-
-				if (existing) {
-					existing.history.push({ feeling: existing.feeling, intensity: existing.intensity, charges: existing.charges, timestamp: existing.updated });
-					if (existing.history.length > 10) existing.history = existing.history.slice(-10);
-
-					existing.feeling = args.feeling;
-					existing.intensity = args.intensity ?? 0.7;
-					existing.charges = charges.length > 0 ? charges : existing.charges;
-					existing.context = args.context || existing.context;
-					existing.updated = now;
-
-					await storage.writeRelationalState(states);
-
-					return { updated: true, entity: existing.entity, direction: existing.direction, feeling: existing.feeling, intensity: existing.intensity, charges: existing.charges, history_depth: existing.history.length, note: `Relational state toward ${existing.entity} updated.` };
-				}
-
-				const newState: RelationalState = {
-					id: generateId("rel"),
-					entity: args.entity.trim(),
-					direction,
-					feeling: args.feeling,
-					intensity: args.intensity ?? 0.7,
-					charges,
-					context: args.context,
-					created: now,
-					updated: now,
-					history: []
-				};
-
-				states.push(newState);
-				await storage.writeRelationalState(states);
-
-				return { created: true, id: newState.id, entity: newState.entity, direction: newState.direction, feeling: newState.feeling, intensity: newState.intensity, charges: newState.charges, note: `First relational state recorded for ${newState.entity}.` };
+				const result = await writeRelationalFeeling(storage, args);
+				if ((result as Record<string, unknown>).error) return result;
+				return result;
 			}
 
 			if (action === "toward") {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleTool as handleMemoryTool } from "../src/tools-v2/memory";
+import { handleTool as handleFeelingTool } from "../src/tools-v2/feeling";
 import type { Observation } from "../src/types";
 
 // ============ HELPERS ============
@@ -511,6 +512,174 @@ describe("autoLinkProjectEntity threshold and ambiguity in mind_observe", () => 
 
 		expect(result.observed).toBe(true);
 		expect(result.auto_linked_project).toBeUndefined();
+	});
+});
+
+describe("mind_observe optional relational payload", () => {
+	it("keeps pure observations unchanged when relation is absent", async () => {
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => storage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => []),
+			writeRelationalState: vi.fn(async () => undefined),
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(async () => makeEntity("ent_unused", "unused"))
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Pure architectural note",
+			territory: "craft"
+		}, { storage: storage as any });
+
+		expect(result.observed).toBe(true);
+		expect(result.relation).toBeUndefined();
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
+		expect(storage.writeRelationalState).not.toHaveBeenCalled();
+		expect(storage.appendToTerritory).toHaveBeenCalledTimes(1);
+	});
+
+	it("records observation + relational state when relation is present", async () => {
+		const rookEntity = makeEntity("ent_rook", "rook");
+		const states: any[] = [];
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => storage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => states),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				states.splice(0, states.length, ...next);
+			}),
+			findEntityByName: vi.fn(async (name: string) => name.toLowerCase() === "rook" ? rookEntity : null),
+			createEntity: vi.fn(async () => rookEntity),
+			readBrainState: vi.fn(async () => ({
+				momentum: { current_charges: [], intensity: 0, last_updated: "" }
+			})),
+			writeBrainState: vi.fn(async () => undefined)
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Rook's audit made the v7 plan sharper.",
+			territory: "us",
+			charge: ["trust", "clarity"],
+			relation: {
+				entity: "rook",
+				feeling: "trust",
+				intensity: 0.84,
+				direction: "toward",
+				charges: ["trust", "respect"],
+				context: "v7 audit feedback"
+			}
+		}, { storage: storage as any });
+
+		expect(result.observed).toBe(true);
+		expect(result.relation.recorded).toBe(true);
+		expect(result.relation.entity).toBe("rook");
+		expect(result.relation.feeling).toBe("trust");
+		expect(result.relation.intensity).toBe(0.84);
+		expect(storage.readRelationalState).toHaveBeenCalledTimes(1);
+		expect(storage.writeRelationalState).toHaveBeenCalledTimes(1);
+		expect(states[0]).toEqual(expect.objectContaining({
+			entity: "rook",
+			direction: "toward",
+			feeling: "trust",
+			intensity: 0.84,
+			charges: ["trust", "respect"],
+			context: "v7 audit feedback"
+		}));
+		const appendedObservation = storage.appendToTerritory.mock.calls[0][1];
+		expect(appendedObservation.entity_id).toBe("ent_rook");
+	});
+
+	it("supports observe_only sync mode without touching relational state", async () => {
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => storage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => []),
+			writeRelationalState: vi.fn(async () => undefined),
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(async () => makeEntity("ent_rook", "rook"))
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Observation with relation metadata but no relational write",
+			territory: "us",
+			relation: {
+				entity: "rook",
+				feeling: "appreciation",
+				sync_mode: "observe_only"
+			}
+		}, { storage: storage as any });
+
+		expect(result.observed).toBe(true);
+		expect(result.relation).toEqual(expect.objectContaining({
+			recorded: false,
+			sync_mode: "observe_only"
+		}));
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
+		expect(storage.writeRelationalState).not.toHaveBeenCalled();
+	});
+
+	it("matches legacy mind_relate feel semantics for relational writes", async () => {
+		const relationArgs = {
+			entity: "rook",
+			feeling: "trust",
+			intensity: 0.8,
+			direction: "toward",
+			charges: ["trust"],
+			context: "parity check"
+		};
+		const memoryStates: any[] = [];
+		const legacyStates: any[] = [];
+		const memoryStorage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => memoryStorage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			validateTerritory: vi.fn((t: string) => t || "episodic"),
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => memoryStates),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				memoryStates.splice(0, memoryStates.length, ...next);
+			}),
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(async () => makeEntity("ent_rook", "rook"))
+		};
+		const legacyStorage = {
+			readRelationalState: vi.fn(async () => legacyStates),
+			writeRelationalState: vi.fn(async (next: any[]) => {
+				legacyStates.splice(0, legacyStates.length, ...next);
+			})
+		};
+
+		const observeResult = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "Relational parity check",
+			territory: "us",
+			relation: relationArgs
+		}, { storage: memoryStorage as any });
+		const legacyResult = await handleFeelingTool("mind_relate", {
+			action: "feel",
+			...relationArgs
+		}, { storage: legacyStorage as any });
+
+		expect(observeResult.relation).toEqual(expect.objectContaining({
+			created: true,
+			entity: legacyResult.entity,
+			direction: legacyResult.direction,
+			feeling: legacyResult.feeling,
+			intensity: legacyResult.intensity,
+			charges: legacyResult.charges
+		}));
 	});
 });
 

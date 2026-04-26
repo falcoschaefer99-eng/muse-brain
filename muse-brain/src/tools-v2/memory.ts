@@ -32,8 +32,25 @@ import {
 	extractQuerySignals
 } from "../retrieval/query-signals";
 import { lookupLetterById, normalizeLookupText, resolveLetterContext } from "./utils";
+import { validateRelationalWrite, writeRelationalFeeling } from "./relational-utils";
 
 // ============ HELPERS ============
+
+const RELATION_SYNC_MODES = ["observe_and_relate", "observe_only", "relate_only"] as const;
+type RelationSyncMode = typeof RELATION_SYNC_MODES[number];
+
+function parseRelationPayload(value: unknown): { payload?: Record<string, unknown>; syncMode?: RelationSyncMode; error?: string } {
+	if (value === undefined) return {};
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return { error: "relation must be an object when provided" };
+	}
+	const payload = value as Record<string, unknown>;
+	const rawSyncMode = payload.sync_mode ?? "observe_and_relate";
+	if (typeof rawSyncMode !== "string" || !RELATION_SYNC_MODES.includes(rawSyncMode as RelationSyncMode)) {
+		return { error: `Invalid relation.sync_mode. Must be one of: ${RELATION_SYNC_MODES.join(", ")}` };
+	}
+	return { payload, syncMode: rawSyncMode as RelationSyncMode };
+}
 
 const LOOKUP_GRIP_WEIGHT: Record<string, number> = {
 	iron: 5,
@@ -262,6 +279,20 @@ export const TOOL_DEFS = [
 				grip: { type: "string", enum: GRIP_LEVELS, default: "present", description: "[observe] iron/strong/present/loose/dormant" },
 				context: { type: "string", description: "[observe] Context note" },
 				mood: { type: "string", description: "[observe] Mood when recorded" },
+				relation: {
+					type: "object",
+					description: "[observe] Optional relational write. Absent = pure observation unchanged. Present = observation + relational state update by default.",
+					properties: {
+						entity: { type: "string", description: "Who or what this feeling is toward/from/about." },
+						feeling: { type: "string", description: "Current relational feeling." },
+						intensity: { type: "number", minimum: 0, maximum: 1, default: 0.7 },
+						direction: { type: "string", enum: ["toward", "from", "mutual"], default: "toward" },
+						charges: { type: "array", items: { type: "string" } },
+						context: { type: "string", description: "What prompted this feeling." },
+						set_level: { type: "string", enum: ["stranger", "familiar", "close", "bonded"], description: "Optional relationship level update." },
+						sync_mode: { type: "string", enum: [...RELATION_SYNC_MODES], default: "observe_and_relate", description: "observe_and_relate writes both; observe_only only records the observation; relate_only only updates relational state." }
+					}
+				},
 				// journal/whisper params
 				entry: { type: "string", description: "[journal] Journal entry text (alternative to content)" },
 				tags: { type: "array", items: { type: "string" }, description: "[journal/whisper] Tags" },
@@ -535,6 +566,30 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			}
 
 			// Default: mode === "observe"
+			const relationParsed = parseRelationPayload(args.relation);
+			if (relationParsed.error) return { error: relationParsed.error };
+			const relationPayload = relationParsed.payload;
+			const relationSyncMode = relationParsed.syncMode;
+			const shouldWriteRelation = !!relationPayload && relationSyncMode !== "observe_only";
+			const relationOnly = !!relationPayload && relationSyncMode === "relate_only";
+			if (shouldWriteRelation) {
+				const validation = validateRelationalWrite(relationPayload);
+				if (!validation.valid) return { error: validation.error };
+			}
+
+			if (relationOnly) {
+				const relationResult = await writeRelationalFeeling(storage, relationPayload);
+				if ((relationResult as Record<string, unknown>).error) return relationResult;
+				return {
+					observed: false,
+					relation: {
+						recorded: true,
+						sync_mode: relationSyncMode,
+						...relationResult
+					}
+				};
+			}
+
 			const content = args.content;
 			if (!content) return { error: "content is required for mode=observe" };
 
@@ -579,6 +634,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			let observeAutoLink: { entityId?: string; confidence?: number; tenant?: string; ambiguous?: boolean } | undefined;
 			if (!observeEntityId && args.entity_name) {
 				observeEntityId = await resolveOrCreateEntity(context, args.entity_name);
+			}
+			if (!observeEntityId && typeof relationPayload?.entity === "string") {
+				observeEntityId = await resolveOrCreateEntity(context, relationPayload.entity);
 			}
 			if (!observeEntityId) {
 				observeAutoLink = await autoLinkProjectEntity(context, observation.content);
@@ -641,6 +699,24 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (parsed?.was_parsed) {
 				result.smart_parsed = true;
 				result.parsing_hint = `Detected: territory=${territory}, grip=${finalGrip}${finalCharge.length ? `, charges=[${finalCharge.join(',')}]` : ''}${finalSomatic ? `, somatic=${finalSomatic}` : ''}`;
+			}
+
+			if (relationPayload) {
+				if (shouldWriteRelation) {
+					const relationResult = await writeRelationalFeeling(storage, relationPayload);
+					if ((relationResult as Record<string, unknown>).error) {
+						result.relation = { recorded: false, sync_mode: relationSyncMode, error: (relationResult as Record<string, unknown>).error };
+					} else {
+						result.relation = {
+							recorded: true,
+							sync_mode: relationSyncMode,
+							observation_id: observation.id,
+							...relationResult
+						};
+					}
+				} else {
+					result.relation = { recorded: false, sync_mode: relationSyncMode, observation_id: observation.id };
+				}
 			}
 
 			return result;
