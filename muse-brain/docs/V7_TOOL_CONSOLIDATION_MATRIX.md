@@ -1,7 +1,7 @@
 # v7 Tool Consolidation Matrix
 
 Date: 2026-04-27  
-Status: working map after Phase 1 (`mind_observe` relational payload) and Phase 2 (`mind_memory` read consolidation slice).  
+Status: working map after Phase 1 (`mind_observe` relational payload), Phase 2/2b (`mind_memory` read consolidation + no-loss parity), and Phase 3a (`mind_self` wrapper-first slice).  
 Principle: reduce tool choice friction without flattening the brain's texture. Merge when the caller has to ask "which tool was that again?" Keep separate when the tool expresses a distinct mental act.
 
 ## Release spine
@@ -10,7 +10,8 @@ Principle: reduce tool choice friction without flattening the brain's texture. M
 | --- | --- | --- |
 | v7.0 | Daily-use ergonomics | `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
 | v7.1 | Tool drawer cleanup | Add semantic family tools (`mind_self`, `mind_unconscious`, `mind_system`) and keep old tools as compatibility aliases. Fold `mind_wake_log` into `mind_wake`. |
-| v7.2 | Agent intelligence | Direct agent observe API, canonical agent entities, daemonized agent learning consolidation. Requires Michael audit before release. |
+| v7.2 | Agent intelligence / Agent House | Direct agent observe API, canonical agent entities, daemonized agent learning consolidation. The Agent House frame belongs here: agents become residents in the brain, not markdown files wearing hats. Requires Michael audit before release. |
+| v7.3 / post-v7 | Skill artifact sync | Skill.md import/export, checksum/drift detection, global vs repo skill inventory, and cross-machine sync. This depends on v7.2's agent entities + skill artifacts being solid first. |
 
 ## Compatibility policy
 
@@ -22,7 +23,7 @@ Principle: reduce tool choice friction without flattening the brain's texture. M
 
 ## Current surface inventory
 
-Current public tools in `src/tools-v2`: **33**.
+Current public tools in `src/tools-v2`: **34**.
 
 | Tool | Lane | Decision | v7 canonical path | Rationale / migration notes |
 | --- | --- | --- | --- | --- |
@@ -39,6 +40,7 @@ Current public tools in `src/tools-v2`: **33**.
 | `mind_relate` | Relational state | **Partial merge / keep specialist reads** | `mind_observe relation` for `feel`; `mind_relate` for `toward/level` | Feeling capture now belongs at observation time. `toward` and `level` remain distinct relational-state queries/admin. |
 | `mind_desire` | Specialist emotional model | **Keep** | `mind_desire` | Desire is not a momentary feeling. It models long-horizon wants/drives with recurrence and fulfillment state. Keeping it protects richness. |
 | `mind_state` | Default/system self-state | **Keep** | `mind_state` | Singleton mood/energy/momentum is not an observation and not relational. It is frequently useful as a compact state read/write. |
+| `mind_self` | Self-family canonical | **Keep / review language before hiding old tools** | `mind_self` | Wrapper-first canonical self door. Landed with identity_*, anchor_*, vow_* actions plus new `gestalt`; vows keep iron/foundational mechanics. Old tools stay live until parity and response-language review pass. |
 | `mind_identity` | Self-family | **Merge** | `mind_self action=identity/*` | Identity cores are one part of the self surface. Merge with anchors/vows under `mind_self` while preserving exact actions. |
 | `mind_anchor` | Self-family | **Merge** | `mind_self action=anchor/*` | Anchors are identity retrieval/sensory triggers. Philosophically distinct, functionally part of `self`. |
 | `mind_vow` | Self-family | **Merge** | `mind_self action=vow/*` | Vows stay sacred/iron/foundational, but the caller should not need a separate top-level tool to reach them. |
@@ -67,6 +69,7 @@ Preferred tools for ordinary use:
 - `mind_wake` — start/maintenance ritual, eventually wake logs too.
 - `mind_observe` — primary write lane: observation, journal, whisper, optional relation.
 - `mind_memory` — primary read lane: get, recent, lookup, search, timeline, territory.
+- `mind_self` — primary self-declaration/read lane for identity, anchors, vows, and whole-self gestalt.
 - `mind_task` — commitments and work queue.
 - `mind_entity` — people/projects/agents/concepts graph primitives.
 - `mind_project` — richer project dossiers.
@@ -142,6 +145,43 @@ Principle: token retrieval budget, not storage deletion pressure.
 - Skill artifacts are proposed/reviewed, not silently promoted.
 - Consolidate up; do not decay down load-bearing agent learnings.
 
+### Phase 6 / v7.2 — Agent House: canonical agents as residents
+
+Architectural stance:
+
+> Skill files are the bootloader. Brain is the house.
+
+The squad should not be modeled primarily as nodes in a DAG. Nodes are pipeline steps; our agents are residents with roles, taste, memory, constraints, and accumulating judgment. Pipeline principles still exist — design → build → review → deploy — but dispatch remains heuristic/orchestrated, not a rigid tree.
+
+Current gap:
+
+- Agent learnings are increasingly wired into the brain.
+- Most agent identities still live in prompt/markdown infrastructure.
+- At least Dupin is currently visible as a canonical `entity_type=agent` with a `mind_agent` manifest in this tenant scope.
+- Michael may already have dossier treatment in another scope/history; verify during canonicalization rather than assuming absence.
+- The full builder/creative squads need first-class brain residency.
+
+v7.2 Agent House building blocks:
+
+1. Create/repair canonical `entity_type=agent` records for every specialist.
+2. Attach `mind_agent` manifests for role, capabilities, accepted output modes, protocols, and boundaries.
+3. Link agent observations/learnings to the correct canonical agent entity.
+4. Route repeated learnings through proposal review into accepted `mind_skill` artifacts.
+5. Generate agent-specific deployment bundles from brain truth, not hand-maintained lore fragments.
+
+### v7.3 / post-v7 — Skill.md sync and drift detection
+
+Park this until v7.2 is stable. Skill.md files remain necessary deployment artifacts for current runtimes, but they should not be the canonical intelligence store.
+
+Target pipeline:
+
+1. **Inventory** global skills, repo skills, agent prompt files, and installed machine-local skills.
+2. **Register** `skill_key`, version, scope (`global` / `repo` / `agent`), checksum, source brain IDs, and install path.
+3. **Promote** raw learning → observation → proposal → accepted `mind_skill`.
+4. **Export** accepted brain skills into Skill.md / prompt artifacts as compiled bootloaders.
+5. **Detect drift** when a local Skill.md differs from the accepted brain version.
+6. **Sync** across machines without making markdown folders the source of truth.
+
 ## Immediate next code tasks from this matrix
 
 1. `mind_memory get` processing parity with `mind_pull`.
@@ -150,3 +190,4 @@ Principle: token retrieval budget, not storage deletion pressure.
 4. `mind_unconscious` wrapper tool with alias tests.
 5. `mind_system` wrapper tool with alias tests.
 6. `mind_wake` absorbs `mind_wake_log`.
+7. Park Agent House under v7.2 after family merges; park Skill.md sync/drift under v7.3/post-v7.
