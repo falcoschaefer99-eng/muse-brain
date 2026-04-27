@@ -145,10 +145,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			const delegated = await handleTool(route.tool, { ...args, ...route.args }, context);
 			return {
+				...delegated,
 				unconscious_register: route.register,
 				unconscious_action: action,
-				register_note: route.register_note,
-				...delegated
+				register_note: route.register_note
 			};
 		}
 

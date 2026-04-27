@@ -43,11 +43,45 @@ function makeCore(id: string, overrides: Partial<IdentityCore> = {}): IdentityCo
 }
 
 function stripUnconsciousEnvelope(result: any) {
-	const { unconscious_register, unconscious_action, register_note, ...rest } = result;
-	return rest;
+	return Object.fromEntries(
+		Object.entries(result).filter(([key]) => !key.startsWith("unconscious_") && key !== "register_note")
+	);
 }
 
 describe("mind_unconscious wrapper", () => {
+	it("defaults to patterns and keeps wrapper envelope keys authoritative", async () => {
+		const state = {
+			unconscious_register: "delegated-collision",
+			unconscious_action: "delegated-collision",
+			register_note: "delegated-collision",
+			last_processed: "2026-04-27T00:00:00.000Z",
+			hot_entities: [],
+			memory_cascade: [],
+			mood_inference: { suggested_mood: "quiet", confidence: 0.4, based_on: [] },
+			orphans: []
+		};
+		const storage = {
+			readSubconscious: vi.fn(async () => state)
+		};
+
+		const result = await handleDeeperTool("mind_unconscious", {}, { storage: storage as any });
+
+		expect(result.unconscious_register).toBe("subconscious");
+		expect(result.unconscious_action).toBe("patterns");
+		expect(result.register_note).toContain("precomputed undercurrent");
+		expect(result.last_processed).toBe("2026-04-27T00:00:00.000Z");
+		expect(storage.readSubconscious).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns a clear error for invalid actions", async () => {
+		const result = await handleDeeperTool("mind_unconscious", {
+			action: "sleepwalk"
+		}, { storage: {} as any });
+
+		expect(result.error).toMatch(/Unknown action: sleepwalk/);
+		expect(result.error).toMatch(/dream, imagine, process, or patterns/);
+	});
+
 	it("preserves subconscious patterns output while adding an unconscious register", async () => {
 		const state = {
 			last_processed: "2026-04-27T00:00:00.000Z",
@@ -71,6 +105,28 @@ describe("mind_unconscious wrapper", () => {
 		expect(wrapped.unconscious_action).toBe("patterns");
 		expect(wrapped.register_note).toContain("precomputed undercurrent");
 		expect(stripUnconsciousEnvelope(wrapped)).toEqual(legacy);
+	});
+
+	it("route args win over conflicting caller mode for dream action", async () => {
+		const storage = {
+			readTerritory: vi.fn(async () => []),
+			readIdentityCores: vi.fn(async () => {
+				throw new Error("imagine mode should not run");
+			})
+		};
+
+		const result = await handleDeeperTool("mind_unconscious", {
+			action: "dream",
+			mode: "imagine",
+			dream_mode: "emotional_chain",
+			seed_territory: "craft"
+		}, { storage: storage as any });
+
+		expect(result.unconscious_register).toBe("dream");
+		expect(result.dream).toBe("No memories to dream from.");
+		expect(result.dream_mode).toBe("emotional_chain");
+		expect(storage.readTerritory).toHaveBeenCalledWith("craft");
+		expect(storage.readIdentityCores).not.toHaveBeenCalled();
 	});
 
 	it("delegates process through subconscious computation without changing payload", async () => {
@@ -116,6 +172,70 @@ describe("mind_unconscious wrapper", () => {
 		expect(result.dream).toBe("No memories to dream from.");
 		expect(result.seed_territory).toBe("craft");
 		expect(result.dream_mode).toBe("emotional_chain");
+	});
+
+	it("forms a real dream chain when memories resonate", async () => {
+		const seed = makeObservation("obs_seed", {
+			territory: "craft",
+			content: "seed memory of blue fire",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: ["wonder"],
+				somatic: "hands",
+				grip: "present"
+			}
+		});
+		const resonant = makeObservation("obs_resonant", {
+			territory: "self",
+			content: "resonant memory of wonder returning",
+			texture: {
+				salience: "active",
+				vividness: "soft",
+				charge: ["wonder"],
+				somatic: "hands",
+				grip: "loose"
+			}
+		});
+		const territories: Record<string, Observation[]> = {
+			craft: [seed],
+			self: [resonant]
+		};
+		const writeTerritory = vi.fn(async (territory: string, observations: Observation[]) => {
+			territories[territory] = observations;
+		});
+		const storage = {
+			readTerritory: vi.fn(async (territory: string) => territories[territory] ?? []),
+			writeTerritory,
+			appendToTerritory: vi.fn(async () => undefined)
+		};
+
+		const result = await handleDeeperTool("mind_unconscious", {
+			action: "dream",
+			dream_mode: "emotional_chain",
+			seed_territory: "craft",
+			depth: 1
+		}, { storage: storage as any });
+
+		expect(result.unconscious_register).toBe("dream");
+		expect(result.dream_mode).toBe("emotional_chain");
+		expect(result.depth_achieved).toBeGreaterThanOrEqual(2);
+		expect(result.dream_sequence.map((node: any) => node.id)).toEqual(["obs_seed", "obs_resonant"]);
+		expect(result.texture_shifts).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				id: "obs_resonant",
+				territory: "self",
+				field: "grip",
+				from: "loose",
+				to: "present"
+			})
+		]));
+		expect(writeTerritory).toHaveBeenCalledWith("self", expect.arrayContaining([
+			expect.objectContaining({
+				id: "obs_resonant",
+				texture: expect.objectContaining({ grip: "present" })
+			})
+		]));
 	});
 
 	it("routes imagination through the aggregate dispatcher and creates a craft observation", async () => {
