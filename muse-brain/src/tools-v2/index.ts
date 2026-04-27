@@ -1,6 +1,6 @@
 // ============ TOOLS V2 — BARREL ============
 // Aggregates all TOOL_DEFS and dispatches executeTool(name, args, context).
-// 19 modules → 34 tools (collapsed from ~50 old tools via action-dispatch pattern).
+// 19 modules → 35 tools (collapsed from ~50 old tools via action-dispatch pattern).
 
 import type { ToolContext } from "./context";
 
@@ -83,6 +83,7 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 	mind_context: handleComms,
 
 	// Deeper
+	mind_unconscious: handleDeeper,
 	mind_dream: handleDeeper,
 	mind_subconscious: handleDeeper,
 	mind_maintain: handleDeeper,

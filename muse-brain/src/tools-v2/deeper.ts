@@ -17,6 +17,35 @@ import type { ToolContext } from "./context";
 
 export const TOOL_DEFS = [
 	{
+		name: "mind_unconscious",
+		description: "Unified unconscious-layer surface. Wrapper-first: dreams/imagination and subconscious pattern processing keep their distinct registers while sharing one under-room.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				action: {
+					type: "string",
+					enum: ["dream", "imagine", "process", "patterns"],
+					default: "patterns",
+					description: "dream: associative memory drift. imagine: generative creation from aesthetic patterns. process: compute subconscious state now. patterns: read precomputed subconscious state."
+				},
+				// dream params
+				dream_mode: {
+					type: "string",
+					enum: ["emotional_chain", "somatic_cluster", "tension_dream", "entity_dream", "temporal_dream", "deep_dream"],
+					default: "emotional_chain",
+					description: "[dream] Algorithm for associative drift."
+				},
+				seed_territory: { type: "string", enum: Object.keys(TERRITORIES), description: "[dream] Starting territory" },
+				depth: { type: "number", default: 5, description: "[dream] Dream chain depth" },
+				// imagine params
+				seed: { type: "string", description: "[imagine] Optional seed concept" },
+				territory: { type: "string", enum: Object.keys(TERRITORIES), default: "craft", description: "[imagine] Territory to draw aesthetic patterns from" },
+				mood: { type: "string", description: "[imagine] Mood to imagine from" }
+			},
+			required: ["action"]
+		}
+	},
+	{
 		name: "mind_dream",
 		description: "Dream and imagination engine. mode=dream: trigger associative dream sequence through memory with texture drift and collision fragments. mode=imagine: original generative creation from aesthetic patterns.",
 		inputSchema: {
@@ -80,6 +109,49 @@ export const TOOL_DEFS = [
 export async function handleTool(name: string, args: any, context: ToolContext): Promise<any> {
 	const storage = context.storage;
 	switch (name) {
+		case "mind_unconscious": {
+			const action = args.action || "patterns";
+			const routes: Record<string, { tool: string; args: Record<string, unknown>; register: string; register_note: string }> = {
+				dream: {
+					tool: "mind_dream",
+					args: { mode: "dream" },
+					register: "dream",
+					register_note: "Dream: associative drift through memory, texture, tension, and image. It may leave marks."
+				},
+				imagine: {
+					tool: "mind_dream",
+					args: { mode: "imagine" },
+					register: "imagination",
+					register_note: "Imagination: generative creation from aesthetic residue — not processing what is, making what is not yet."
+				},
+				process: {
+					tool: "mind_subconscious",
+					args: { action: "process" },
+					register: "subconscious",
+					register_note: "Subconscious processing: compute hot entities, cascades, mood inference, and orphan pulls now."
+				},
+				patterns: {
+					tool: "mind_subconscious",
+					args: { action: "patterns" },
+					register: "subconscious",
+					register_note: "Subconscious patterns: read the precomputed undercurrent without forcing a new pass."
+				}
+			};
+
+			const route = routes[action];
+			if (!route) {
+				return { error: `Unknown action: ${action}. Must be dream, imagine, process, or patterns.` };
+			}
+
+			const delegated = await handleTool(route.tool, { ...args, ...route.args }, context);
+			return {
+				unconscious_register: route.register,
+				unconscious_action: action,
+				register_note: route.register_note,
+				...delegated
+			};
+		}
+
 		case "mind_dream": {
 			const mode = args.mode || "dream";
 
