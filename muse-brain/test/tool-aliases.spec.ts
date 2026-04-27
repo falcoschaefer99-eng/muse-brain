@@ -2,6 +2,41 @@ import { describe, it, expect, vi } from "vitest";
 import { executeTool } from "../src/tools-v2/index";
 
 describe("tool alias dispatch", () => {
+	it("routes mind_memory through the aggregate dispatcher", async () => {
+		const observation = {
+			id: "obs_dispatch",
+			content: "dispatcher read consolidation payload",
+			territory: "craft",
+			created: "2026-04-27T00:00:00.000Z",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: [],
+				grip: "present",
+				charge_phase: "fresh"
+			},
+			access_count: 0
+		};
+		const storage = {
+			findObservation: vi.fn(async (id: string) =>
+				id === "obs_dispatch" ? { observation, territory: "craft" } : null
+			),
+			updateObservationAccess: vi.fn(async () => undefined),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null),
+			readLetters: vi.fn(async () => [])
+		};
+
+		const result = await executeTool("mind_memory", {
+			action: "get",
+			id: "obs_dispatch"
+		}, { storage: storage as any });
+
+		expect(result.found).toBe(true);
+		expect(result.type).toBe("observation");
+		expect(result.data.id).toBe("obs_dispatch");
+	});
+
 	it("maps mind_write_letter to mind_letter with action=write", async () => {
 		const appendLetter = vi.fn(async () => undefined);
 		const storage = { appendLetter };
