@@ -33,6 +33,8 @@ import {
 } from "../retrieval/query-signals";
 import { lookupLetterById, normalizeLookupText, resolveLetterContext } from "./utils";
 import { validateRelationalWrite, writeRelationalFeeling } from "./relational-utils";
+import { handleTool as handleTimelineTool } from "./timeline";
+import { handleTool as handleTerritoryTool } from "./territory";
 
 // ============ HELPERS ============
 
@@ -304,14 +306,14 @@ export const TOOL_DEFS = [
 	},
 	{
 		name: "mind_memory",
-		description: "Unified memory read API. action=get resolves direct IDs (observation/letter/task/project). action=recent runs deterministic recency retrieval. action=lookup performs literal keyword/tag lookup and project-first routing. action=search delegates to hybrid semantic retrieval.",
+		description: "Unified memory read API. action=get resolves direct IDs (observation/letter/task/project). action=recent runs deterministic recency retrieval. action=lookup performs literal keyword/tag lookup and project-first routing. action=search delegates to hybrid semantic retrieval. action=timeline delegates chronological history. action=territory lists or reads territories.",
 		inputSchema: {
 			type: "object",
 			properties: {
 				action: {
 					type: "string",
-					enum: ["get", "recent", "lookup", "search"],
-					description: "get: direct by id, recent: recency-first filter path, lookup: literal keyword/tags, search: hybrid semantic."
+					enum: ["get", "recent", "lookup", "search", "timeline", "territory"],
+					description: "get: direct by id, recent: recency-first filter path, lookup: literal keyword/tags, search: hybrid semantic, timeline: chronological view, territory: list/read territory contents."
 				},
 				id: { type: "string", description: "[get] obs_/journal_/whisper_/letter_/task_/ent_ id" },
 				context: { type: "string", description: "[get] Letter recipient context for scoped letter ID reads (default: chat)." },
@@ -320,15 +322,22 @@ export const TOOL_DEFS = [
 				project: { type: "string", description: "[recent/lookup] project slug or alias" },
 				keyword: { type: "string", description: "[lookup] literal keyword to match" },
 				tags: { type: "array", items: { type: "string" }, description: "[lookup] tags to match (any)" },
-				query: { type: "string", description: "[search] hybrid query text" },
-				territory: { type: "string", enum: Object.keys(TERRITORIES), description: "[recent/lookup/search] territory filter" },
+				query: { type: "string", description: "[search/timeline] hybrid query text" },
+				territory: { type: "string", enum: Object.keys(TERRITORIES), description: "[recent/lookup/search/timeline] territory filter; [territory] territory to read" },
+				territory_action: { type: "string", enum: ["list", "read"], description: "[territory] list all territory counts or read one territory. Defaults to read when territory is provided, otherwise list." },
 				grip: { type: "string", enum: [...GRIP_LEVELS, "all"], description: "[recent/lookup/search] grip filter" },
 				salience: { type: "string", enum: [...SALIENCE_LEVELS, "all"], description: "[recent] salience filter" },
+				charge: { type: "string", description: "[recent/timeline] filter to observations containing this charge" },
 				type: { type: "string", description: "[recent] observation type filter" },
 				limit: { type: "number", default: 10, description: "max results" },
 				full: { type: "boolean", default: false, description: "include full content" },
 				sort_by: { type: "string", enum: ["recency", "pull", "access"], description: "[recent] sort order" },
 				entity: { type: "string", description: "[recent/search] entity name or id" },
+				entity_id: { type: "string", description: "[timeline] filter to observations about this entity id" },
+				entity_name: { type: "string", description: "[timeline] entity name lookup" },
+				start_date: { type: "string", description: "[timeline] ISO 8601 start date" },
+				end_date: { type: "string", description: "[timeline] ISO 8601 end date" },
+				include_versions: { type: "boolean", description: "[timeline] include edit history per observation" },
 				retrieval_profile: { type: "string", enum: ["native", "balanced", "benchmark", "flat"] },
 				profile: { type: "string", enum: ["native", "balanced", "benchmark", "flat"] },
 				rerank_mode: { type: "string", enum: ["off", "heuristic", "model"] },
@@ -732,6 +741,18 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				return handleTool("mind_query", { ...args, query: args.query ?? args.keyword }, context);
 			}
 
+			if (action === "timeline") {
+				return handleTimelineTool("mind_timeline", args, context);
+			}
+
+			if (action === "territory") {
+				const territoryAction = args.territory_action ?? (args.territory ? "read" : "list");
+				return handleTerritoryTool("mind_territory", {
+					action: territoryAction,
+					territory: args.territory
+				}, context);
+			}
+
 			if (action === "recent") {
 				if (args.days === undefined && args.hours === undefined) {
 					return { error: "days or hours is required for action=recent" };
@@ -1075,7 +1096,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				};
 			}
 
-			return { error: `Unknown action: ${action}. Must be get, recent, lookup, or search.` };
+			return { error: `Unknown action: ${action}. Must be get, recent, lookup, search, timeline, or territory.` };
 		}
 
 		case "mind_query": {

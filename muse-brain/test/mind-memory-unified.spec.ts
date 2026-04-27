@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleTool as handleMemoryTool } from "../src/tools-v2/memory";
 import { handleTool as handleFeelingTool } from "../src/tools-v2/feeling";
+import { handleTool as handleTimelineTool } from "../src/tools-v2/timeline";
+import { handleTool as handleTerritoryTool } from "../src/tools-v2/territory";
 import type { Observation } from "../src/types";
 
 // ============ HELPERS ============
@@ -56,6 +58,10 @@ function makeDossier(id: string, entityId: string, metadata: Record<string, unkn
 		created_at: "2026-04-01T00:00:00.000Z",
 		updated_at: "2026-04-01T00:00:00.000Z"
 	};
+}
+
+function makeTimelineRow(observation: Observation, territory = "craft") {
+	return { observation, territory };
 }
 
 // ============ TEST 1: Cross-tenant visibility gate (A1 hard gate) ============
@@ -415,6 +421,90 @@ describe("mind_memory action=recent", () => {
 		}, { storage: storage as any });
 
 		expect(result.error).toMatch(/days must be between/i);
+	});
+});
+
+// ============ TEST 3B: mind_memory read consolidation delegates ============
+
+describe("mind_memory read consolidation delegates", () => {
+	it("action=timeline preserves mind_timeline chronological output shape", async () => {
+		const rows = [
+			makeTimelineRow(makeObservation("obs_3", "2026-01-03T12:00:00.000Z", {
+				content: "third v7 checkpoint",
+				texture: { salience: "active", vividness: "vivid", charge: ["v7"], grip: "present", charge_phase: "fresh" }
+			})),
+			makeTimelineRow(makeObservation("obs_1", "2026-01-01T12:00:00.000Z", {
+				content: "first v7 checkpoint",
+				texture: { salience: "active", vividness: "vivid", charge: ["v7"], grip: "present", charge_phase: "fresh" }
+			})),
+			makeTimelineRow(makeObservation("obs_2", "2026-01-02T12:00:00.000Z", {
+				content: "second v7 checkpoint",
+				texture: { salience: "active", vividness: "vivid", charge: ["v7"], grip: "present", charge_phase: "fresh" }
+			}))
+		];
+		const storage = {
+			queryObservations: vi.fn(async () => rows)
+		};
+		const args = {
+			territory: "craft",
+			start_date: "2026-01-01T00:00:00.000Z",
+			end_date: "2026-01-04T00:00:00.000Z",
+			charge: "v7",
+			limit: 3
+		};
+
+		const unified = await handleMemoryTool("mind_memory", { action: "timeline", ...args }, { storage: storage as any });
+		const legacy = await handleTimelineTool("mind_timeline", args, { storage: storage as any });
+
+		expect(unified).toEqual(legacy);
+		expect(unified.search_mode).toBe("chronological");
+		expect(unified.observations.map((obs: any) => obs.id)).toEqual(["obs_1", "obs_2", "obs_3"]);
+		expect(storage.queryObservations).toHaveBeenCalledWith(expect.objectContaining({
+			territory: "craft",
+			created_after: "2026-01-01T00:00:00.000Z",
+			created_before: "2026-01-04T00:00:00.000Z",
+			charges_any: ["v7"]
+		}));
+	});
+
+	it("action=territory lists territories with the same shape as mind_territory", async () => {
+		const craftObservation = makeObservation("obs_craft", "2026-01-01T12:00:00.000Z", {
+			texture: { salience: "foundational", vividness: "crystalline", charge: [], grip: "iron", charge_phase: "fresh" }
+		});
+		const storage = {
+			readTerritory: vi.fn(async (territory: string) => territory === "craft" ? [craftObservation] : [])
+		};
+
+		const unified = await handleMemoryTool("mind_memory", { action: "territory" }, { storage: storage as any });
+		const legacy = await handleTerritoryTool("mind_territory", { action: "list" }, { storage: storage as any });
+
+		expect(unified).toEqual(legacy);
+		expect(unified.territories.craft.count).toBe(1);
+		expect(unified.territories.craft.iron_grip).toBe(1);
+	});
+
+	it("action=territory reads one territory when territory is provided", async () => {
+		const craftObservation = makeObservation("obs_craft_read", "2026-01-01T12:00:00.000Z", {
+			content: "territory read payload",
+			texture: { salience: "active", vividness: "vivid", charge: ["read"], grip: "present", charge_phase: "fresh" }
+		});
+		const storage = {
+			readTerritory: vi.fn(async (territory: string) => territory === "craft" ? [craftObservation] : [])
+		};
+
+		const unified = await handleMemoryTool("mind_memory", {
+			action: "territory",
+			territory: "craft"
+		}, { storage: storage as any });
+		const legacy = await handleTerritoryTool("mind_territory", {
+			action: "read",
+			territory: "craft"
+		}, { storage: storage as any });
+
+		expect(unified).toEqual(legacy);
+		expect(unified.territory).toBe("craft");
+		expect(unified.count).toBe(1);
+		expect(unified.observations[0].id).toBe("obs_craft_read");
 	});
 });
 
