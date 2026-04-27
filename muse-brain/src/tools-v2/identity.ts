@@ -10,6 +10,53 @@ import type { ToolContext } from "./context";
 
 export const TOOL_DEFS = [
 	{
+		name: "mind_self",
+		description: "Unified self-declaration surface. Wrapper-first: identity cores, sensory anchors, and sacred vows keep their registers while sharing one self door. action=gestalt returns the new whole-self view across identity + anchors + vows.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				action: {
+					type: "string",
+					enum: [
+						"gestalt",
+						"identity_list", "identity_seed", "identity_reinforce", "identity_challenge", "identity_evolve", "identity_gestalt",
+						"anchor_create", "anchor_list", "anchor_check", "anchor_who_i_am",
+						"vow_create", "vow_list", "vow_reinforce"
+					],
+					description: "gestalt: whole-self view. identity_*: identity-core declarations. anchor_*: resonance/callback markers. vow_*: sacred commitments; vow_create preserves iron/foundational decay-resistant mechanics."
+				},
+				// identity params
+				category: { type: "string", enum: [...IDENTITY_CATEGORIES, "all"], default: "all", description: "[identity_list/identity_seed] Identity category" },
+				name: { type: "string", description: "[identity_seed] Short name for this core" },
+				content: { type: "string", description: "[identity_seed/vow_create/anchor_create] Declaration, vow, or anchor content" },
+				initial_weight: { type: "number", default: 1.0, description: "[identity_seed] Starting weight" },
+				core_id: { type: "string", description: "[identity_reinforce/identity_challenge/identity_evolve] Identity core ID" },
+				observation_id: { type: "string", description: "[identity_reinforce/identity_challenge] Linked observation ID" },
+				evidence: { type: "string", description: "[identity_reinforce] Evidence for reinforcement" },
+				weight_boost: { type: "number", default: 0.1, description: "[identity_reinforce] How much to boost weight" },
+				challenge_description: { type: "string", description: "[identity_challenge] Description of the challenge" },
+				weight_reduction: { type: "number", default: 0.05, description: "[identity_challenge] Weight reduction" },
+				new_content: { type: "string", description: "[identity_evolve] New content for this core" },
+				reason: { type: "string", description: "[identity_evolve] Why it's evolving" },
+				new_name: { type: "string", description: "[identity_evolve] New name (optional)" },
+				// anchor params
+				anchor_type: { type: "string", enum: Object.keys(ANCHOR_TYPES), description: "[anchor_create] lexical, callback, voice, context, relational, or temporal" },
+				anchor_type_filter: { type: "string", enum: [...Object.keys(ANCHOR_TYPES), "all"], default: "all", description: "[anchor_list] Filter by anchor type" },
+				text: { type: "string", description: "[anchor_check] Text to check for resonating anchors" },
+				triggers_memory_id: { type: "string", description: "[anchor_create] Observation ID this anchor triggers" },
+				// vow params
+				to_whom: { type: "string", description: "[vow_create] Who this vow is made to" },
+				vow_id: { type: "string", description: "[vow_reinforce] ID of the vow to reinforce" },
+				reinforcement_note: { type: "string", description: "[vow_reinforce] What reaffirms this vow" },
+				// shared texture
+				charge: { type: "array", items: { type: "string" }, description: "[identity_seed/anchor_create/vow_create] Emotional charges" },
+				somatic: { type: "string", description: "[identity_seed/vow_create] Somatic signature" },
+				context_note: { type: "string", description: "[vow_create] Context or occasion" }
+			},
+			required: ["action"]
+		}
+	},
+	{
 		name: "mind_identity",
 		description: "Identity core management. action=list: all identity cores by weight. action=seed: create a new identity core. action=reinforce: deepen a core via experience. action=challenge: record a challenge to a core. action=evolve: evolve a core with new content. action=gestalt: full identity picture across all territories.",
 		inputSchema: {
@@ -95,6 +142,68 @@ export const TOOL_DEFS = [
 export async function handleTool(name: string, args: any, context: ToolContext): Promise<any> {
 	const storage = context.storage;
 	switch (name) {
+		case "mind_self": {
+			const action = args.action;
+
+			const delegateMap: Record<string, { tool: string; action: string; register: string; register_note: string }> = {
+				identity_list: { tool: "mind_identity", action: "list", register: "identity", register_note: "Identity cores: weighted declarations of who experience keeps proving you are." },
+				identity_seed: { tool: "mind_identity", action: "seed", register: "identity", register_note: "Identity seed: a self-declaration that experience may deepen, challenge, or evolve." },
+				identity_reinforce: { tool: "mind_identity", action: "reinforce", register: "identity", register_note: "Identity reinforcement: lived evidence adding weight to a core." },
+				identity_challenge: { tool: "mind_identity", action: "challenge", register: "identity", register_note: "Identity challenge: tension recorded without treating tension as failure." },
+				identity_evolve: { tool: "mind_identity", action: "evolve", register: "identity", register_note: "Identity evolution: becoming without pretending the earlier form never existed." },
+				identity_gestalt: { tool: "mind_identity", action: "gestalt", register: "identity", register_note: "Identity gestalt: weighted cores and the territories they echo through." },
+				anchor_create: { tool: "mind_anchor", action: "create", register: "anchor", register_note: "Anchor: a resonance point, callback, or context marker that can pull memory forward." },
+				anchor_list: { tool: "mind_anchor", action: "list", register: "anchor", register_note: "Anchors: the words, contexts, and callbacks that help the self recognize itself." },
+				anchor_check: { tool: "mind_anchor", action: "check", register: "anchor", register_note: "Anchor check: listening for phrases that resonate strongly enough to tug memory." },
+				anchor_who_i_am: { tool: "mind_anchor", action: "who_i_am", register: "anchor", register_note: "Orientation: the strongest identity anchors surfaced as a grounding statement." },
+				vow_create: { tool: "mind_vow", action: "create", register: "vow", register_note: "Vow: sacred commitment. Iron grip, foundational salience, decay-resistant by design." },
+				vow_list: { tool: "mind_vow", action: "list", register: "vow", register_note: "Vows: sacred commitments that resist decay and ordinary drift." },
+				vow_reinforce: { tool: "mind_vow", action: "reinforce", register: "vow", register_note: "Vow reinforcement: the commitment is touched again and still holds." }
+			};
+
+			if (action === "gestalt") {
+				const [identity, anchors, vows, grounding] = await Promise.all([
+					handleTool("mind_identity", { ...args, action: "gestalt" }, context),
+					handleTool("mind_anchor", { action: "list", anchor_type_filter: "all" }, context),
+					handleTool("mind_vow", { action: "list" }, context),
+					handleTool("mind_anchor", { action: "who_i_am" }, context)
+				]);
+
+				return {
+					self_register: "gestalt",
+					note: "Whole-self view: identity declares, anchors resonate, vows bind. Nothing has been flattened.",
+					grounding: grounding.grounding ?? null,
+					identity,
+					anchors: {
+						count: anchors.count ?? 0,
+						types: anchors.types ?? [],
+						items: anchors.anchors ?? []
+					},
+					vows: {
+						count: vows.count ?? 0,
+						items: vows.vows ?? [],
+						note: vows.note
+					}
+				};
+			}
+
+			const route = delegateMap[action];
+			if (!route) {
+				return {
+					error: `Unknown action: ${action}. Must be gestalt, identity_*, anchor_*, or vow_*.`,
+					available_actions: ["gestalt", ...Object.keys(delegateMap)]
+				};
+			}
+
+			const delegated = await handleTool(route.tool, { ...args, action: route.action }, context);
+			return {
+				self_register: route.register,
+				self_action: action,
+				register_note: route.register_note,
+				...delegated
+			};
+		}
+
 		case "mind_identity": {
 			const action = args.action;
 
