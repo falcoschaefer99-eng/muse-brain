@@ -1005,6 +1005,57 @@ describe("mind_memory action=get", () => {
 		expect(result.type).toBe("observation");
 	});
 
+	it("preserves mind_pull processing behavior through action=get", async () => {
+		const obs = makeObservation("obs_memory_proc", new Date(Date.now() - 3600_000).toISOString(), {
+			content: "mind_memory processing parity",
+			texture: {
+				salience: "active",
+				vividness: "vivid",
+				charge: ["focus"],
+				grip: "present",
+				charge_phase: "active"
+			}
+		});
+
+		const storage = {
+			findObservation: vi.fn(async (id: string) =>
+				id === "obs_memory_proc" ? { observation: obs, territory: "craft" } : null
+			),
+			updateObservationAccess: vi.fn(async () => undefined),
+			createProcessingEntry: vi.fn(async () => undefined),
+			incrementProcessingCount: vi.fn(async () => 3),
+			advanceChargePhase: vi.fn(async () => ({ advanced: true, new_phase: "integrated" })),
+			readLetters: vi.fn(async () => []),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_memory", {
+			action: "get",
+			id: " obs_memory_proc ",
+			process: true,
+			processing_note: "integrating via canonical read lane",
+			charge: ["calm", "clarity"]
+		}, { storage: storage as any });
+
+		expect(result.found).toBe(true);
+		expect(result.type).toBe("observation");
+		expect(result.data.id).toBe("obs_memory_proc");
+		expect(result.data.processing).toEqual(expect.objectContaining({
+			recorded: true,
+			processing_count: 3,
+			phase_advanced: true,
+			new_phase: "integrated"
+		}));
+		expect(storage.createProcessingEntry).toHaveBeenCalledWith(expect.objectContaining({
+			observation_id: "obs_memory_proc",
+			processing_note: "integrating via canonical read lane",
+			charge_at_processing: ["calm", "clarity"]
+		}));
+		expect(storage.incrementProcessingCount).toHaveBeenCalledWith("obs_memory_proc");
+		expect(storage.advanceChargePhase).toHaveBeenCalledWith("obs_memory_proc");
+	});
+
 	it("retrieves a letter by letter_ prefix through the unified path", async () => {
 		const letter = {
 			id: "letter_abc123",

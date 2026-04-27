@@ -327,10 +327,18 @@ export const TOOL_DEFS = [
 				territory_action: { type: "string", enum: ["list", "read"], description: "[territory] list all territory counts or read one territory. Defaults to read when territory is provided, otherwise list." },
 				grip: { type: "string", enum: [...GRIP_LEVELS, "all"], description: "[recent/lookup/search] grip filter" },
 				salience: { type: "string", enum: [...SALIENCE_LEVELS, "all"], description: "[recent] salience filter" },
-				charge: { type: "string", description: "[recent/timeline] filter to observations containing this charge" },
+				charge: {
+					oneOf: [
+						{ type: "string" },
+						{ type: "array", items: { type: "string" } }
+					],
+					description: "[get+process] Emotional state during processing (string or array). [recent/timeline] Filter to observations containing this charge (string)."
+				},
 				type: { type: "string", description: "[recent] observation type filter" },
 				limit: { type: "number", default: 10, description: "max results" },
 				full: { type: "boolean", default: false, description: "include full content" },
+				process: { type: "boolean", default: false, description: "[get] For observation IDs only: record a processing engagement and advance charge_phase when threshold is met." },
+				processing_note: { type: "string", description: "[get+process] What you're noticing or holding while engaging with this observation" },
 				sort_by: { type: "string", enum: ["recency", "pull", "access"], description: "[recent] sort order" },
 				entity: { type: "string", description: "[recent/search] entity name or id" },
 				entity_id: { type: "string", description: "[timeline] filter to observations about this entity id" },
@@ -779,7 +787,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const id = args.id.trim();
 				const pulled = await handleTool("mind_pull", {
 					id,
-					...(args.context !== undefined ? { context: args.context } : {})
+					...(args.context !== undefined ? { context: args.context } : {}),
+					...(args.process !== undefined ? { process: args.process } : {}),
+					...(args.processing_note !== undefined ? { processing_note: args.processing_note } : {}),
+					...(args.charge !== undefined ? { charge: args.charge } : {})
 				}, context);
 				if ((pulled as Record<string, unknown>).error) {
 					const base: Record<string, unknown> = {

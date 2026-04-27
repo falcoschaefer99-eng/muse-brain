@@ -96,6 +96,20 @@ Preferred new family tools for v7.1:
 3. Add `mind_search` compatibility adapter or document intentional output difference before aliasing.
 4. Add tool alias entries only after parity tests exist.
 
+#### `mind_search` compatibility strategy
+
+Do **not** alias `mind_search` directly to `mind_memory action=search` yet. The intent overlaps, but the output contracts differ:
+
+- `mind_search` returns `results` + `total_matches` + `scope`.
+- `mind_memory action=search` returns `observations` + `count` + richer `query_signals` / retrieval profile metadata.
+
+Compatibility path:
+
+1. Keep `mind_search` callable as a legacy specialist read until callers are migrated.
+2. Prefer new docs/examples that use `mind_memory action=search`.
+3. If we alias later, add an explicit compatibility wrapper that preserves the old `mind_search` output shape while internally delegating to `mind_memory`.
+4. Only hide `mind_search` from default schemas after parity/adapter tests prove no client contract loss.
+
 ### Phase 3 / v7.1 — family merges
 
 1. Add `mind_self` delegating to identity/anchor/vow handlers.
