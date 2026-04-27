@@ -1,7 +1,6 @@
 {
 	"name": "muse-brain",
-	"version": "1.6.2",
-
+	"version": "7.0.0",
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",

@@ -68,6 +68,8 @@ export interface ObservationFilter {
 	type?: string;
 	/** User-assigned tag filter — any match. */
 	tags?: string[];
+	/** Filter to observations linked to this entity. */
+	entity_id?: string;
 	limit?: number;
 	offset?: number;
 	/** Column to sort by. Defaults to "created". */
@@ -104,6 +106,10 @@ export interface HybridSearchOptions {
 	retrieval_profile?: RetrievalProfile;
 	/** Optional pre-extracted query signals (storage extracts when omitted). */
 	query_signals?: QuerySignals;
+	/** Optional rerank mode requested by the caller. Backends may ignore unsupported modes. */
+	rerank_mode?: "off" | "heuristic" | "model";
+	/** Optional number of top candidates to rerank. Backends may ignore unsupported modes. */
+	rerank_top_n?: number;
 	territory?: string;
 	grip?: string[];
 	charge_phase?: string;
@@ -131,6 +137,21 @@ export interface HybridSearchResult {
 	keyword_rank?: number;
 	/** Scoring diagnostics for retrieval analysis. */
 	score_breakdown?: HybridScoreBreakdown;
+}
+
+export interface LetterPageOptions {
+	context: string;
+	limit: number;
+	cursor?: string;
+	unread_only?: boolean;
+	from?: string;
+	query?: string;
+}
+
+export interface LetterPage {
+	letters: Letter[];
+	has_more: boolean;
+	next_cursor?: string | null;
 }
 
 /** Options for bulk texture updates (decay daemon). */
@@ -272,6 +293,9 @@ export interface IBrainStorage {
 
 	readLetters(): Promise<Letter[]>;
 	getLetterById?(id: string, recipientContext: string): Promise<Letter | null>;
+	countLettersFromSince?(fromContext: string, sinceIso: string): Promise<number>;
+	markLettersRead?(ids: string[]): Promise<void>;
+	listLettersPaged?(options: LetterPageOptions): Promise<LetterPage>;
 	writeLetters(letters: Letter[]): Promise<void>;
 	appendLetter(letter: Letter): Promise<void>;
 
@@ -341,6 +365,7 @@ export interface IBrainStorage {
 	createEntity(entity: Omit<Entity, 'id' | 'created_at' | 'updated_at'>): Promise<Entity>;
 	findEntityByName(name: string): Promise<Entity | null>;
 	findEntityById(id: string): Promise<Entity | null>;
+	findEntitiesByIds?(ids: string[]): Promise<Entity[]>;
 	listEntities(filter?: EntityFilter): Promise<Entity[]>;
 	updateEntity(id: string, updates: Partial<Pick<Entity, 'name' | 'entity_type' | 'tags' | 'salience' | 'primary_context'>>): Promise<Entity>;
 

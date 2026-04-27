@@ -215,7 +215,7 @@ describe('productivity fact extraction on mind_context', () => {
 		const result = await handleCommsTool('mind_context', {
 			action: 'set',
 			summary: 'We decided to ship confidence gating next sprint.',
-			key_points: ['Deadline: next sprint', 'Falco prefers lower prompt noise'],
+			key_points: ['Deadline: next sprint', 'Mira prefers lower prompt noise'],
 			open_threads: ['Rainer will handle threshold calibration'],
 			extract_facts: true,
 			extraction_mode: 'shadow'
@@ -242,7 +242,7 @@ describe('productivity fact extraction on mind_context', () => {
 			summary: 'We decided to ship. Deadline: tomorrow.',
 			key_points: [
 				'Owner: Rainer',
-				'Falco prefers concise productivity memory'
+				'Mira prefers concise productivity memory'
 			],
 			extract_facts: true,
 			extraction_mode: 'write',

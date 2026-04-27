@@ -1,14 +1,14 @@
 # v7 Tool Consolidation Matrix
 
 Date: 2026-04-27  
-Status: working map after Phase 1 (`mind_observe` relational payload) and Phase 2 (`mind_memory` read consolidation slice).  
+Status: v7.0 release-candidate map. Phase 1 (`mind_observe` relational payload), Phase 2 (`mind_memory` read consolidation), and Phase 2b (processing parity + Kairo hardening) are complete on `release/v7.0.0`. v7.1 family-wrapper work continues separately on `main`.  
 Principle: reduce tool choice friction without flattening the brain's texture. Merge when the caller has to ask "which tool was that again?" Keep separate when the tool expresses a distinct mental act.
 
 ## Release spine
 
 | Release | Center of gravity | Ship line |
 | --- | --- | --- |
-| v7.0 | Daily-use ergonomics | `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
+| v7.0 | Daily-use ergonomics | **Release candidate ready.** `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
 | v7.1 | Tool drawer cleanup | Add semantic family tools (`mind_self`, `mind_unconscious`, `mind_system`) and keep old tools as compatibility aliases. Fold `mind_wake_log` into `mind_wake`. |
 | v7.2 | Agent intelligence | Direct agent observe API, canonical agent entities, daemonized agent learning consolidation. Requires Michael audit before release. |
 
@@ -91,10 +91,18 @@ Preferred new family tools for v7.1:
 
 ### Phase 2b — finish read no-loss before hiding legacy reads
 
+Status: **complete for v7.0.0**.
+
 1. Add `mind_memory action=get` pass-through for `process`, `processing_note`, and `charge`.
 2. Add aggregate dispatcher tests for `mind_memory` read actions. First dispatcher exposure fix landed as `4ec884a`.
 3. Add `mind_search` compatibility adapter or document intentional output difference before aliasing.
 4. Add tool alias entries only after parity tests exist.
+
+Completion notes:
+
+- `mind_memory action=get` processing passthrough landed.
+- Phase 2b Kairo hardening landed before release candidate.
+- `mind_search` remains callable as a legacy specialist read until an output-shape adapter exists.
 
 #### `mind_search` compatibility strategy
 

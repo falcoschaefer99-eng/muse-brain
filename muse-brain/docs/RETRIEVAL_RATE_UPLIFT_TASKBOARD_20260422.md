@@ -36,7 +36,7 @@
 | R8 | Post-deploy smoke probes: `mind_pull(letter_)`, `mind_pull(task_)`, `mind_memory get(letter_)` | done |
 
 ### R6 receipt (completed)
-- Backfill run executed against `rook.funkatorium.org`.
+- Backfill run executed against a private deployment endpoint.
 - Sync totals: `sent=116`, `failed=0` (initial 106 + incremental 10 on 2026-04-23).
 - Idempotency verification rerun: `0 new learning entries`.
 - Coverage includes builder + creative agent memory folders (`31` dirs; `29` markdown-bearing files).

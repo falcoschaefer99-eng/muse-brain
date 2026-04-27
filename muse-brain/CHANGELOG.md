@@ -4,6 +4,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [7.0.0] — 2026-04-27
+
+### Added
+- `mind_observe` now accepts an optional `relation` payload so observations can capture relational feeling in the same moment as memory creation.
+  - Supported sync modes: `observe_and_relate`, `observe_only`, and `relate_only`.
+  - Missing `relation` preserves the old pure-observation behavior.
+- Shared relational write path with bounded input validation for feeling, context, entity name, charge entries, and intensity.
+- `mind_memory action=timeline` delegates to `mind_timeline`.
+- `mind_memory action=territory` delegates to `mind_territory`.
+- `mind_memory action=get` now supports processing passthrough (`process`, `processing_note`, `charge`) for parity with `mind_pull`.
+- Release notes for the v7.0 daily-use ergonomics milestone.
+
+### Changed
+- `mind_memory` is now the preferred read lane for ordinary retrieval: direct ID get, recent/lookup/search, timeline, and territory reads.
+- `mind_observe` is now the preferred write lane for observation + relational feeling capture.
+- `mind_relate action=feel` remains available for compatibility and explicit relational-state writes.
+- `test:reliability` remains as a compatibility alias for `test:contracts`.
+
+### Fixed
+- Exposed `mind_memory` through the aggregate dispatcher so schema availability and runtime execution match.
+- Hardened Phase 1 audit findings:
+  - typed relational write results with a discriminated union
+  - consent log preservation on relationship-level changes
+  - coverage for `relate_only`, append behavior, validation failures, and update paths
+- Hardened Phase 2b audit findings:
+  - stronger `mind_memory action=get` assertions
+  - string-charge coercion coverage
+  - negative invariant for `process !== true`
+  - stronger dispatcher tests for search, timeline, and territory
+  - safer test factory texture overrides
+
+### Compatibility
+- No legacy tools are removed in v7.0.
+- `mind_pull`, `mind_query`, `mind_search`, `mind_timeline`, `mind_territory`, and `mind_relate` remain callable.
+- `mind_search` is intentionally not hard-aliased yet because its legacy output shape differs from `mind_memory action=search`.
+
 ## [1.6.2] — 2026-04-26
 
 ### Changed

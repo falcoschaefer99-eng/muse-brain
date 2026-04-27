@@ -7,18 +7,18 @@
 #   ./test.sh                    # Uses http://localhost:8787
 #   ./test.sh https://custom.url # Custom worker URL
 #
-# Requires: ROOK_BRAIN_API_KEY env var set
+# Requires: BRAIN_API_KEY env var set
 # =============================================================
 
 set -euo pipefail
 
 # --- Config ---
 BASE_URL="${1:-http://localhost:8787}"
-API_KEY="${ROOK_BRAIN_API_KEY:-}"
+API_KEY="${BRAIN_API_KEY:-}"
 
 if [ -z "$API_KEY" ]; then
-    echo "ERROR: Set ROOK_BRAIN_API_KEY environment variable"
-    echo "  export ROOK_BRAIN_API_KEY=your-key-here"
+    echo "ERROR: Set BRAIN_API_KEY environment variable"
+    echo "  export BRAIN_API_KEY=your-key-here"
     exit 1
 fi
 
