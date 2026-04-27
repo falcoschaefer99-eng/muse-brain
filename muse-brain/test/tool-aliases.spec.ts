@@ -2,20 +2,22 @@ import { describe, it, expect, vi } from "vitest";
 import { executeTool } from "../src/tools-v2/index";
 
 function observation(id: string, overrides: Record<string, any> = {}) {
+	const baseTexture = {
+		salience: "active",
+		vividness: "vivid",
+		charge: [],
+		grip: "present",
+		charge_phase: "fresh"
+	};
+	const { texture, ...rest } = overrides;
 	return {
 		id,
-		content: overrides.content ?? `content for ${id}`,
-		territory: overrides.territory ?? "craft",
-		created: overrides.created ?? "2026-04-27T00:00:00.000Z",
-		texture: overrides.texture ?? {
-			salience: "active",
-			vividness: "vivid",
-			charge: [],
-			grip: "present",
-			charge_phase: "fresh"
-		},
+		content: `content for ${id}`,
+		territory: "craft",
+		created: "2026-04-27T00:00:00.000Z",
+		texture: { ...baseTexture, ...(texture ?? {}) },
 		access_count: overrides.access_count ?? 0,
-		...overrides
+		...rest
 	};
 }
 
@@ -63,7 +65,8 @@ describe("tool alias dispatch", () => {
 	it("routes mind_memory search through the aggregate dispatcher", async () => {
 		const obs = observation("obs_search_dispatch", {
 			content: "search dispatcher payload",
-			created: new Date().toISOString()
+			created: new Date().toISOString(),
+			texture: { charge: ["dispatch"], grip: "strong" }
 		});
 		const storage = {
 			hybridSearch: vi.fn(async () => [{
@@ -83,8 +86,20 @@ describe("tool alias dispatch", () => {
 		}, { storage: storage as any });
 
 		expect(result.search_mode).toBe("hybrid");
+		expect(result.query).toBe("dispatcher payload");
 		expect(result.count).toBe(1);
-		expect(result.observations[0].id).toBe("obs_search_dispatch");
+		expect(result.filter).toEqual(expect.objectContaining({
+			territory: undefined,
+			grip: undefined
+		}));
+		expect(result.observations[0]).toEqual(expect.objectContaining({
+			id: "obs_search_dispatch",
+			territory: "craft",
+			score: 0.81,
+			match_in: ["keyword"],
+			charge: ["dispatch"],
+			grip: "strong"
+		}));
 		expect(storage.hybridSearch).toHaveBeenCalledWith(expect.objectContaining({
 			query: "dispatcher payload",
 			limit: 1
@@ -92,28 +107,44 @@ describe("tool alias dispatch", () => {
 	});
 
 	it("routes mind_memory timeline through the aggregate dispatcher", async () => {
+		const rows = [
+			{ observation: observation("obs_middle", { created: "2026-01-02T00:00:00.000Z" }), territory: "craft" },
+			{ observation: observation("obs_latest", { created: "2026-01-03T00:00:00.000Z" }), territory: "craft" },
+			{ observation: observation("obs_earliest", { created: "2026-01-01T00:00:00.000Z" }), territory: "craft" }
+		];
+		const expectedOrder = rows
+			.slice()
+			.sort((a, b) => Date.parse(a.observation.created) - Date.parse(b.observation.created))
+			.map(row => row.observation.id);
 		const storage = {
-			queryObservations: vi.fn(async () => [
-				{ observation: observation("obs_later", { created: "2026-01-02T00:00:00.000Z" }), territory: "craft" },
-				{ observation: observation("obs_earlier", { created: "2026-01-01T00:00:00.000Z" }), territory: "craft" }
-			])
+			queryObservations: vi.fn(async () => rows)
 		};
 
 		const result = await executeTool("mind_memory", {
 			action: "timeline",
 			territory: "craft",
-			limit: 2
+			limit: 3
 		}, { storage: storage as any });
 
 		expect(result.search_mode).toBe("chronological");
-		expect(result.observations.map((row: any) => row.id)).toEqual(["obs_earlier", "obs_later"]);
+		expect(result.observations.map((row: any) => row.id)).toEqual(expectedOrder);
+		expect(result.observations.map((row: any) => row.created)).toEqual(
+			result.observations
+				.map((row: any) => row.created)
+				.slice()
+				.sort((a: string, b: string) => Date.parse(a) - Date.parse(b))
+		);
 		expect(storage.queryObservations).toHaveBeenCalledWith(expect.objectContaining({
 			territory: "craft"
 		}));
 	});
 
 	it("routes mind_memory territory through the aggregate dispatcher", async () => {
-		const obs = observation("obs_territory_dispatch");
+		const obs = observation("obs_territory_dispatch", {
+			content: "full territory dispatcher payload",
+			texture: { grip: "iron", salience: "foundational", charge: ["territory"] },
+			access_count: 4
+		});
 		const storage = {
 			readTerritory: vi.fn(async (territory: string) => territory === "craft" ? [obs] : [])
 		};
@@ -124,8 +155,19 @@ describe("tool alias dispatch", () => {
 		}, { storage: storage as any });
 
 		expect(result.territory).toBe("craft");
+		expect(result.description).toBeDefined();
 		expect(result.count).toBe(1);
-		expect(result.observations[0].id).toBe("obs_territory_dispatch");
+		expect(result.observations[0]).toEqual(expect.objectContaining({
+			id: "obs_territory_dispatch",
+			content: "full territory dispatcher payload",
+			access_count: 4,
+			texture: expect.objectContaining({
+				grip: "iron",
+				salience: "foundational",
+				charge: ["territory"],
+				vividness: "vivid"
+			})
+		}));
 	});
 
 	it("maps mind_write_letter to mind_letter with action=write", async () => {

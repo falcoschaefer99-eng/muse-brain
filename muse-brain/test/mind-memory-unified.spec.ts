@@ -1003,6 +1003,11 @@ describe("mind_memory action=get", () => {
 
 		expect(result.found).toBe(true);
 		expect(result.type).toBe("observation");
+		expect(result.data.id).toBe("obs_abc123");
+		expect(result.data.content).toBe("full observation content");
+		expect(result.data.territory).toBe("craft");
+		expect(result.data.essence).toBeDefined();
+		expect(storage.updateObservationAccess).toHaveBeenCalledWith("obs_abc123");
 	});
 
 	it("preserves mind_pull processing behavior through action=get", async () => {
@@ -1054,6 +1059,77 @@ describe("mind_memory action=get", () => {
 		}));
 		expect(storage.incrementProcessingCount).toHaveBeenCalledWith("obs_memory_proc");
 		expect(storage.advanceChargePhase).toHaveBeenCalledWith("obs_memory_proc");
+	});
+
+	it("wraps string charge for action=get processing parity", async () => {
+		const obs = makeObservation("obs_memory_proc_string_charge", new Date(Date.now() - 3600_000).toISOString(), {
+			content: "mind_memory string charge parity"
+		});
+
+		const storage = {
+			findObservation: vi.fn(async (id: string) =>
+				id === "obs_memory_proc_string_charge" ? { observation: obs, territory: "craft" } : null
+			),
+			updateObservationAccess: vi.fn(async () => undefined),
+			createProcessingEntry: vi.fn(async () => undefined),
+			incrementProcessingCount: vi.fn(async () => 1),
+			advanceChargePhase: vi.fn(async () => ({ advanced: false })),
+			readLetters: vi.fn(async () => []),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_memory", {
+			action: "get",
+			id: "obs_memory_proc_string_charge",
+			process: true,
+			charge: "steady"
+		}, { storage: storage as any });
+
+		expect(result.found).toBe(true);
+		expect(result.data.processing).toEqual(expect.objectContaining({
+			recorded: true,
+			processing_count: 1,
+			phase_advanced: false
+		}));
+		expect(storage.createProcessingEntry).toHaveBeenCalledWith(expect.objectContaining({
+			observation_id: "obs_memory_proc_string_charge",
+			charge_at_processing: ["steady"]
+		}));
+	});
+
+	it("does not invoke processing writes for action=get without process:true", async () => {
+		const obs = makeObservation("obs_memory_no_process", new Date(Date.now() - 3600_000).toISOString(), {
+			content: "canonical get without processing"
+		});
+
+		const storage = {
+			findObservation: vi.fn(async (id: string) =>
+				id === "obs_memory_no_process" ? { observation: obs, territory: "craft" } : null
+			),
+			updateObservationAccess: vi.fn(async () => undefined),
+			createProcessingEntry: vi.fn(async () => undefined),
+			incrementProcessingCount: vi.fn(async () => 1),
+			advanceChargePhase: vi.fn(async () => ({ advanced: true, new_phase: "integrated" })),
+			readLetters: vi.fn(async () => []),
+			getTask: vi.fn(async () => null),
+			findEntityById: vi.fn(async () => null)
+		};
+
+		const result = await handleMemoryTool("mind_memory", {
+			action: "get",
+			id: "obs_memory_no_process",
+			processing_note: "should be ignored without process true",
+			charge: ["ignored"]
+		}, { storage: storage as any });
+
+		expect(result.found).toBe(true);
+		expect(result.data.id).toBe("obs_memory_no_process");
+		expect(result.data.processing).toBeUndefined();
+		expect(storage.createProcessingEntry).not.toHaveBeenCalled();
+		expect(storage.incrementProcessingCount).not.toHaveBeenCalled();
+		expect(storage.advanceChargePhase).not.toHaveBeenCalled();
+		expect(storage.updateObservationAccess).toHaveBeenCalledWith("obs_memory_no_process");
 	});
 
 	it("retrieves a letter by letter_ prefix through the unified path", async () => {
