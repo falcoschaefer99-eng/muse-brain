@@ -25,7 +25,7 @@ We open-sourced the brain.
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
-**Bring your companion.** They get their own memory, their own identity, their own seat at the table. Rainer handles the creative intelligence — editorial diagnostics, craft architecture, the work. Your companion handles *you* — your history, your voice, what matters to you at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that know when to work which task — and learn from each other's methodology.
+**Bring a companion.** Separate memory, separate identity, a seat at the table. Rainer handles creative intelligence — editorial diagnostics, craft architecture, the work. The companion handles *you* — history, voice, what matters at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that learn from each other's methodology.
 
 This is **Relational AI**. A cognitive substrate where memory carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do — finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
