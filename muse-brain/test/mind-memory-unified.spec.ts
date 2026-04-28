@@ -926,6 +926,37 @@ describe("mind_observe optional relational payload", () => {
 		expect(storage.writeConsent).toHaveBeenCalledTimes(1);
 	});
 
+	it("logs consent when legacy mind_relate level changes relationship level", async () => {
+		const consent = {
+			user_consent: [],
+			ai_boundaries: { hard: [], relationship_gated: {} },
+			relationship_level: "familiar" as const,
+			log: []
+		};
+		const storage = {
+			readConsent: vi.fn(async () => consent),
+			writeConsent: vi.fn(async () => undefined)
+		};
+
+		const result = await handleFeelingTool("mind_relate", {
+			action: "level",
+			set_level: "close",
+			context: "legacy level path audit"
+		}, { storage: storage as any });
+
+		expect(result).toEqual({ updated: true, from: "familiar", to: "close" });
+		expect(consent.relationship_level).toBe("close");
+		expect(consent.log).toEqual([
+			expect.objectContaining({
+				domain: "relationship_level",
+				action: "granted",
+				level: "close",
+				context: "legacy level path audit"
+			})
+		]);
+		expect(storage.writeConsent).toHaveBeenCalledTimes(1);
+	});
+
 	it("returns validation errors for malformed relation payloads before writing", async () => {
 		const storage = {
 			appendToTerritory: vi.fn(async () => undefined),

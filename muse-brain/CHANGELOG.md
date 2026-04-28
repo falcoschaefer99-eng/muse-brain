@@ -36,6 +36,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
   - safer test factory texture overrides
 - Aligned MCP `initialize.serverInfo.version` with package version `7.0.0`.
 - Removed remaining private/user-specific release-fixture names from packaged tests.
+- Restored consent audit logging parity for `mind_relate action=level` by routing level writes through the shared relationship-level helper.
+
+### Known Issues
+- `queryObservations({ entity_id })` is declared in the storage interface but the Postgres storage implementation does not enforce that filter internally yet. Current v7.0 read tools still apply their own defensive entity filter; storage-contract tightening is targeted for v7.0.1.
 
 ### Compatibility
 - No legacy tools are removed in v7.0.

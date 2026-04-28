@@ -146,7 +146,7 @@ export function validateRelationalWrite(input: RelationalWriteInput): { valid: t
 	return { valid: true };
 }
 
-async function updateRelationshipLevel(
+export async function updateRelationshipLevel(
 	storage: IBrainStorage,
 	setLevel: "stranger" | "familiar" | "close" | "bonded",
 	context?: string

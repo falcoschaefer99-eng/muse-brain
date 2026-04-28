@@ -42,8 +42,8 @@ npm_config_cache=/tmp/muse-brain-npm-cache npm pack
 ## Verification results
 
 - TypeScript: PASS
-- Unit tests: PASS — 20 files, 241 tests
-- Contract tests: PASS — 2 files, 72 tests
+- Unit tests: PASS — 20 files, 242 tests
+- Contract tests: PASS — 2 files, 73 tests
 - Package dry-run: PASS — 145 entries
 - Package build: PASS
 
@@ -56,8 +56,15 @@ After Rook/team signoff, the full RC review squad found five final polish items.
 3. Added an aggregate-dispatcher unknown-tool throw test.
 4. Added relational `intensity` boundary coverage for `0`, `1`, and non-numeric input.
 5. Added `relate_only` missing-feeling negative coverage.
+6. Routed legacy `mind_relate action=level` through the shared relationship-level audit-log helper.
 
-Updated count: **313 passing tests** across unit + contract lanes.
+Updated count: **315 passing tests** across unit + contract lanes.
+
+## Known issue deferred to v7.0.1
+
+`queryObservations({ entity_id })` is declared in the storage interface, but the current Postgres storage implementation does not enforce `entity_id` inside `queryObservations` itself. Current v7.0 read paths remain correct because `mind_query`/`mind_memory` apply a defensive JS-side entity filter after retrieval, but the storage contract should be tightened for third-party tool authors.
+
+Deferred fix target: v7.0.1.
 
 ## Package artifact
 
