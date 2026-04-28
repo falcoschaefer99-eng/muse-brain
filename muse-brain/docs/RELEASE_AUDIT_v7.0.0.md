@@ -42,10 +42,22 @@ npm_config_cache=/tmp/muse-brain-npm-cache npm pack
 ## Verification results
 
 - TypeScript: PASS
-- Unit tests: PASS — 20 files, 237 tests
-- Contract tests: PASS — 2 files, 69 tests
+- Unit tests: PASS — 20 files, 241 tests
+- Contract tests: PASS — 2 files, 72 tests
 - Package dry-run: PASS — 145 entries
 - Package build: PASS
+
+## Squad audit delta fixes
+
+After Rook/team signoff, the full RC review squad found five final polish items. All tag-blocking and strong-recommendation items are resolved:
+
+1. Removed remaining real user-name test fixtures from packaged tests.
+2. Updated MCP `initialize.serverInfo.version` from `1.6.0` to `7.0.0`.
+3. Added an aggregate-dispatcher unknown-tool throw test.
+4. Added relational `intensity` boundary coverage for `0`, `1`, and non-numeric input.
+5. Added `relate_only` missing-feeling negative coverage.
+
+Updated count: **313 passing tests** across unit + contract lanes.
 
 ## Package artifact
 
@@ -71,6 +83,8 @@ Test fixtures that contained a real user name were anonymized to `Mira`.
 Package contents were extracted and scanned for high-signal secrets/local paths: private deployment hostnames, old tenant-specific auth env vars, local absolute paths, common cloud/API token prefixes, and private-key blocks.
 
 Result: PASS — no matches.
+
+The source/package scan also checks for the real user-name fixture with a word-boundary pattern; the only previous broad-match false positive was Cloudflare's public `falcon-7b` model identifier.
 
 Placeholder/example credentials remain intentionally present in example files:
 

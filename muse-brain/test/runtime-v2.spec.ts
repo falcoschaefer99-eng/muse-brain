@@ -51,7 +51,7 @@ describe('runtime v2 tool', () => {
 			daily_wake_budget: 5,
 			impulse_wake_budget: 2,
 			reserve_wakes: 1,
-			updated_by: 'falco'
+			updated_by: 'mira'
 		}, { storage: storage as any });
 
 		expect(result.saved).toBe(true);
@@ -61,7 +61,7 @@ describe('runtime v2 tool', () => {
 			daily_wake_budget: 5,
 			impulse_wake_budget: 2,
 			reserve_wakes: 1,
-			updated_by: 'falco'
+			updated_by: 'mira'
 		}));
 	});
 
@@ -274,7 +274,7 @@ describe('runtime v2 tool', () => {
 			max_tool_calls_per_run: 12,
 			max_parallel_delegations: 1,
 			require_priority_clear_for_impulse: true,
-			updated_by: 'falco',
+			updated_by: 'mira',
 			metadata: {},
 			created_at: '2026-03-28T00:00:00.000Z',
 			updated_at: '2026-03-28T00:00:00.000Z'

@@ -756,6 +756,81 @@ describe("mind_observe optional relational payload", () => {
 		expect(storage.writeRelationalState).toHaveBeenCalledTimes(1);
 	});
 
+	it("accepts relational intensity boundary values 0 and 1", async () => {
+		for (const intensity of [0, 1]) {
+			const states: any[] = [];
+			const storage = {
+				readRelationalState: vi.fn(async () => states),
+				writeRelationalState: vi.fn(async (next: any[]) => {
+					states.splice(0, states.length, ...next);
+				}),
+				appendToTerritory: vi.fn(async () => undefined)
+			};
+
+			const result = await handleMemoryTool("mind_observe", {
+				mode: "observe",
+				relation: {
+					entity: "rook",
+					feeling: intensity === 0 ? "quiet trust" : "complete trust",
+					intensity,
+					sync_mode: "relate_only"
+				}
+			}, { storage: storage as any });
+
+			expect(result.observed).toBe(false);
+			expect(result.relation).toEqual(expect.objectContaining({
+				recorded: true,
+				intensity
+			}));
+			expect(states[0]).toEqual(expect.objectContaining({ intensity }));
+			expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		}
+	});
+
+	it("rejects non-numeric relational intensity before writing", async () => {
+		const storage = {
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => []),
+			writeRelationalState: vi.fn(async () => undefined)
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			content: "bad intensity",
+			relation: {
+				entity: "rook",
+				feeling: "trust",
+				intensity: "high"
+			}
+		}, { storage: storage as any });
+
+		expect(result.error).toMatch(/intensity must be a number between 0 and 1/i);
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
+		expect(storage.writeRelationalState).not.toHaveBeenCalled();
+	});
+
+	it("rejects relate_only without a feeling before writing", async () => {
+		const storage = {
+			appendToTerritory: vi.fn(async () => undefined),
+			readRelationalState: vi.fn(async () => []),
+			writeRelationalState: vi.fn(async () => undefined)
+		};
+
+		const result = await handleMemoryTool("mind_observe", {
+			mode: "observe",
+			relation: {
+				entity: "rook",
+				sync_mode: "relate_only"
+			}
+		}, { storage: storage as any });
+
+		expect(result.error).toMatch(/entity and feeling are required/i);
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+		expect(storage.readRelationalState).not.toHaveBeenCalled();
+		expect(storage.writeRelationalState).not.toHaveBeenCalled();
+	});
+
 	it("updates existing relational state and keeps previous feeling in history", async () => {
 		const rookEntity = makeEntity("ent_rook", "rook");
 		const states: any[] = [];

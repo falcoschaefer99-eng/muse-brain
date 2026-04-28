@@ -34,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
   - negative invariant for `process !== true`
   - stronger dispatcher tests for search, timeline, and territory
   - safer test factory texture overrides
+- Aligned MCP `initialize.serverInfo.version` with package version `7.0.0`.
+- Removed remaining private/user-specific release-fixture names from packaged tests.
 
 ### Compatibility
 - No legacy tools are removed in v7.0.

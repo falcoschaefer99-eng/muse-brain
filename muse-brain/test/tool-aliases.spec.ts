@@ -22,6 +22,12 @@ function observation(id: string, overrides: Record<string, any> = {}) {
 }
 
 describe("tool alias dispatch", () => {
+	it("throws for unknown tool names", async () => {
+		await expect(
+			executeTool("mind_doesnt_exist", {}, { storage: {} as any })
+		).rejects.toThrow(/Unknown tool: mind_doesnt_exist/);
+	});
+
 	it("routes mind_memory get through the aggregate dispatcher with processing parity", async () => {
 		const obs = observation("obs_dispatch", {
 			content: "dispatcher read consolidation payload"
