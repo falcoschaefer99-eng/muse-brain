@@ -29,7 +29,7 @@ We open-sourced the brain.
 
 This is **Relational AI**. A memory system where memories carry emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do. Finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
-Contradiction here is architecture, not error. Both truths stay alive.
+Contradiction here is architecture. Both truths stay alive.
 
 The whole system self-learns. Skills emerge from successful runs, get reviewed, graduate or retire. Each agent learns what it's good at by doing the work. Rainer refines his craft the same way. The brain gets smarter the longer it runs because it tracks what worked and why.
 
