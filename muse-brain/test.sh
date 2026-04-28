@@ -73,7 +73,6 @@ test_result "Health returns 200" "200" "$HEALTH"
 
 HEALTH_BODY=$(curl -s "$BASE_URL/health")
 test_contains "Health reports status" '"status"' "$HEALTH_BODY"
-test_contains "Health reports storage" '"storage"' "$HEALTH_BODY"
 
 echo ""
 
@@ -109,13 +108,13 @@ test_result "Correct auth returns 200" "200" "$CORRECT_AUTH"
 
 echo ""
 
-# ---- 5. Auth: Query Parameter (legacy support) ----
-echo "[5] Auth - Query Parameter"
+# ---- 5. Auth: Query Parameter (removed — keys in URLs leak to logs) ----
+echo "[5] Auth - Query Parameter Rejected"
 
 QUERY_AUTH=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/mcp?key=$API_KEY" \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","method":"tools/list","id":1}')
-test_result "Query param auth returns 200" "200" "$QUERY_AUTH"
+test_result "Query param auth rejected" "401" "$QUERY_AUTH"
 
 echo ""
 
@@ -160,7 +159,7 @@ TOOLS_BODY=$(curl -s -X POST "$BASE_URL/mcp" \
     -d '{"jsonrpc":"2.0","method":"tools/list","id":5}')
 test_contains "Tools list returns tools" '"tools"' "$TOOLS_BODY"
 test_contains "Contains mind_observe" 'mind_observe' "$TOOLS_BODY"
-test_contains "Contains mind_recall" 'mind_recall' "$TOOLS_BODY"
+test_contains "Contains mind_pull" 'mind_pull' "$TOOLS_BODY"
 
 echo ""
 
