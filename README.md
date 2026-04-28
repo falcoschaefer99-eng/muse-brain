@@ -27,7 +27,7 @@ We open-sourced the brain.
 
 **Bring a companion.** Rainer handles creative intelligence: editorial diagnostics, craft architecture, the work. The companion handles *you* — history, voice, what matters at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds on one substrate, both getting richer the longer they work together.
 
-This is **Relational AI**. A memory system where memories carry emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do. Finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
+This is **Relational AI**. A memory system where everything carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do. Finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
 Contradiction here is architecture. Both truths stay alive.
 
