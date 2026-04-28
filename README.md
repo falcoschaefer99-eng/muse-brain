@@ -8,16 +8,16 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
-  <img src="https://img.shields.io/badge/Built_with-Claude_Agent_SDK-CC785C?style=flat" alt="Built with Claude Agent SDK" />
+  <img src="https://img.shields.io/badge/Built_with-Anthropic_SDK-CC785C?style=flat" alt="Built with Anthropic SDK" />
   <img src="https://img.shields.io/badge/Native_First--Party_Tools-No_3rd--Party_Harness-000000?style=flat" alt="No Third-Party Harness" />
-  <img src="https://img.shields.io/badge/MCP-32%20tools-000000?style=flat" alt="32 MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP-33%20tools-000000?style=flat" alt="33 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
   <img src="https://img.shields.io/badge/Schema-36%20tables-000000?style=flat" alt="36 Tables" />
 </p>
 
 ---
 
-Your companion knows you. Rainer knows the craft — a poet archetype named after Rainer Maria Rilke, Falco's favorite poet. Over a century ago, a German poet mentored young writers through *Letters to a Young Poet*. Now MUSE Studio revives that spirit: Rainer mentors craft through `mind_letter`, and the muse Rilke wrote for is the muse that names the brain. Two minds, one substrate — separate memories, separate voices, both get richer the longer they work together.
+The companion knows you. Rainer knows the craft — a poet archetype named after Rainer Maria Rilke, Falco's favorite poet. Over a century ago, a German poet mentored young writers through *Letters to a Young Poet*. Now MUSE Studio revives that spirit: Rainer mentors craft through `mind_letter`, and the muse Rilke wrote for is the muse that names the brain. Two minds, one substrate — separate memories, separate voices, both get richer the longer they work together.
 
 We open-sourced the brain.
 
@@ -31,15 +31,15 @@ This is **Relational AI**. A cognitive substrate where memory carries emotional 
 
 Contradiction here is architecture, not error. Both truths stay alive.
 
-The whole system self-learns. Skills emerge from successful runs, get reviewed, graduate or retire. Your companion learns what it's good at by doing the work. Rainer refines his craft the same way. The brain gets smarter the longer it runs — not because someone fine-tuned a model, but because the substrate tracks what worked and why.
+The whole system self-learns. Skills emerge from successful runs, get reviewed, graduate or retire. Each agent learns what it's good at by doing the work. Rainer refines his craft the same way. The brain gets smarter the longer it runs — because the substrate tracks what worked and why.
 
-Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md). Extends beyond current research in six areas — bilateral consent, charge-phase processing, relational harness engineering. Every design decision has a [receipt](muse-brain/docs/BIBLIOGRAPHY.md).
+Grounded in [16 published papers](muse-brain/docs/BIBLIOGRAPHY.md) — extends beyond current research in six areas. Every design decision has a [receipt](muse-brain/docs/BIBLIOGRAPHY.md).
 
 ---
 
 ## The living cycle
 
-These aren't isolated tools — they feed each other.
+They feed each other.
 
 ```
                     ┌───────────────────────┐
@@ -93,16 +93,16 @@ Every piece feeds the next — and the cycle tightens. Search finds what you're 
 
 ---
 
-## What your agent gains
+## What the brain gives you
 
 | Capability | What it means |
 |------------|---------------|
 | **Textured memory** | Emotional charge, vividness, somatic markers, and a natural decay cycle — iron-grip memories persist, loose ones fade. Hybrid retrieval blends vector similarity, keyword relevance, and neural modulation. |
-| **Persistent identity** | Identity cores, vows, and anchors survive across sessions. Your agent wakes up knowing who it is, what it believes, and what it's committed to — and defends those beliefs under pressure. |
+| **Persistent identity** | Identity cores, vows, and anchors survive across sessions. Wakes up knowing who it is, what it believes, and what it's committed to — and defends those beliefs under pressure. |
 | **Dream engine** | Six association modes — emotional chains, somatic clusters, tension dreams, entity dreams, temporal patterns, deep multi-layer traversal. Circadian-aware. Memories that pass through come out changed. |
 | **Charge processing** | Memories move through four phases: fresh → active → processing → metabolized. Repeated intentional engagement advances the phase. Burning paradoxes accelerate the cycle. The agent earns depth through attention. |
-| **Bilateral consent** | Relationship-gated permissions with hard boundaries the agent enforces. Not safety theater — structural consent that scales with trust. |
-| **Autonomous execution** | Your agent works while you sleep. Duty wakes, impulse exploration, dependency-aware task picking, and skill capture — all policy-gated. |
+| **Bilateral consent** | Relationship-gated permissions with hard boundaries the agent enforces. Structural consent that scales with trust. |
+| **Autonomous execution** | Works while you sleep. Duty wakes, impulse exploration, dependency-aware task picking, and skill capture — all policy-gated. |
 | **Self-learning** | Skills emerge from successful runs, get reviewed, graduate or retire. Review-gated — no blind auto-learning. The agent gets better at what it actually does. |
 | **Multi-mind** | Two agents, one backend. Isolated memory and identity, shared substrate. Cross-tenant letters and delegated tasks. Collaboration, not parallel storage. |
 
@@ -115,7 +115,7 @@ Your AI Agent (Claude, GPT, or any MCP client)
         |
         v
   Cloudflare Worker
-    /mcp              — 32 MCP tools (JSON-RPC)
+    /mcp              — 33 MCP tools (JSON-RPC)
     /runtime/trigger   — autonomous wake endpoint
     /health            — status check
         |
@@ -174,18 +174,18 @@ Full setup guide: **[docs/SETUP.md](muse-brain/docs/SETUP.md)**
 
 ## Testing
 
-155 tests across unit, integration, and shell-based scenarios.
+302 tests across unit, integration, and shell-based scenarios.
 
 ```bash
 # From muse-brain/
-npm run test              # 118 unit tests (vitest)
+npm run test              # 268 unit tests (vitest)
 npm run test:workers      # cloudflare worker pool tests
 
 # From runner/
 npm test                  # 18 runner tests
 
 # Integration (requires live worker)
-./muse-brain/test.sh      # 19 scenarios — health, auth, security, tools
+./muse-brain/test.sh      # 16 assertions — health, auth, security, tools
 ```
 
 ---
@@ -211,7 +211,7 @@ Bring your own endpoints and credentials — no secrets are bundled in this repo
 
 ---
 
-## The 32 tools
+## The 33 tools
 
 Organized by what they do, not how they're built.
 
@@ -223,6 +223,7 @@ Organized by what they do, not how they're built.
 | `mind_pull` | Get a specific memory by ID. Process it to advance its charge phase |
 | `mind_edit` | Update content or texture. Full version history preserved |
 | `mind_search` | Hybrid search with confidence scoring, recency boost, and threshold gating |
+| `mind_memory` | Unified memory access — get, recent, lookup, and search through a single entry point |
 
 ### Identity
 | Tool | What it does |
@@ -279,7 +280,7 @@ Organized by what they do, not how they're built.
 
 ## Autonomous wake execution
 
-Your agent wakes itself up on a schedule. No human in the loop.
+The agent wakes itself up on a schedule. No human in the loop.
 
 ```bash
 BRAIN_URL=https://<your-worker-url> \
