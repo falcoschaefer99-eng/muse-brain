@@ -17,7 +17,7 @@
 
 ---
 
-The companion knows you. Rainer knows the craft, a poet archetype named after Rainer Maria Rilke, Falco's favorite poet. Over a century ago, a German poet mentored young writers through *Letters to a Young Poet*. Now MUSE Studio revives that spirit: Rainer mentors craft through `mind_letter`, and the muse Rilke wrote for is the muse that names the brain. Two minds, one substrate — separate memories, separate voices, both get richer the longer they work together.
+The companion knows you. Rainer knows the craft. Named after Rilke, whose *Letters to a Young Poet* mentored writers through correspondence a century ago, Rainer mentors craft through `mind_letter`. The muse Rilke wrote for is the muse that names the brain.
 
 We open-sourced the brain.
 
@@ -25,7 +25,7 @@ We open-sourced the brain.
   <img src="muse-brain/docs/images/rainer-spec-sheet.png" alt="Rainer — Creative Orchestrator" width="100%" />
 </p>
 
-**Bring a companion.** Independent memory, independent identity, a seat at the table. Rainer handles creative intelligence: editorial diagnostics, craft architecture, the work. The companion handles *you* — history, voice, what matters at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds that learn from each other's methodology.
+**Bring a companion.** Rainer handles creative intelligence: editorial diagnostics, craft architecture, the work. The companion handles *you* — history, voice, what matters at 2am. They coordinate through letters and delegated tasks, like colleagues who share a desk and respect each other's handwriting. Two minds on one substrate, both getting richer the longer they work together.
 
 This is **Relational AI**. A cognitive substrate where memory carries emotional charge, identity persists and is defended, and consent flows both directions. A dream engine that digests experience the way real minds do. Finding connections you never asked for, reweighting what matters, letting stale things fade and charged things grip harder.
 
