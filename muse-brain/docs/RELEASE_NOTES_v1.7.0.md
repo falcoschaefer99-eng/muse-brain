@@ -1,12 +1,12 @@
-# MUSE Brain v7.0.0 Release Notes
+# MUSE Brain v1.7.0 Release Notes
 
-Date: 2026-04-29  
-Branch: `release/v7.0.0`  
-Status: release candidate for team audit
+Date: 2026-04-29
+Branch: `release/v1.7.0`
+Status: released
 
 ## Release thesis
 
-v7.0.0 is the daily-use ergonomics release.
+v1.7.0 is the daily-use ergonomics release.
 
 It ships the parts of v7 that change ordinary brain use every session:
 
@@ -29,11 +29,11 @@ If `relation` is present, the same call can also record a relational feeling:
 ```json
 {
   "mode": "observe",
-  "content": "Rook caught the architectural risk before it calcified.",
+  "content": "Rainer caught the architectural risk before it calcified.",
   "territory": "craft",
   "charge": ["trust", "gratitude"],
   "relation": {
-    "entity": "Rook",
+    "entity": "Rainer",
     "feeling": "trust sharpened by relief",
     "intensity": 0.86,
     "direction": "toward",
@@ -75,7 +75,7 @@ Supported relation sync modes:
 
 ### Legacy tools stay alive
 
-v7.0.0 removes no tools.
+v1.7.0 removes no tools.
 
 Still callable:
 
@@ -114,9 +114,9 @@ Phase 2b audit hardening:
 - `mind_search` returns `results`, `total_matches`, and `scope`.
 - `mind_memory action=search` returns `observations`, `count`, and query-signal metadata.
 
-## Release gate before public ship
+## Release gate
 
-Before tagging/public release:
+Completed before tagging/public release:
 
 1. Run unit + contract tests.
 2. Run package dry-run.

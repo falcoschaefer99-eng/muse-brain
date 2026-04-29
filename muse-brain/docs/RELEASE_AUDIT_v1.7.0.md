@@ -1,9 +1,9 @@
-# v7.0.0 Release Candidate Audit Packet
+# v1.7.0 Release Audit Packet
 
-Date: 2026-04-29  
-Branch: `release/v7.0.0`  
-Base milestone commit: `18c5ed9` (`test(memory): harden phase 2b parity coverage`)  
-Package version: `7.0.0`
+Date: 2026-04-29
+Branch: `release/v1.7.0`
+Base milestone commit: `18c5ed9` (`test(memory): harden phase 2b parity coverage`)
+Package version: `1.7.0`
 
 ## Release boundary
 
@@ -52,7 +52,7 @@ npm_config_cache=/tmp/muse-brain-npm-cache npm pack
 The full RC review squad found six final polish items, all resolved:
 
 1. Removed remaining real user-name test fixtures from packaged tests.
-2. Updated MCP `initialize.serverInfo.version` from `1.6.0` to `7.0.0`.
+2. Updated MCP `initialize.serverInfo.version` from `1.6.0` to `1.7.0`.
 3. Added an aggregate-dispatcher unknown-tool throw test.
 4. Added relational `intensity` boundary coverage for `0`, `1`, and non-numeric input.
 5. Added `relate_only` missing-feeling negative coverage.
@@ -60,17 +60,17 @@ The full RC review squad found six final polish items, all resolved:
 
 Updated count: **315 passing tests** across unit + contract lanes.
 
-## Known issue deferred to v7.0.1
+## Known issue deferred to public v1.7.1
 
-`queryObservations({ entity_id })` is declared in the storage interface, but the current Postgres storage implementation does not enforce `entity_id` inside `queryObservations` itself. Current v7.0 read paths remain correct because `mind_query`/`mind_memory` apply a defensive JS-side entity filter after retrieval, but the storage contract should be tightened for third-party tool authors.
+`queryObservations({ entity_id })` is declared in the storage interface, but the current Postgres storage implementation does not enforce `entity_id` inside `queryObservations` itself. Current v1.7.0 read paths remain correct because `mind_query`/`mind_memory` apply a defensive JS-side entity filter after retrieval, but the storage contract should be tightened for third-party tool authors.
 
-Deferred fix target: v7.0.1.
+Deferred fix target: public v1.7.1.
 
 ## Package artifact
 
-Artifact: `muse-brain-7.0.0.tgz`
+Artifact: `muse-brain-1.7.0.tgz`
 
-- npm id: `muse-brain@7.0.0`
+- npm id: `muse-brain@1.7.0`
 - package size: ~5.8 MB
 - unpacked size: ~7.3 MB
 - files: 145
@@ -101,20 +101,18 @@ Placeholder/example credentials remain intentionally present in example files:
 
 ## Team review ask
 
-Rook/team should review:
+Rook/team reviewed:
 
 1. Does the release boundary match the stated v7.0 promise?
 2. Is `mind_observe relation` intuitive enough as the daily feeling-capture path?
 3. Is `mind_memory` clearly positioned as the preferred read lane without breaking legacy callers?
 4. Any remaining public/private scrub concerns in docs, templates, or package contents?
-5. Any reason not to tag `v7.0.0` after review?
+5. Any reason not to tag `v1.7.0` after review?
 
-## Tagging recommendation
+## Tagging
 
-Do not tag until review signoff.
-
-After signoff:
+After review signoff:
 
 ```bash
-git tag -a v7.0.0 -m "Release v7.0.0"
+git tag -a v1.7.0 -m "Release v1.7.0"
 ```

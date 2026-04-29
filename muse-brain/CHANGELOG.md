@@ -4,7 +4,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
-## [7.0.0] — 2026-04-29
+## [1.7.0] — 2026-04-29
 
 ### Added
 - `mind_observe` now accepts an optional `relation` payload so observations can capture relational feeling alongside memory creation.
@@ -34,12 +34,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
   - negative invariant for `process !== true`
   - stronger dispatcher tests for search, timeline, and territory
   - safer test factory texture overrides
-- Aligned MCP `initialize.serverInfo.version` with package version `7.0.0`.
+- Aligned MCP `initialize.serverInfo.version` with package version `1.7.0`.
 - Removed remaining private/user-specific release-fixture names from packaged tests.
 - Restored consent audit logging parity for `mind_relate action=level` by routing level writes through the shared relationship-level helper.
 
 ### Known Issues
-- `queryObservations({ entity_id })` is declared in the storage interface but the Postgres storage implementation does not enforce that filter internally yet. Current v7.0 read tools still apply their own defensive entity filter; storage-contract tightening is targeted for v7.0.1.
+- `queryObservations({ entity_id })` is declared in the storage interface but the Postgres storage implementation does not enforce that filter internally yet. Current v1.7.0 read tools still apply their own defensive entity filter; storage-contract tightening is targeted for public v1.7.1.
 
 ### Compatibility
 - No legacy tools are removed in v7.0.

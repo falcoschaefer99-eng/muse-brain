@@ -1,14 +1,14 @@
 # v7 Tool Consolidation Matrix
 
-Date: 2026-04-29  
-Status: v7.0.0 is tagged and merged back into `main`. Phase 1 (`mind_observe` relational payload), Phase 2/2b (`mind_memory` read consolidation + processing parity), and v7.1 preview wrappers `mind_self` + `mind_unconscious` are present on `main`; remaining v7.1 work is `mind_system` and `mind_wake_log` fold-in.  
+Date: 2026-04-29
+Status: public v1.7.0 is tagged and merged back into `main` for the internal v7.0 milestone. Phase 1 (`mind_observe` relational payload), Phase 2/2b (`mind_memory` read consolidation + processing parity), and v7.1 preview wrappers `mind_self` + `mind_unconscious` are present on `main`; remaining v7.1 work is `mind_system` and `mind_wake_log` fold-in.
 Principle: reduce tool choice friction without flattening the brain's texture. Merge when the caller has to ask "which tool was that again?" Keep separate when the tool expresses a distinct mental act.
 
 ## Release spine
 
 | Release | Center of gravity | Ship line |
 | --- | --- | --- |
-| v7.0 | Daily-use ergonomics | **Tagged as `v7.0.0`.** `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
+| v7.0 | Daily-use ergonomics | **Tagged publicly as `v1.7.0` for the internal v7.0 milestone.** `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
 | v7.1 | Tool drawer cleanup | Add semantic family tools (`mind_self`, `mind_unconscious`, `mind_system`) and keep old tools as compatibility aliases. Fold `mind_wake_log` into `mind_wake`. |
 | v7.2 | Agent intelligence / Agent House | Direct agent observe API, canonical agent entities, daemonized agent learning consolidation. The Agent House frame belongs here: agents become residents in the brain, not markdown files wearing hats. Requires Michael audit before release. |
 | v7.3 / post-v7 | Skill artifact sync | Skill.md import/export, checksum/drift detection, global vs repo skill inventory, and cross-machine sync. This depends on v7.2's agent entities + skill artifacts being solid first. |
@@ -95,7 +95,7 @@ Preferred new family tools for v7.1:
 
 ### Phase 2b — finish read no-loss before hiding legacy reads
 
-Status: **complete for v7.0.0**.
+Status: **complete for public v1.7.0**.
 
 1. Add `mind_memory action=get` pass-through for `process`, `processing_note`, and `charge`.
 2. Add aggregate dispatcher tests for `mind_memory` read actions. First dispatcher exposure fix landed as `4ec884a`.
@@ -197,7 +197,7 @@ Target pipeline:
 
 1. `mind_system` wrapper tool with alias tests.
 2. `mind_wake` absorbs `mind_wake_log`.
-3. v7.0.1 storage-contract fix: enforce `queryObservations({ entity_id })` inside storage implementations, especially Postgres.
+3. public v1.7.1 storage-contract fix: enforce `queryObservations({ entity_id })` inside storage implementations, especially Postgres.
 4. `mind_search` → `mind_memory search` compatibility adapter or final migration note.
 5. Hide old family tools from default schemas only after alias/parity tests and response-language review pass.
 6. Park Agent House under v7.2 after family merges; park Skill.md sync/drift under v7.3/post-v7.
