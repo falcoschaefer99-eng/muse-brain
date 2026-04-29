@@ -6,7 +6,7 @@ import { scoreHybridCandidate } from "../src/retrieval/scoring";
 function makeObservation(overrides: Partial<Observation> = {}): Observation {
 	return {
 		id: overrides.id ?? "obs_score",
-		content: overrides.content ?? "Assistant: memory palace notes for Falco",
+		content: overrides.content ?? "Assistant: memory palace notes for Mira",
 		territory: overrides.territory ?? "craft",
 		created: overrides.created ?? "2026-04-09T06:30:00.000Z",
 		texture: overrides.texture ?? {
@@ -74,7 +74,7 @@ describe("retrieval scoring", () => {
 			observation,
 			territory: "craft",
 			retrieval_profile: "balanced",
-			query_signals: extractQuerySignals('What did you say about "memory palace" to Falco in April 2026?'),
+			query_signals: extractQuerySignals('What did you say about "memory palace" to Mira in April 2026?'),
 			vector_similarity: 0.7,
 			keyword_rank: 0.8,
 			max_keyword_rank: 1,

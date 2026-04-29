@@ -5,7 +5,7 @@ import type { Desire } from "../types";
 import { DESIRE_STATUSES, RELATIONSHIP_LEVELS } from "../constants";
 import { getTimestamp, generateId, toStringArray, getCurrentCircadianPhase } from "../helpers";
 import type { ToolContext } from "./context";
-import { writeRelationalFeeling } from "./relational-utils";
+import { updateRelationshipLevel, writeRelationalFeeling } from "./relational-utils";
 
 export const TOOL_DEFS = [
 	{
@@ -201,20 +201,19 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 			if (action === "level") {
 				// This proxies to the consent system relationship level
-				const consent = await storage.readConsent();
-
 				if (args.set_level) {
 					if (!(RELATIONSHIP_LEVELS as readonly string[]).includes(args.set_level)) {
 						return { error: `Invalid level. Valid: ${[...RELATIONSHIP_LEVELS].join(", ")}` };
 					}
 
-					const oldLevel = consent.relationship_level;
-					consent.relationship_level = args.set_level as any;
-					await storage.writeConsent(consent);
-
-					return { updated: true, from: oldLevel, to: args.set_level };
+					return updateRelationshipLevel(
+						storage,
+						args.set_level as "stranger" | "familiar" | "close" | "bonded",
+						args.context
+					);
 				}
 
+				const consent = await storage.readConsent();
 				return { current: consent.relationship_level, available_levels: [...RELATIONSHIP_LEVELS] };
 			}
 

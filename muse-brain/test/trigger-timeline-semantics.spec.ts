@@ -58,7 +58,7 @@ describe('mind_trigger semantics', () => {
 			makeTrigger({
 				id: 'trigger_time_window',
 				type: 'time_window',
-				entity: 'falco',
+				entity: 'mira',
 				config: { start_hour: 6, end_hour: 8, timezone: 'America/New_York' }
 			})
 		];
@@ -81,7 +81,7 @@ describe('mind_trigger semantics', () => {
 			makeTrigger({
 				id: 'trigger_no_contact_last_fired_only',
 				type: 'no_contact',
-				entity: 'falco',
+				entity: 'mira',
 				config: { silence_hours: 2 },
 				last_fired: '2026-01-01T00:00:00.000Z'
 			})
@@ -104,7 +104,7 @@ describe('mind_trigger semantics', () => {
 			makeTrigger({
 				id: 'trigger_no_contact_once',
 				type: 'no_contact',
-				entity: 'falco',
+				entity: 'mira',
 				config: { silence_hours: 2, last_signal_at: '2026-01-01T00:00:00.000Z' }
 			})
 		];
@@ -128,7 +128,7 @@ describe('mind_trigger semantics', () => {
 			makeTrigger({
 				id: 'trigger_presence_transition',
 				type: 'presence_transition',
-				entity: 'falco',
+				entity: 'mira',
 				config: {
 					from: 'online',
 					to: 'offline',
@@ -148,7 +148,7 @@ describe('mind_trigger semantics', () => {
 		const transitioned = await handleSafetyTool('mind_trigger', {
 			action: 'check',
 			event: {
-				entity: 'falco',
+				entity: 'mira',
 				state: 'offline',
 				observed_at: '2026-01-01T10:00:00.000Z'
 			}
@@ -159,7 +159,7 @@ describe('mind_trigger semantics', () => {
 		const replay = await handleSafetyTool('mind_trigger', {
 			action: 'check',
 			event: {
-				entity: 'falco',
+				entity: 'mira',
 				state: 'offline',
 				observed_at: '2026-01-01T10:00:00.000Z'
 			}

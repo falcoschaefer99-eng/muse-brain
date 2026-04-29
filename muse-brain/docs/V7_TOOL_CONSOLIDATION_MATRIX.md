@@ -1,14 +1,14 @@
 # v7 Tool Consolidation Matrix
 
-Date: 2026-04-27  
-Status: working map after Phase 1 (`mind_observe` relational payload), Phase 2/2b (`mind_memory` read consolidation + no-loss parity), and Phase 3a (`mind_self` wrapper-first slice).  
+Date: 2026-04-29  
+Status: v7.0.0 is tagged and merged back into `main`. Phase 1 (`mind_observe` relational payload), Phase 2/2b (`mind_memory` read consolidation + processing parity), and v7.1 preview wrappers `mind_self` + `mind_unconscious` are present on `main`; remaining v7.1 work is `mind_system` and `mind_wake_log` fold-in.  
 Principle: reduce tool choice friction without flattening the brain's texture. Merge when the caller has to ask "which tool was that again?" Keep separate when the tool expresses a distinct mental act.
 
 ## Release spine
 
 | Release | Center of gravity | Ship line |
 | --- | --- | --- |
-| v7.0 | Daily-use ergonomics | `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
+| v7.0 | Daily-use ergonomics | **Tagged as `v7.0.0`.** `mind_observe` becomes the default write lane for observations + optional relational feelings. `mind_memory` becomes the default read lane. |
 | v7.1 | Tool drawer cleanup | Add semantic family tools (`mind_self`, `mind_unconscious`, `mind_system`) and keep old tools as compatibility aliases. Fold `mind_wake_log` into `mind_wake`. |
 | v7.2 | Agent intelligence / Agent House | Direct agent observe API, canonical agent entities, daemonized agent learning consolidation. The Agent House frame belongs here: agents become residents in the brain, not markdown files wearing hats. Requires Michael audit before release. |
 | v7.3 / post-v7 | Skill artifact sync | Skill.md import/export, checksum/drift detection, global vs repo skill inventory, and cross-machine sync. This depends on v7.2's agent entities + skill artifacts being solid first. |
@@ -23,7 +23,7 @@ Principle: reduce tool choice friction without flattening the brain's texture. M
 
 ## Current surface inventory
 
-Current public tools in `src/tools-v2`: **34**.
+Current public tools in `src/tools-v2`: **35**.
 
 | Tool | Lane | Decision | v7 canonical path | Rationale / migration notes |
 | --- | --- | --- | --- | --- |
@@ -48,6 +48,7 @@ Current public tools in `src/tools-v2`: **34**.
 | `mind_loop` | Active loop specialist | **Keep** | `mind_loop` | Used often; open loops/paradoxes are a clear mental act. Separate name is intuitive. |
 | `mind_dream` | Unconscious-family | **Merge** | `mind_unconscious action=dream/imagine` | Dream/imagine and subconscious processing are both unconscious-layer operations. Merge by family, not by flattening. |
 | `mind_subconscious` | Unconscious-family | **Merge** | `mind_unconscious action=process/patterns` | Same unconscious layer. Keep old name as alias. |
+| `mind_unconscious` | Unconscious-family canonical | **Keep / review before hiding old tools** | `mind_unconscious` | Wrapper-first canonical unconscious door. Landed with `dream`, `imagine`, `process`, and `patterns`; old tools stay live until parity and response language hold. |
 | `mind_maintain` | System housekeeping | **Merge** | `mind_system action=maintain/*` | Decay/consolidate/full maintenance is system housekeeping. Merge with health diagnostics. |
 | `mind_health` | System diagnostics | **Merge** | `mind_system action=health` | Diagnostics and maintenance are the same drawer. Keep sections intact. |
 | `mind_consent` | Safety/governance | **Keep** | `mind_consent` | Consent is a boundary system, not a memory operation. Keep visible and explicit. |
@@ -94,10 +95,18 @@ Preferred new family tools for v7.1:
 
 ### Phase 2b — finish read no-loss before hiding legacy reads
 
+Status: **complete for v7.0.0**.
+
 1. Add `mind_memory action=get` pass-through for `process`, `processing_note`, and `charge`.
 2. Add aggregate dispatcher tests for `mind_memory` read actions. First dispatcher exposure fix landed as `4ec884a`.
 3. Add `mind_search` compatibility adapter or document intentional output difference before aliasing.
 4. Add tool alias entries only after parity tests exist.
+
+Completion notes:
+
+- `mind_memory action=get` processing passthrough landed.
+- Phase 2b Kairo hardening landed before release candidate.
+- `mind_search` remains callable as a legacy specialist read until an output-shape adapter exists.
 
 #### `mind_search` compatibility strategy
 
@@ -115,9 +124,11 @@ Compatibility path:
 
 ### Phase 3 / v7.1 — family merges
 
-1. Add `mind_self` delegating to identity/anchor/vow handlers.
-2. Add parity tests for every old self-family action.
-3. Add `mind_unconscious` delegating to dream/subconscious handlers.
+Status: `mind_self` and `mind_unconscious` wrapper-first slices are on `main`; `mind_system` and wake-log absorption remain.
+
+1. Add `mind_self` delegating to identity/anchor/vow handlers. **Done.**
+2. Add parity tests for every old self-family action. **Done for landed self slice.**
+3. Add `mind_unconscious` delegating to dream/subconscious handlers. **Done.**
 4. Add `mind_system` delegating to maintain/health handlers.
 5. Fold `mind_wake_log` into `mind_wake` and alias old name.
 6. Hide old family tools from default exported schema only after alias tests pass.
@@ -184,10 +195,9 @@ Target pipeline:
 
 ## Immediate next code tasks from this matrix
 
-1. `mind_memory get` processing parity with `mind_pull`.
-2. `mind_search` → `mind_memory search` compatibility strategy.
-3. `mind_self` wrapper tool with alias tests.
-4. `mind_unconscious` wrapper tool with alias tests.
-5. `mind_system` wrapper tool with alias tests.
-6. `mind_wake` absorbs `mind_wake_log`.
-7. Park Agent House under v7.2 after family merges; park Skill.md sync/drift under v7.3/post-v7.
+1. `mind_system` wrapper tool with alias tests.
+2. `mind_wake` absorbs `mind_wake_log`.
+3. v7.0.1 storage-contract fix: enforce `queryObservations({ entity_id })` inside storage implementations, especially Postgres.
+4. `mind_search` → `mind_memory search` compatibility adapter or final migration note.
+5. Hide old family tools from default schemas only after alias/parity tests and response-language review pass.
+6. Park Agent House under v7.2 after family merges; park Skill.md sync/drift under v7.3/post-v7.

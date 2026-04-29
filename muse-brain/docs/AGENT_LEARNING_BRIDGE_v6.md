@@ -61,17 +61,17 @@ Optional flags:
 - [x] rerun sync produces near-zero duplicates (idempotent ledger works)
 - [ ] canonical `entity_type=agent` normalization complete for all specialists
 
-### First production receipt (April 22, 2026)
+### First production receipt (April 22, 2026; private endpoint redacted)
 
-- Endpoint: `https://rook.funkatorium.org`
+- Endpoint: private deployment
 - Tenant: `rainer`
 - Result: `106 sent / 0 failed`
 - Idempotency rerun: `0 new`
 - Source scan: 29 local agent memory files
 
-### Delta production receipt (April 23, 2026)
+### Delta production receipt (April 23, 2026; private endpoint redacted)
 
-- Endpoint: `https://rook.funkatorium.org`
+- Endpoint: private deployment
 - Tenant: `rainer`
 - Result: `10 sent / 0 failed` (Dupin + June additions)
 - Cumulative synced total: `116`
