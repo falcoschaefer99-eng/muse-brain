@@ -87,7 +87,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "muse-brain", version: "7.0.0" }, // keep in sync with package.json
+						serverInfo: { name: "muse-brain", version: "1.7.0" }, // keep in sync with package.json
 						capabilities: { tools: {} }
 					}
 				};
