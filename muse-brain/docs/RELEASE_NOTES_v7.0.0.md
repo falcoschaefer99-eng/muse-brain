@@ -1,6 +1,6 @@
 # MUSE Brain v7.0.0 Release Notes
 
-Date: 2026-04-27  
+Date: 2026-04-29  
 Branch: `release/v7.0.0`  
 Status: release candidate for team audit
 
@@ -14,7 +14,7 @@ It ships the parts of v7 that change ordinary brain use every session:
 2. Read memory through one primary tool.
 3. Preserve legacy behavior while teaching the better path.
 
-This release intentionally does **not** wait for the v7.1 tool-drawer cleanup or the v7.2 Agent House. Those are additive follow-up releases with their own audit gates.
+v7.1 (tool-drawer cleanup) and v7.2 (Agent House) ship separately with their own audit gates.
 
 ## What changed
 
@@ -86,8 +86,6 @@ Still callable:
 - `mind_territory`
 - `mind_relate`
 
-The release changes the preferred path, not the compatibility floor.
-
 ## Audit hardening included
 
 Phase 1 audit hardening:
@@ -111,14 +109,10 @@ Phase 2b audit hardening:
 
 ## Compatibility stance
 
-`mind_search` is intentionally **not** aliased directly to `mind_memory action=search` yet.
-
-The intent overlaps, but output contracts differ:
+`mind_search` is **not** aliased to `mind_memory action=search` yet — output contracts differ:
 
 - `mind_search` returns `results`, `total_matches`, and `scope`.
 - `mind_memory action=search` returns `observations`, `count`, and query-signal metadata.
-
-That adapter belongs in a later compatibility pass, not in v7.0.0.
 
 ## Release gate before public ship
 

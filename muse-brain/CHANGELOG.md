@@ -4,10 +4,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
-## [7.0.0] — 2026-04-27
+## [7.0.0] — 2026-04-29
 
 ### Added
-- `mind_observe` now accepts an optional `relation` payload so observations can capture relational feeling in the same moment as memory creation.
+- `mind_observe` now accepts an optional `relation` payload so observations can capture relational feeling alongside memory creation.
   - Supported sync modes: `observe_and_relate`, `observe_only`, and `relate_only`.
   - Missing `relation` preserves the old pure-observation behavior.
 - Shared relational write path with bounded input validation for feeling, context, entity name, charge entries, and intensity.
@@ -17,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 - Release notes for the v7.0 daily-use ergonomics milestone.
 
 ### Changed
-- `mind_memory` is now the preferred read lane for ordinary retrieval: direct ID get, recent/lookup/search, timeline, and territory reads.
+- `mind_memory` is now the preferred read lane: direct ID get, recent/lookup/search, timeline, and territory reads.
 - `mind_observe` is now the preferred write lane for observation + relational feeling capture.
 - `mind_relate action=feel` remains available for compatibility and explicit relational-state writes.
 - `test:reliability` remains as a compatibility alias for `test:contracts`.
@@ -44,7 +44,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 ### Compatibility
 - No legacy tools are removed in v7.0.
 - `mind_pull`, `mind_query`, `mind_search`, `mind_timeline`, `mind_territory`, and `mind_relate` remain callable.
-- `mind_search` is intentionally not hard-aliased yet because its legacy output shape differs from `mind_memory action=search`.
+- `mind_search` is not hard-aliased yet because its output shape differs from `mind_memory action=search`.
 
 ## [1.6.2] — 2026-04-26
 

@@ -1,13 +1,13 @@
 # v7.0.0 Release Candidate Audit Packet
 
-Date: 2026-04-27  
+Date: 2026-04-29  
 Branch: `release/v7.0.0`  
 Base milestone commit: `18c5ed9` (`test(memory): harden phase 2b parity coverage`)  
 Package version: `7.0.0`
 
 ## Release boundary
 
-This candidate is cut from the pure v7.0 milestone, before the v7.1 family-wrapper work on `main`.
+This candidate is cut from the v7.0 milestone, before the v7.1 family-wrapper work on `main`.
 
 Included:
 
@@ -49,7 +49,7 @@ npm_config_cache=/tmp/muse-brain-npm-cache npm pack
 
 ## Squad audit delta fixes
 
-After Rook/team signoff, the full RC review squad found five final polish items. All tag-blocking and strong-recommendation items are resolved:
+The full RC review squad found six final polish items, all resolved:
 
 1. Removed remaining real user-name test fixtures from packaged tests.
 2. Updated MCP `initialize.serverInfo.version` from `1.6.0` to `7.0.0`.
@@ -74,7 +74,7 @@ Artifact: `muse-brain-7.0.0.tgz`
 - package size: ~5.8 MB
 - unpacked size: ~7.3 MB
 - files: 145
-- final checksums are recorded after the last package build, outside this self-included audit document
+- final checksums are recorded after the last package build
 
 ## Public/private scrub
 
@@ -91,7 +91,7 @@ Package contents were extracted and scanned for high-signal secrets/local paths:
 
 Result: PASS — no matches.
 
-The source/package scan also checks for the real user-name fixture with a word-boundary pattern; the only previous broad-match false positive was Cloudflare's public `falcon-7b` model identifier.
+The source/package scan also checks for the real user-name fixture with a word-boundary pattern; the only broad-match false positive was Cloudflare's public `falcon-7b` model identifier.
 
 Placeholder/example credentials remain intentionally present in example files:
 
