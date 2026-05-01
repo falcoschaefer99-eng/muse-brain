@@ -1,6 +1,31 @@
 {
 	"name": "muse-brain",
 	"version": "1.7.0",
+	"description": "Relational memory substrate for AI agents with MCP tools, identity continuity, and self-hosted persistence.",
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"ai-memory",
+		"relational-ai",
+		"ai-agent",
+		"ai-companion",
+		"cognitive-architecture",
+		"agent-memory",
+		"self-hosted",
+		"typescript",
+		"cloudflare-workers",
+		"postgres"
+	],
+	"homepage": "https://github.com/falcoschaefer99-eng/muse-brain",
+	"bugs": {
+		"url": "https://github.com/falcoschaefer99-eng/muse-brain/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/falcoschaefer99-eng/muse-brain.git"
+	},
+	"license": "CC-BY-NC-SA-4.0",
+	"author": "Falco Schäfer / The Funkatorium",
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
