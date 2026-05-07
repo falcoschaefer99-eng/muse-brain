@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/falcoschaefer99-eng-muse-brain-badge.png)](https://mseep.ai/app/falcoschaefer99-eng-muse-brain)
+
 <p align="center">
   <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
