@@ -313,6 +313,27 @@ export interface ProjectDossier {
 	updated_at: string;
 }
 
+
+export interface ProjectDeployRouting {
+	kind?: string;
+	commands: string[];
+	preview_urls: string[];
+	production_urls: string[];
+}
+
+export interface ProjectWorkspaceRouting {
+	repo_slug?: string;
+	canonical_repo_url?: string;
+	default_branch?: string;
+	local_paths: string[];
+	artifact_roots: string[];
+	deploy?: ProjectDeployRouting;
+	test_commands: string[];
+	path_aliases: string[];
+	handoff_docs: string[];
+	related_projects: string[];
+}
+
 export interface ProjectDossierFilter {
 	lifecycle_status?: 'active' | 'paused' | 'archived';
 	updated_after?: string;
@@ -621,4 +642,21 @@ export interface AgentRuntimeUsage {
 	impulse_runs: number;
 	last_run_at?: string;
 	last_impulse_run_at?: string;
+}
+
+export interface WorkspaceRouting {
+	local_workspace?: string;
+	shared_workspace?: string;
+	peer_workspace?: string;
+	artifact_workspace?: string;
+	repo_slug?: string;
+	canonical_repo_url?: string;
+	default_branch?: string;
+	deploy_commands?: string[];
+	test_commands?: string[];
+	path_aliases?: string[];
+	handoff_docs?: string[];
+	related_projects?: string[];
+	preview_urls?: string[];
+	production_urls?: string[];
 }

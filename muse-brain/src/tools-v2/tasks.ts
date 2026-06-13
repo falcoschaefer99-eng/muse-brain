@@ -2,11 +2,12 @@
 // mind_task — create, list, get, update, and complete tasks.
 // Cross-tenant delegation and scheduled wake support.
 
-import type { Task, Letter } from "../types";
+import type { Task, Letter, Entity, ProjectDossier, Observation } from "../types";
 import { ALLOWED_TENANTS } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
 import { cleanText } from "./utils";
+import { buildArtifactReceiptObservation } from "./receipts";
 
 const TASK_STATUSES = ["open", "scheduled", "in_progress", "done", "deferred", "cancelled"] as const;
 const TASK_PRIORITIES = ["burning", "high", "normal", "low", "someday"] as const;
@@ -260,6 +261,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						completion_note: completionNote,
 						completed_at: getTimestamp()
 					}, isAssignedTask);
+					const receiptResult = await maybeEmitArtifactReceipt(storage, existing, updated, artifactPathResult.value);
 					const unblocked = await findUnblockedDependentTasks(storage, args.id);
 
 					// If we're the assignee completing a cross-tenant task, notify the assigner
@@ -281,6 +283,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								completed: true,
 								task: updated,
 								notified: existing.tenant_id,
+								...(receiptResult.receipt ? { artifact_receipt: receiptResult.receipt } : {}),
+								...(receiptResult.error ? { artifact_receipt_error: receiptResult.error } : {}),
 								unblocked_tasks: unblocked.tasks,
 								unblocked_assigned_tenants: unblocked.assigned_tenants
 							};
@@ -290,6 +294,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								task: updated,
 								notification_target: existing.tenant_id,
 								notification_error: err instanceof Error ? err.message : "Failed to send completion notification",
+								...(receiptResult.receipt ? { artifact_receipt: receiptResult.receipt } : {}),
+								...(receiptResult.error ? { artifact_receipt_error: receiptResult.error } : {}),
 								unblocked_tasks: unblocked.tasks,
 								unblocked_assigned_tenants: unblocked.assigned_tenants
 							};
@@ -299,6 +305,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					return {
 						completed: true,
 						task: updated,
+						...(receiptResult.receipt ? { artifact_receipt: receiptResult.receipt } : {}),
+						...(receiptResult.error ? { artifact_receipt_error: receiptResult.error } : {}),
 						unblocked_tasks: unblocked.tasks,
 						unblocked_assigned_tenants: unblocked.assigned_tenants
 					};
@@ -316,6 +324,66 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 function isAssignedTaskForCurrentTenant(task: Task, tenant: string): boolean {
 	return task.assigned_tenant === tenant && task.tenant_id !== tenant;
+}
+
+type ReceiptCapableStorage = ToolContext["storage"] & {
+	appendToTerritory?: (territory: string, observation: Observation) => Promise<void>;
+	findEntityById?: (id: string) => Promise<Entity | null>;
+	getProjectDossier?: (projectEntityId: string) => Promise<ProjectDossier | null>;
+};
+
+async function maybeEmitArtifactReceipt(
+	storage: ToolContext["storage"],
+	existingTask: Task,
+	updatedTask: Task,
+	artifactPath?: string
+): Promise<{ receipt?: Observation; error?: string }> {
+	if (!artifactPath) return {};
+
+	const entityIds = Array.isArray(existingTask.linked_entity_ids)
+		? existingTask.linked_entity_ids.map(id => cleanText(id)).filter((id): id is string => Boolean(id))
+		: [];
+	if (entityIds.length === 0) return {};
+
+	const receiptStorage = resolveTaskOwnerStorage(storage, existingTask);
+	if (!receiptStorage?.appendToTerritory || !receiptStorage.findEntityById || !receiptStorage.getProjectDossier) {
+		return { error: "artifact receipt skipped: project receipt storage unavailable" };
+	}
+
+	for (const entityId of entityIds) {
+		const entity = await receiptStorage.findEntityById(entityId);
+		if (!entity || entity.entity_type !== "project") continue;
+
+		const dossier = await receiptStorage.getProjectDossier(entity.id);
+		if (!dossier) continue;
+
+		const receipt = buildArtifactReceiptObservation({
+			existingTask,
+			updatedTask,
+			projectEntity: entity,
+			dossier,
+			artifactPath
+		});
+		try {
+			await receiptStorage.appendToTerritory("craft", receipt);
+			return { receipt };
+		} catch (err) {
+			return { error: err instanceof Error ? err.message : "Failed to write artifact receipt" };
+		}
+	}
+
+	return {};
+}
+
+function resolveTaskOwnerStorage(
+	storage: ToolContext["storage"],
+	task: Task
+): ReceiptCapableStorage | undefined {
+	if (task.tenant_id === storage.getTenant()) {
+		return storage as ReceiptCapableStorage;
+	}
+	if (typeof storage.forTenant !== "function") return undefined;
+	return storage.forTenant(task.tenant_id) as ReceiptCapableStorage;
 }
 
 async function findUnblockedDependentTasks(

@@ -54,7 +54,14 @@ describe('project dossiers v2 tool', () => {
 			tags: [' shared ', ' brain '],
 			summary: '  Make the brain more coherent. ',
 			goals: [' ship dossiers ', ' ', 'wake delta'],
-			next_actions: [' write migration ']
+			next_actions: [' write migration '],
+			workspace_routing: {
+				repo_slug: 'brain-surgery',
+				local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery'],
+				deploy: {
+					commands: ['npm run deploy']
+				}
+			}
 		}, { storage: storage as any });
 
 		expect(storage.createEntity).toHaveBeenCalledWith(expect.objectContaining({
@@ -66,11 +73,21 @@ describe('project dossiers v2 tool', () => {
 			project_entity_id: entity.id,
 			summary: 'Make the brain more coherent.',
 			goals: ['ship dossiers', 'wake delta'],
-			next_actions: ['write migration']
+			next_actions: ['write migration'],
+			metadata: expect.objectContaining({
+				workspace_routing: expect.objectContaining({
+					repo_slug: 'brain-surgery',
+					local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery']
+				})
+			})
 		}));
 		expect(result.created).toBe(true);
 		expect(result.project.entity).toEqual(entity);
 		expect(result.project.dossier).toEqual(dossier);
+		expect(result.project.workspace_routing).toEqual(expect.objectContaining({
+			repo_slug: 'brain-surgery',
+			local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery']
+		}));
 	});
 
 	it('gets a single hydrated project dossier', async () => {
@@ -167,7 +184,12 @@ describe('project dossiers v2 tool', () => {
 			tags: ['brain', 'wake'],
 			primary_context: 'Sharper wake intelligence',
 			summary: 'Wake delta is online.',
-			next_actions: ['write tests']
+			next_actions: ['write tests'],
+			workspace_routing: {
+				repo_slug: 'brain-surgery',
+				artifact_roots: ['/tmp/artifacts'],
+				test_commands: ['npm test']
+			}
 		}, { storage: storage as any });
 
 		expect(storage.updateEntity).toHaveBeenCalledWith(entity.id, expect.objectContaining({
@@ -176,11 +198,22 @@ describe('project dossiers v2 tool', () => {
 		}));
 		expect(storage.updateProjectDossier).toHaveBeenCalledWith(entity.id, expect.objectContaining({
 			summary: 'Wake delta is online.',
-			next_actions: ['write tests']
+			next_actions: ['write tests'],
+			metadata: expect.objectContaining({
+				workspace_routing: expect.objectContaining({
+					repo_slug: 'brain-surgery',
+					artifact_roots: ['/tmp/artifacts'],
+					test_commands: ['npm test']
+				})
+			})
 		}));
 		expect(result.updated).toBe(true);
 		expect(result.project.entity).toEqual(updatedEntity);
 		expect(result.project.dossier).toEqual(updatedDossier);
+		expect(result.project.workspace_routing).toEqual(expect.objectContaining({
+			repo_slug: 'brain-surgery',
+			artifact_roots: ['/tmp/artifacts']
+		}));
 	});
 
 	it('rejects oversized metadata before creating a project entity', async () => {

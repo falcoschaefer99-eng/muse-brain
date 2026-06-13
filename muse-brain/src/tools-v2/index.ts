@@ -1,6 +1,6 @@
 // ============ TOOLS V2 — BARREL ============
 // Aggregates all TOOL_DEFS and dispatches executeTool(name, args, context).
-// 19 modules → 35 tools (collapsed from ~50 old tools via action-dispatch pattern).
+// 20 modules → 37 tools (collapsed from ~50 old tools via action-dispatch pattern).
 
 import type { ToolContext } from "./context";
 
@@ -23,6 +23,7 @@ import { TOOL_DEFS as timelineDefs, handleTool as handleTimeline } from "./timel
 import { TOOL_DEFS as tasksDefs, handleTool as handleTasks } from "./tasks";
 import { TOOL_DEFS as runtimeDefs, handleTool as handleRuntime } from "./runtime";
 import { TOOL_DEFS as skillDefs, handleTool as handleSkill } from "./skills";
+import { TOOL_DEFS as receiptDefs, handleTool as handleReceipt } from "./receipts";
 
 // ============ AGGREGATED TOOL DEFINITIONS ============
 
@@ -45,7 +46,8 @@ export const TOOL_DEFS = [
 	...timelineDefs,
 	...tasksDefs,
 	...runtimeDefs,
-	...skillDefs
+	...skillDefs,
+	...receiptDefs
 ];
 
 // ============ TOOL DISPATCH TABLE ============
@@ -117,7 +119,10 @@ const TOOL_MODULES: Record<string, (name: string, args: any, context: ToolContex
 	mind_runtime: handleRuntime,
 
 	// Captured Skill Registry (Sprint 9)
-	mind_skill: handleSkill
+	mind_skill: handleSkill,
+
+	// Operational Receipts (Agent House Retrieval Truth)
+	mind_receipt: handleReceipt
 };
 
 const TOOL_ALIASES: Record<string, { canonical: string; defaultArgs?: Record<string, unknown> }> = {

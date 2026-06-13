@@ -689,4 +689,109 @@ describe('runtime v2 tool', () => {
 		expect(result.runner_contract?.prompt).toContain('Shared workspace: /tmp/shared');
 	});
 
+	it('derives dossier workspace routing from the linked project before guessing', async () => {
+		const openDueScheduledTasks = vi.fn(async () => 0);
+		const listTasks = vi.fn(async () => ([
+			{
+				id: 'task_dupin',
+				tenant_id: 'rainer',
+				priority: 'high',
+				created_at: '2026-03-28T08:00:00.000Z',
+				status: 'open',
+				title: 'Deploy Dupin service',
+				description: 'Ship the worker from the canonical repo.',
+				linked_entity_ids: ['ent_dupin']
+			}
+		]));
+		const createAgentRuntimeRun = vi.fn(async (payload: any) => ({
+			id: 'runtime_run_project',
+			tenant_id: 'rainer',
+			...payload,
+			created_at: '2026-03-28T18:00:01.000Z'
+		}));
+		const getAgentRuntimePolicy = vi.fn(async () => null);
+		const getAgentRuntimeUsage = vi.fn(async () => ({
+			agent_tenant: 'rainer',
+			since: '2026-03-28T00:00:00.000Z',
+			total_runs: 0,
+			duty_runs: 0,
+			impulse_runs: 0
+		}));
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const findEntitiesByIds = vi.fn(async () => ([{
+			id: 'ent_dupin',
+			tenant_id: 'rainer',
+			name: 'Dupin Service',
+			entity_type: 'project',
+			tags: ['dupin'],
+			salience: 'active',
+			created_at: '2026-03-28T07:00:00.000Z',
+			updated_at: '2026-03-28T07:00:00.000Z'
+		}]));
+		const getProjectDossier = vi.fn(async () => ({
+			id: 'dossier_dupin',
+			tenant_id: 'rainer',
+			project_entity_id: 'ent_dupin',
+			lifecycle_status: 'active',
+			summary: 'Dupin MCP worker',
+			goals: [],
+			constraints: [],
+			decisions: [],
+			open_questions: [],
+			next_actions: [],
+			metadata: {
+				workspace_routing: {
+					repo_slug: 'dupin-service',
+					canonical_repo_url: 'git@github.com:funkatorium/dupin-service.git',
+					default_branch: 'main',
+					local_paths: ['/Users/falco/AI/rainer-workspace/dupin-service'],
+					artifact_roots: ['/Users/falco/AI/rainer-workspace/generated-assets/dupin'],
+					deploy: {
+						commands: ['npx wrangler deploy -c /Users/falco/AI/rainer-workspace/dupin-service/wrangler.toml'],
+						production_urls: ['https://dupin.funkatorium.org']
+					},
+					test_commands: ['npm test'],
+					path_aliases: ['dupin', 'inspector service'],
+					handoff_docs: ['/Users/falco/AI/rainer-workspace/handovers/2026-05-11-dupin-decouple.md'],
+					related_projects: ['dupin-site']
+				}
+			},
+			created_at: '2026-03-28T07:00:00.000Z',
+			updated_at: '2026-03-28T07:00:00.000Z'
+		}));
+
+		const storage = {
+			getTenant: () => 'rainer',
+			getAgentRuntimePolicy,
+			getAgentRuntimeUsage,
+			getAgentRuntimeSession,
+			openDueScheduledTasks,
+			listTasks,
+			createAgentRuntimeRun,
+			findEntitiesByIds,
+			getProjectDossier
+		};
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'trigger',
+			wake_kind: 'duty',
+			now: '2026-03-28T18:00:00.000Z',
+			metadata: {
+				shared_workspace: '/tmp/shared'
+			}
+		}, { storage: storage as any });
+
+		expect(result.runner_contract?.workspace_routing).toEqual(expect.objectContaining({
+			local_workspace: '/Users/falco/AI/rainer-workspace/dupin-service',
+			artifact_workspace: '/Users/falco/AI/rainer-workspace/generated-assets/dupin',
+			repo_slug: 'dupin-service',
+			default_branch: 'main',
+			shared_workspace: '/tmp/shared',
+			deploy_commands: ['npx wrangler deploy -c /Users/falco/AI/rainer-workspace/dupin-service/wrangler.toml']
+		}));
+		expect(result.runner_contract?.prompt).toContain('Repo slug: dupin-service');
+		expect(result.runner_contract?.prompt).toContain('Canonical repo: git@github.com:funkatorium/dupin-service.git');
+		expect(result.runner_contract?.prompt).toContain('Deploy commands: npx wrangler deploy -c /Users/falco/AI/rainer-workspace/dupin-service/wrangler.toml');
+	});
+
 });

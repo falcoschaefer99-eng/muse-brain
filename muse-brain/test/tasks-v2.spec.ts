@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleTool as handleTaskTool } from '../src/tools-v2/tasks';
 import { handleTool as handleCommsTool } from '../src/tools-v2/comms';
 import { runTaskSchedulingTask } from '../src/daemon/tasks/task-scheduling';
-import type { Task } from '../src/types';
+import type { Task, Entity, ProjectDossier } from '../src/types';
 
 function makeTask(overrides: Partial<Task> = {}): Task {
 	return {
@@ -23,6 +23,39 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 		created_at: overrides.created_at ?? '2026-03-26T00:00:00.000Z',
 		updated_at: overrides.updated_at ?? '2026-03-26T00:00:00.000Z',
 		completed_at: overrides.completed_at
+	};
+}
+
+function makeProjectEntity(overrides: Partial<Entity> = {}): Entity {
+	return {
+		id: overrides.id ?? 'ent_project',
+		tenant_id: overrides.tenant_id ?? 'rainer',
+		name: overrides.name ?? 'Brain Surgery',
+		entity_type: overrides.entity_type ?? 'project',
+		tags: overrides.tags ?? ['brain'],
+		salience: overrides.salience ?? 'active',
+		primary_context: overrides.primary_context,
+		created_at: overrides.created_at ?? '2026-03-26T00:00:00.000Z',
+		updated_at: overrides.updated_at ?? '2026-03-26T00:00:00.000Z'
+	};
+}
+
+function makeProjectDossier(overrides: Partial<ProjectDossier> = {}): ProjectDossier {
+	return {
+		id: overrides.id ?? 'dossier_project',
+		tenant_id: overrides.tenant_id ?? 'rainer',
+		project_entity_id: overrides.project_entity_id ?? 'ent_project',
+		lifecycle_status: overrides.lifecycle_status ?? 'active',
+		summary: overrides.summary ?? 'Make the brain less forgetful.',
+		goals: overrides.goals ?? ['ship receipts'],
+		constraints: overrides.constraints ?? [],
+		decisions: overrides.decisions ?? [],
+		open_questions: overrides.open_questions ?? [],
+		next_actions: overrides.next_actions ?? [],
+		metadata: overrides.metadata ?? {},
+		last_active_at: overrides.last_active_at ?? '2026-03-26T00:00:00.000Z',
+		created_at: overrides.created_at ?? '2026-03-26T00:00:00.000Z',
+		updated_at: overrides.updated_at ?? '2026-03-26T00:00:00.000Z'
 	};
 }
 
@@ -363,6 +396,106 @@ describe('tasks v2 tool', () => {
 			content: expect.stringContaining('Artifact path: /tmp/shared/proposition.md')
 		}));
 		expect(result.completed).toBe(true);
+	});
+
+	it('emits a structured artifact receipt for project-linked task completions', async () => {
+		const project = makeProjectEntity({ id: 'ent_project', name: 'Dupin Service' });
+		const dossier = makeProjectDossier({
+			project_entity_id: project.id,
+			metadata: {
+				workspace_routing: {
+					repo_slug: 'dupin-service',
+					canonical_repo_url: 'git@github.com:funkatorium/dupin-service.git',
+					default_branch: 'main',
+					local_paths: ['/Users/falco/AI/rainer-workspace/dupin-service'],
+					artifact_roots: ['/Users/falco/AI/rainer-workspace/dupin-service/dist'],
+					deploy: {
+						commands: ['npm run deploy']
+					},
+					test_commands: ['npm test']
+				}
+			}
+		});
+		const appendToTerritory = vi.fn(async () => undefined);
+		const getTask = vi.fn(async () => makeTask({
+			id: 'task_project_receipt',
+			title: 'Ship the worker bundle',
+			tenant_id: 'rainer',
+			linked_entity_ids: [project.id]
+		}));
+		const updateTask = vi.fn(async (id: string, updates: Partial<Task>) => makeTask({
+			id,
+			title: 'Ship the worker bundle',
+			tenant_id: 'rainer',
+			linked_entity_ids: [project.id],
+			status: (updates.status as Task['status']) ?? 'done',
+			completion_note: updates.completion_note,
+			completed_at: updates.completed_at
+		}));
+		const storage = {
+			getTenant: () => 'rainer',
+			getTask,
+			updateTask,
+			findEntityById: vi.fn(async (id: string) => id === project.id ? project : null),
+			getProjectDossier: vi.fn(async (id: string) => id === project.id ? dossier : null),
+			appendToTerritory,
+			listTasks: vi.fn(async () => [])
+		};
+
+		const result = await handleTaskTool('mind_task', {
+			action: 'complete',
+			id: 'task_project_receipt',
+			completion_note: 'Bundle shipped.',
+			artifact_path: '/Users/falco/AI/rainer-workspace/dupin-service/dist/index.js'
+		}, { storage: storage as any });
+
+		expect(result.completed).toBe(true);
+		expect(result.artifact_receipt).toEqual(expect.objectContaining({
+			type: 'artifact_receipt',
+			entity_id: project.id,
+			tags: expect.arrayContaining(['receipt', 'artifact-receipt', 'dupin-service']),
+			context: expect.stringContaining('artifact_path=/Users/falco/AI/rainer-workspace/dupin-service/dist/index.js'),
+			content: expect.stringContaining('repo_slug: dupin-service')
+		}));
+		expect(result.artifact_receipt.content).toContain('artifact_path: /Users/falco/AI/rainer-workspace/dupin-service/dist/index.js');
+		expect(result.artifact_receipt.content).toContain('deploy_command: npm run deploy');
+		expect(result.artifact_receipt.content).toContain('test_command: npm test');
+		expect(appendToTerritory).toHaveBeenCalledWith('craft', expect.objectContaining({
+			type: 'artifact_receipt',
+			entity_id: project.id
+		}));
+	});
+
+	it('skips artifact receipt emission when no artifact_path is provided', async () => {
+		const appendToTerritory = vi.fn(async () => undefined);
+		const storage = {
+			getTenant: () => 'rainer',
+			getTask: vi.fn(async () => makeTask({
+				id: 'task_without_artifact',
+				linked_entity_ids: ['ent_project']
+			})),
+			updateTask: vi.fn(async (id: string, updates: Partial<Task>) => makeTask({
+				id,
+				linked_entity_ids: ['ent_project'],
+				status: (updates.status as Task['status']) ?? 'done',
+				completion_note: updates.completion_note,
+				completed_at: updates.completed_at
+			})),
+			findEntityById: vi.fn(async () => makeProjectEntity()),
+			getProjectDossier: vi.fn(async () => makeProjectDossier()),
+			appendToTerritory,
+			listTasks: vi.fn(async () => [])
+		};
+
+		const result = await handleTaskTool('mind_task', {
+			action: 'complete',
+			id: 'task_without_artifact',
+			completion_note: 'Done.'
+		}, { storage: storage as any });
+
+		expect(result.completed).toBe(true);
+		expect(result).not.toHaveProperty('artifact_receipt');
+		expect(appendToTerritory).not.toHaveBeenCalled();
 	});
 
 	it('returns unblocked downstream delegated tasks when a dependency completes', async () => {
