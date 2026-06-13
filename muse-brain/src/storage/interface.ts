@@ -50,6 +50,7 @@ import type {
 	AgentAuditEventFilter
 } from "../types";
 import type { QuerySignals, RetrievalProfile } from "../retrieval/query-signals";
+import type { RetrievalRerankMode } from "../retrieval/rerank";
 import type { HybridScoreBreakdown } from "../retrieval/scoring";
 
 // ============ FILTER / QUERY TYPES ============
@@ -72,6 +73,8 @@ export interface LetterListResult {
 /** Filter options for queryObservations — all fields optional, AND-combined. */
 export interface ObservationFilter {
 	territory?: string;
+	/** Filter observations linked to this entity. */
+	entity_id?: string;
 	/** Exact grip match. */
 	grip?: string;
 	/** Match observations that have ALL of these charges (superset). */
@@ -122,6 +125,10 @@ export interface HybridSearchOptions {
 	retrieval_profile?: RetrievalProfile;
 	/** Optional pre-extracted query signals (storage extracts when omitted). */
 	query_signals?: QuerySignals;
+	/** Optional second-pass rerank mode for top candidates. */
+	rerank_mode?: RetrievalRerankMode;
+	/** Number of top candidates eligible for rerank. */
+	rerank_top_n?: number;
 	territory?: string;
 	grip?: string[];
 	charge_phase?: string;
@@ -362,6 +369,7 @@ export interface IBrainStorage {
 	createEntity(entity: Omit<Entity, 'id' | 'created_at' | 'updated_at'>): Promise<Entity>;
 	findEntityByName(name: string): Promise<Entity | null>;
 	findEntityById(id: string): Promise<Entity | null>;
+	findEntitiesByIds?(ids: string[]): Promise<Entity[]>;
 	listEntities(filter?: EntityFilter): Promise<Entity[]>;
 	updateEntity(id: string, updates: Partial<Pick<Entity, 'name' | 'entity_type' | 'tags' | 'salience' | 'primary_context'>>): Promise<Entity>;
 

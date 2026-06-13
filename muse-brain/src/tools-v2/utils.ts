@@ -44,3 +44,14 @@ export function normalizeOptionalTimestamp(value: unknown): string | undefined {
 	if (Number.isNaN(parsed.getTime())) return undefined;
 	return parsed.toISOString();
 }
+
+export function normalizeLookupText(value: unknown): string {
+	if (typeof value !== "string") return "";
+	return value
+		.toLowerCase()
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim()
+		.replace(/\s+/g, " ");
+}

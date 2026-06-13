@@ -87,6 +87,7 @@ import {
 } from "../retrieval/query-signals";
 import { scoreHybridCandidate } from "../retrieval/scoring";
 import { deriveQueryHintTerms } from "../retrieval/hints";
+import { applyRetrievalRerank } from "../retrieval/rerank";
 
 import type {
 	IBrainStorage,
@@ -2602,9 +2603,19 @@ export class PostgresBrainStorage implements IBrainStorage {
 			});
 		}
 
-		// ---- Phase 3: Sort and truncate ----
+		// ---- Phase 3: Optional rerank, sort, and truncate ----
 		results.sort((a, b) => b.score - a.score);
-		return results.slice(0, limit);
+		const reranked = await applyRetrievalRerank({
+			query: options.query,
+			retrieval_profile: retrievalProfile,
+			query_signals: querySignals,
+			results,
+			options: {
+				mode: options.rerank_mode ?? "off",
+				top_n: options.rerank_top_n
+			}
+		});
+		return reranked.results.slice(0, limit);
 	}
 
 	async recordMemoryCascade(observationIds: string[]): Promise<void> {
