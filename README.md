@@ -132,6 +132,8 @@ The worker handles auth, rate limiting, and tenant isolation. A background daemo
 
 Full technical deep-dive: **[Architecture Dossier](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md)**
 
+Release spec: **[MUSE Brain 1.8 — Agent House Foundations](muse-brain/docs/RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)**
+
 ---
 
 ## Provider and billing stance
@@ -351,6 +353,7 @@ Full bibliography with paper-to-implementation mapping: **[docs/BIBLIOGRAPHY.md]
 | **[Setup Guide](muse-brain/docs/SETUP.md)** | Prerequisites, step-by-step deploy, local dev |
 | **[Migration Guide](muse-brain/docs/MIGRATIONS.md)** | Database schema — 14 migrations, 36 tables |
 | **[Architecture Dossier](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md)** | Technical deep-dive — topology, daemon loops, retrieval, security |
+| **[MUSE Brain 1.8 — Agent House Foundations](muse-brain/docs/RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)** | Public release spec for project truth, receipts, leases, Kit routing hygiene |
 | **[Bibliography](muse-brain/docs/BIBLIOGRAPHY.md)** | 16 academic papers mapped to architecture decisions |
 | **[Licensing](muse-brain/docs/LICENSING.md)** | Per-layer licensing explanation |
 

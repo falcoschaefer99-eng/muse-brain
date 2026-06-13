@@ -78,7 +78,7 @@ Required retrieval rule:
 
 Gold sets for emotional retrieval must come from real failures, not synthetic-only query generation.
 
-Canonical cross-lane scope: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
+Current public cross-lane scope: **[MUSE Brain 1.8 — Agent House Foundations](RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)**.
 
 ---
 
@@ -612,7 +612,7 @@ As of 2026-05-11, do **not** start a standalone retrieval sprint first.
 
 Current order:
 
-1. Land the v1.8.0 trust substrate from `AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md`.
+1. Land the v1.8.0 Agent House Foundations substrate from `RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md`.
 2. Include charge valence metadata/schema in v1.8.0 so emotional retrieval can be evaluated honestly.
 3. Then execute the v1.9.0 retrieval benchmark/tuning sprint using real failure queries.
 
