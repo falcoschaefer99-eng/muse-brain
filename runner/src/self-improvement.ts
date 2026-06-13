@@ -208,7 +208,7 @@ export async function runSelfImprovement(params: {
       grip: "present",
       vividness: "soft",
       content: telemetryContent,
-      context: "autonomous self-improvement loop",
+      context: "runner self-improvement loop",
     });
     toolCalls.push("mind_observe");
 

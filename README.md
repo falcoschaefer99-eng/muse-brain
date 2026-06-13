@@ -8,7 +8,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC--BY--NC--SA%204.0-D4AF37?style=flat" alt="CC-BY-NC-SA 4.0" /></a>
-  <img src="https://img.shields.io/badge/Built_with-Anthropic_SDK-CC785C?style=flat" alt="Built with Anthropic SDK" />
+  <img src="https://img.shields.io/badge/Provider--Neutral-MCP_Core-000000?style=flat" alt="Provider-neutral MCP core" />
+  <img src="https://img.shields.io/badge/Optional-Claude_%2F_Codex_Backends-CC785C?style=flat" alt="Optional Claude and Codex backends" />
   <img src="https://img.shields.io/badge/Native_First--Party_Tools-No_3rd--Party_Harness-000000?style=flat" alt="No Third-Party Harness" />
   <img src="https://img.shields.io/badge/MCP-33%20tools-000000?style=flat" alt="33 MCP Tools" />
   <img src="https://img.shields.io/badge/Research-16%20papers-000000?style=flat" alt="16 Papers" />
@@ -116,7 +117,7 @@ Your AI Agent (Claude, GPT, or any MCP client)
         v
   Cloudflare Worker
     /mcp              — 33 MCP tools (JSON-RPC)
-    /runtime/trigger   — autonomous wake endpoint
+    /runtime/trigger   — scheduler/webhook runtime endpoint
     /health            — status check
         |
         v
@@ -130,6 +131,29 @@ Your AI Agent (Claude, GPT, or any MCP client)
 The worker handles auth, rate limiting, and tenant isolation. A background daemon runs every 15 minutes: generating proposals, rescuing orphaned memories, scoring novelty, detecting paradoxes, materializing recall contracts, monitoring skill health, and scheduling tasks.
 
 Full technical deep-dive: **[Architecture Dossier](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md)**
+
+---
+
+## Provider and billing stance
+
+MUSE Brain's core is provider-neutral: it is an MCP memory/runtime substrate that any capable agent client can use.
+
+The repo includes optional execution lanes for:
+
+- Claude Code / Claude Agent SDK (`claude -p`) legacy/manual runner templates
+- Codex CLI
+- Anthropic Developer Platform API keys
+- local/self-hosted orchestration around the MCP tools
+
+Claude Agent SDK support remains in the repo because some users prefer Claude/CLI-based local automation, while others prefer direct API billing. The old autonomous `claude -p` runner path is **not the active default** for MUSE Studio; it remains as an optional/legacy template. Agent SDK and non-interactive runner usage may be billed separately from normal subscription usage depending on the current provider plan/terms. Developer Platform API-key usage remains pay-as-you-go.
+
+Practical guidance:
+
+- interactive Claude Code in a terminal or IDE may follow different usage rules than non-interactive/headless agent execution
+- non-interactive `claude -p`, Claude Agent SDK projects, and third-party apps may use a separate billing/credit lane depending on the provider plan
+- personal/local automation: Claude plan credits, Codex login, or local provider setup can be fine
+- shared/production automation: use explicit API-key billing or another predictable provider billing path
+- memory sync should stay provider-agnostic: local agent memory files → lease envelope → cloud brain observations
 
 ---
 
@@ -262,7 +286,7 @@ Organized by what they do, not how they're built.
 |------|-------------|
 | `mind_wake` | Wake the agent — quick, full, or orientation mode with circadian awareness |
 | `mind_wake_log` | Read or write wake session logs |
-| `mind_runtime` | Manage sessions, log runs, set policies, trigger autonomous cycles |
+| `mind_runtime` | Manage sessions, log runs, set policies, trigger scheduled/manual runtime cycles |
 | `mind_task` | Create, delegate, and track tasks across tenants with scheduled wake activation, dual executor/reviewer flows, and artifact-path handoffs |
 | `mind_project` | Project dossiers — goals, constraints, decisions, open questions |
 | `mind_skill` | Captured skill registry — list, review, promote, retire learned skills |
@@ -278,9 +302,9 @@ Organized by what they do, not how they're built.
 
 ---
 
-## Autonomous wake execution
+## Runtime trigger and legacy runner templates
 
-The agent wakes itself up on a schedule. No human in the loop.
+The MCP server exposes `/runtime/trigger` for schedulers and webhooks. The repo also includes legacy/manual runner templates for headless wake experiments, but MUSE Studio's current public direction is the provider-neutral MCP core plus local-memory watcher/sync path — not a default unattended `claude -p` loop.
 
 ```bash
 BRAIN_URL=https://<your-worker-url> \
@@ -297,7 +321,7 @@ The runtime system supports:
 - **Policy gates** — daily wake limits, max tool calls, priority-clear requirements
 - **Skill capture** — successful runs emit skill candidates for review
 
-Details: **[Architecture Dossier — Autonomous Runtime](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md#10-autonomous-runtime)**
+Details: **[Architecture Dossier — Runtime Trigger](muse-brain/docs/ARCHITECTURE_BRAIN_v1.md#10-runtime-trigger-and-optional-autonomous-execution)**
 
 ---
 

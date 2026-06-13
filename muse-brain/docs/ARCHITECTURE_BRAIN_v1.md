@@ -47,7 +47,7 @@ Client / Proxy / Scheduler
         ▼
 Cloudflare Worker (src/index.ts)
   - /mcp            JSON-RPC tool surface
-  - /runtime/trigger autonomous wake ingress
+  - /runtime/trigger scheduler/webhook runtime ingress
   - /health         liveness/storage check
         │
         ▼
@@ -79,7 +79,7 @@ One Cloudflare Worker handles every request. The worker authenticates, validates
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/mcp` | POST | MCP JSON-RPC — `initialize`, `tools/list`, `tools/call` |
-| `/runtime/trigger` | POST | Webhook and scheduler-friendly autonomous wake ingress |
+| `/runtime/trigger` | POST | Webhook and scheduler-friendly runtime ingress |
 | `/health` | GET | Liveness and storage probe |
 | `/` | GET | Metadata summary |
 
@@ -184,7 +184,7 @@ Tool barrel: `src/tools-v2/index.ts`. Organized by cognitive function.
 | Tool | Purpose |
 |------|---------|
 | `mind_task` | Create, delegate, and track tasks across tenants with scheduled wake activation |
-| `mind_runtime` | Manage sessions, log runs, set policies, trigger autonomous cycles |
+| `mind_runtime` | Manage sessions, log runs, set policies, trigger scheduled/manual runtime cycles |
 | `mind_skill` | Captured skill registry — list, review, promote, retire learned skills |
 
 ---
@@ -347,9 +347,9 @@ Cross-tenant intelligence is intentionally conservative:
 
 ---
 
-## 10) Autonomous runtime
+## 10) Runtime trigger and optional autonomous execution
 
-The runtime system gives agents the ability to wake themselves up on a schedule and execute tasks without a human in the loop.
+The runtime system exposes the scheduling/webhook contract for wake execution. Autonomous execution is supported as an optional capability, but the legacy `claude -p` runner is not the active default path for MUSE Studio.
 
 Primary tool: `mind_runtime`.
 
@@ -360,7 +360,7 @@ Primary tool: `mind_runtime`.
 | `set_session` / `get_session` | Session state management |
 | `log_run` / `list_runs` | Execution history |
 | `set_policy` / `get_policy` | Operational constraints |
-| `trigger` | Initiate an autonomous wake cycle |
+| `trigger` | Initiate a scheduled/manual runtime cycle |
 
 ### Trigger path
 
@@ -571,14 +571,24 @@ The system operates under an **operator-supervised autonomy** posture. The agent
 
 Three additions to reduce "remember-to-remember" drift:
 
-1. **Intention Pulse in autonomous trigger**
-   Runtime computes intention drift (stale high-priority tasks, burning/nagging loops, stale active-project next actions) and injects the result into the runner contract and autonomous prompt.
+1. **Intention Pulse in runtime trigger**
+   Runtime computes intention drift (stale high-priority tasks, burning/nagging loops, stale active-project next actions) and injects the result into the runner contract and runner prompt.
 2. **Recall Contracts with daemon materialization**
    Structured recall rules become first-class context metadata; due recalls materialize as tasks or review proposals through a dedicated daemon pass.
 3. **Fact → Commitment bridge (review-gated)**
    High-confidence extracted facts (`decision`/`deadline`) can be promoted into reviewable commitments; accepted proposals materialize into actionable tasks with provenance.
 
-### 16.3 Next lane (parity roadmap)
+### 16.3 Active next lane — Agent House trust layer
+
+The active post-v1.7.0 planning spine is the Agent House trust layer:
+
+- v1.8.0: read/write leases, delegated lease inheritance, audit diffs, wake reconciliation, local-agent bridge backfill, and charge valence schema
+- v1.9.0: real-failure retrieval benchmark harness, valence-aware query expansion, keyword-dominant emotional retrieval tuning
+- v1.10.0: pattern-level identity/relationship reflection hooks surfaced during wake
+
+Canonical scope file: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
+
+### 16.4 Next lane (parity roadmap)
 
 Planned progression:
 
@@ -588,7 +598,7 @@ Planned progression:
 - memory quality evals (`precision@k`, stale-recall/noise rates)
 - ops hardening (idempotency/replay controls, gauntlet automation)
 
-### 16.4 Research grounding
+### 16.5 Research grounding
 
 Every major architecture decision traces to published research — 16 academic papers across multi-agent reasoning, institutional alignment, persistent memory, and self-evolving systems. Six areas where this implementation extends beyond current literature: bilateral consent, emotional texture in dispatch, creative/builder specialization, charge-phase processing, role-based agent permissions, and relational harness engineering.
 

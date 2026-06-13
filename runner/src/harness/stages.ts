@@ -48,7 +48,7 @@ export function buildPlanPrompt(
   const outputs = requiredOutputs.join(", ");
   return `Stage: plan
 
-You are in the PLAN stage of a harnessed autonomous run.
+You are in the PLAN stage of a harnessed runtime run.
 Use the wake payload to decide one concrete work target.
 
 Wake payload:
@@ -141,4 +141,3 @@ Produce corrected JSON only with all required keys.
 ${outputTemplate}
 }`;
 }
-

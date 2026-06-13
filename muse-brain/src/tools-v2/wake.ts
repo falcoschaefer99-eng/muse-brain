@@ -35,7 +35,7 @@ export const TOOL_DEFS = [
 	},
 	{
 		name: "mind_wake_log",
-		description: "Log or read autonomous wake history. action=log: record what happened during a wake. action=read: retrieve recent wake history.",
+		description: "Log or read wake history. action=log: record what happened during a wake. action=read: retrieve recent wake history.",
 		inputSchema: {
 			type: "object",
 			properties: {

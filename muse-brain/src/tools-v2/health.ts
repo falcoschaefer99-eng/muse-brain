@@ -7,7 +7,7 @@ import type { ToolContext } from "./context";
 export const TOOL_DEFS = [
 	{
 		name: "mind_health",
-		description: "Brain system health and daemon intelligence diagnostics. section=all: full snapshot. section=proposals: proposal stats + current threshold. section=orphans: orphan counts and age. section=embeddings: embedding coverage. section=cascade: top memory cascade observation pairs. section=runtime: autonomous session, policy, usage counters, and recent run ledger. section=skills: captured skill registry lifecycle + provenance coverage.",
+		description: "Brain system health and daemon intelligence diagnostics. section=all: full snapshot. section=proposals: proposal stats + current threshold. section=orphans: orphan counts and age. section=embeddings: embedding coverage. section=cascade: top memory cascade observation pairs. section=runtime: session, policy, usage counters, and recent run ledger. section=skills: captured skill registry lifecycle + provenance coverage.",
 		inputSchema: {
 			type: "object",
 			properties: {

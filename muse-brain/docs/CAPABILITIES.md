@@ -627,7 +627,7 @@ Only high-confidence `decision` and `deadline` facts are eligible. In proposal m
 - burning and nagging loops
 - active projects with stale next actions (>72h)
 
-Pulse output appears both top-level and in `runner_contract.intention_pulse`, and gets injected into the autonomous execution prompt as summary lines. The runtime doesn't just ask "what can I do?" — it also asks "where are we drifting?"
+Pulse output appears both top-level and in `runner_contract.intention_pulse`, and gets injected into the runner prompt as summary lines. The runtime doesn't just ask "what can I do?" — it also asks "where are we drifting?"
 
 ---
 
@@ -665,7 +665,7 @@ Consciousness doesn't boot from cold. Identity arrives before yesterday's task l
 
 **Tool:** `mind_runtime`
 
-The runtime system gives agents the ability to wake themselves up on a schedule and execute tasks without a human present.
+The runtime system provides the contract for scheduled/manual wake execution. Fully autonomous execution is supported as an optional capability, but runner templates are not the active default path for MUSE Studio.
 
 ### Wake types
 
@@ -714,7 +714,7 @@ The runner contract is the runtime's output — a structured decision about whet
 The trigger response includes:
 - `intention_pulse.requires_attention`
 - stale task/loop/project counters and stale-window metadata
-- `summary_lines` injected into the autonomous prompt
+- `summary_lines` injected into the runner prompt
 
 This keeps runtime behavior proactive instead of purely reactive to whichever task happens to be selected first.
 
@@ -727,7 +727,7 @@ When trigger metadata includes workspace hints, the runtime passes them through 
 - `peer_workspace`
 - `artifact_workspace`
 
-This gives autonomous wakes a canonical place to write deliverables and a shared lane for review flows.
+This gives runtime wakes a canonical place to write deliverables and a shared lane for review flows.
 
 ### Session continuity
 

@@ -1,7 +1,7 @@
 {
   "name": "muse-brain-runner",
   "version": "0.1.0",
-  "description": "Autonomous execution layer for MUSE Brain \u2014 runs Claude with brain tools on a schedule",
+  "description": "Legacy/manual execution templates for MUSE Brain \u2014 optional Claude/Codex/API runner experiments",
   "type": "module",
   "scripts": {
     "build": "tsc",

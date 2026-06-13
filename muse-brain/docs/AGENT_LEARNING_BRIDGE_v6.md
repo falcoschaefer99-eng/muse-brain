@@ -80,9 +80,25 @@ Optional flags:
 
 ---
 
-## Next step (post-v6)
+## Next step (post-v1.7.0 / v1.8.0 trust layer)
 
-Implement direct Agent API ingest (`/api/v1/agent/observe`) with agent-scoped keys and audit trails so subagents can log in real time without proxy scripting.
+Do **not** redesign this bridge. Extend it as part of the v1.8.0 Agent House trust layer.
+
+Canonical scope file: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
+
+Required bridge extension:
+
+- local files such as `.claude/agents/memory/michael/` continue to sync through `scripts/agent-memory-sync.mjs`
+- bridge writes are wrapped in a lease envelope
+- audit metadata includes:
+  - `source: "local_file"`
+  - `platform: "claude_code"`
+  - `bridge_run_id`
+  - canonical `agent_id`
+  - source path
+  - deterministic idempotency key
+
+Direct in-run agent writes remain a target, but they must use the same read/write Lease Protocol as bridge writes. Agent-side writeability is never trusted by itself; the brain server enforces scope.
 
 ## v7 extension (Kit intelligence layer)
 
