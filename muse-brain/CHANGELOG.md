@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.7.0] — 2026-05-11
+
+### Added
+- `mind_observe` supports an optional relational payload so an agent can record feeling and observation in one moment.
+
+### Changed
+- `mind_memory` now uses the consolidated read path for `get`, `recent`, `lookup`, `search`, `timeline`, and `territory`.
+- Memory `get` has processing parity with the direct read path.
+
+### Security
+- Audit hardening pass: type tightening, tests, and security polish from review.
+
 ## [1.6.0] — 2026-04-22
 
 ### Added

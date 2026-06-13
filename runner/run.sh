@@ -1,8 +1,12 @@
 #!/bin/bash
-# MUSE Brain Autonomous Runner — Unified CLI/API launcher
+# MUSE Brain Runner — legacy/manual unified CLI/API launcher
+#
+# Status:
+#   - This is an optional local/headless runner template for people who want one.
+#   - It is not the active default execution path for MUSE Studio.
 #
 # Providers:
-#   - claude        (Claude Code subscription via claude -p)
+#   - claude        (Claude Code CLI via claude -p)
 #   - codex         (Codex subscription/API via codex exec)
 #   - anthropic_api (Node runner via Anthropic SDK)
 #   - auto          (default: claude -> codex -> anthropic_api)
@@ -39,7 +43,7 @@ SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_PATH:-$SCRIPT_DIR/system-prompt.txt}"
 if [ -f "$SYSTEM_PROMPT_FILE" ]; then
   SYSTEM_PROMPT=$(cat "$SYSTEM_PROMPT_FILE")
 else
-  SYSTEM_PROMPT="You are an autonomous AI running a scheduled duty cycle. You have access to a brain memory system via MCP tools.
+  SYSTEM_PROMPT="You are running an optional/manual scheduled duty cycle. You have access to a brain memory system via MCP tools.
 
 Your job each cycle:
 1. Call mind_wake(depth=quick) to check current state
@@ -77,13 +81,13 @@ elif [ -n "$RUNNER_PROMPT_TEXT" ]; then
   PROMPT_OVERRIDE="$RUNNER_PROMPT_TEXT"
 fi
 
-PROMPT_CLAUDE="You are waking for an autonomous duty cycle.
+PROMPT_CLAUDE="You are waking for an optional/manual duty cycle.
 
 ${SYSTEM_PROMPT}
 
 Begin by loading your tools with ToolSearch, then call mind_wake(depth=\"quick\")."
 
-PROMPT_CODEX="You are waking for an autonomous duty cycle.
+PROMPT_CODEX="You are waking for an optional/manual duty cycle.
 
 ${SYSTEM_PROMPT}
 
@@ -97,7 +101,7 @@ CLAUDE_USE_ALLOWED_TOOLS=1
 CLAUDE_PERMISSION_ARGS=()
 
 if [ -n "$PROMPT_OVERRIDE" ]; then
-  PROMPT_CLAUDE="You are executing one autonomous wake in a real workspace.
+  PROMPT_CLAUDE="You are executing one optional/manual wake in a real workspace.
 
 Follow the task contract exactly.
 - If the task requires an artifact, write the real file.

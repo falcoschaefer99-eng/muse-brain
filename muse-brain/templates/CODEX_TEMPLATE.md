@@ -43,7 +43,7 @@ Use memory/runtime tools intentionally:
 - `mind_wake` at session start
 - `mind_query` / `mind_search` before decisions
 - `mind_observe` for durable progress signals
-- `mind_task` / `mind_runtime` for autonomous execution lanes
+- `mind_task` / `mind_runtime` for scheduled/manual runtime lanes
 
 ## Optional Specialist: Rainer
 
@@ -79,4 +79,3 @@ For full persona launchers, MUSE Brain also ships shell templates for `rainer`, 
 - Show changed files.
 - Show verification run (`tests`, `typecheck`, `lint`) when relevant.
 - Call out residual risks explicitly.
-

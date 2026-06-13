@@ -12,7 +12,7 @@ You can run MUSE Brain in two supported modes:
 Shared behavior in both modes:
 - MCP tools + auth + runtime trigger endpoint
 - Memory/identity/runtime/task surfaces through the same tool contract
-- Optional headless wake script for autonomous runs
+- Optional legacy/manual headless wake script for local experiments
 
 ## Launch path options
 
@@ -84,9 +84,9 @@ curl -sS https://<your-worker-url>/health
 curl -sS "https://<your-worker-url>/?key=<API_KEY>"
 ```
 
-## 7) Optional: autonomous wake runner
+## 7) Optional legacy/manual wake runner
 
-Use `scripts/runtime-autonomous-wake.sh` to run duty/impulse wakes.
+Use `scripts/runtime-autonomous-wake.sh` only if you explicitly want to experiment with local headless duty/impulse wakes. This path is not the active default for MUSE Studio.
 
 ```bash
 BRAIN_URL=https://<your-worker-url> \

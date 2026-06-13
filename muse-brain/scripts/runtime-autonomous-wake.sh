@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runtime autonomous wake runner (Sprint 8)
+# Legacy/manual runtime wake runner (Sprint 8)
+#
+# Status:
+#   - Optional local/headless template for users who explicitly want this lane.
+#   - Not the active default execution path for MUSE Studio.
 #
 # Flow:
 # 1) Calls POST /runtime/trigger to apply policy gates and pick/claim a task
@@ -140,7 +144,7 @@ if ! command -v claude >/dev/null 2>&1; then
 	exit 1
 fi
 
-echo "Running autonomous wake for tenant=${BRAIN_TENANT}, task=${TASK_ID}, wake_kind=${WAKE_KIND}."
+echo "Running manual headless wake for tenant=${BRAIN_TENANT}, task=${TASK_ID}, wake_kind=${WAKE_KIND}."
 
 CMD=(claude -p "$PROMPT")
 if [[ -n "$RESUME_SESSION_ID" ]]; then

@@ -1,0 +1,66 @@
+name: Lifecycle Script Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'package.json'
+      - '**/package.json'
+
+jobs:
+  check-lifecycle-scripts:
+    name: Detect install-time lifecycle scripts
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+
+    steps:
+      - name: Checkout PR head (with base history)
+        # actions/checkout v4.3.1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Diff lifecycle scripts in package.json files
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'lifecycle-script-approved') }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys, os
+
+          LIFECYCLE_KEYS = {"postinstall", "preinstall", "prepare", "install"}
+          base_sha = os.environ["BASE_SHA"]
+
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", f"{base_sha}...HEAD", "--", "package.json", "**/package.json"],
+              capture_output=True, text=True, check=True
+          ).stdout.splitlines()
+
+          found = []
+          for path in (f.strip() for f in changed if f.strip()):
+              base_raw = subprocess.run(["git", "show", f"{base_sha}:{path}"], capture_output=True, text=True)
+              if base_raw.returncode != 0:
+                  print(f"::debug::base lookup failed for {path}: {base_raw.stderr.strip()}")
+                  base_scripts = {}
+              else:
+                  base_scripts = json.loads(base_raw.stdout).get("scripts", {})
+              try:
+                  head_scripts = json.load(open(path)).get("scripts", {})
+              except (FileNotFoundError, json.JSONDecodeError):
+                  head_scripts = {}
+              for key in LIFECYCLE_KEYS:
+                  hv, bv = head_scripts.get(key), base_scripts.get(key)
+                  if hv is not None and hv != bv:
+                      action = "added" if bv is None else "modified"
+                      found.append(f"  {path}: scripts.{key} {action} → \"{hv}\"")
+
+          if found:
+              print("::error::PR adds or modifies install-time lifecycle scripts (postinstall/preinstall/prepare/install).")
+              print("These are a supply chain attack vector — human review required.")
+              print("If intentional, add the `lifecycle-script-approved` label to bypass.\n")
+              for line in found: print(line)
+              sys.exit(1)
+
+          print("No install-time lifecycle script changes detected. Check passed.")
+          EOF

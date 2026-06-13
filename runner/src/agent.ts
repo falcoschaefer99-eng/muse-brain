@@ -14,7 +14,7 @@ import { runValidationGates } from "./harness/validate.js";
 import { appendArtifactLedger, writeStageArtifact } from "./harness/artifacts.js";
 import { runSelfImprovement, type SelfImprovementResult } from "./self-improvement.js";
 
-const DEFAULT_SYSTEM = `You are an autonomous AI running a harnessed duty cycle.
+const DEFAULT_SYSTEM = `You are an agent running an optional/manual harnessed duty cycle.
 Respect stage boundaries.
 Use tools truthfully and efficiently.
 Never fabricate tool outcomes.

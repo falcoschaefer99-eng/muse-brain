@@ -1,21 +1,25 @@
 # MUSE Brain Runner
 
-Autonomous execution layer for MUSE Brain.
+Legacy/manual execution templates for MUSE Brain.
 
 The runner consumes the brain's runtime contract — task selection, dependency gating, workspace routing hints, and artifact handoff expectations — and turns that into an actual execution loop.
 
-This runner supports **subscription-first execution** across both ecosystems:
+This package contains legacy/manual runner templates for **provider-neutral execution** across both ecosystems:
 - **Claude Code** (`claude -p`)
 - **Codex CLI** (`codex exec`)
 
 And keeps an optional API lane:
 - **Anthropic SDK** (`node dist/index.js`)
 
+Status note: the old unattended autonomous `claude -p` runner path is not the active default for MUSE Studio. These templates remain available for users who explicitly want local/headless experiments.
+
+Billing note: Agent SDK and non-interactive `claude -p` usage may be billed separately from normal subscription usage depending on current provider terms. Interactive terminal/IDE usage, headless runner usage, and Developer Platform API-key usage can follow different billing paths. Treat Claude Code / Agent SDK as one optional backend, not the architecture's default billing assumption.
+
 ---
 
 ## Modes
 
-## 1) Unified CLI runner (`./run.sh`) — recommended default
+## 1) Unified CLI runner (`./run.sh`) — optional/legacy template
 
 `run.sh` selects a provider via `RUNNER_PROVIDER`:
 
@@ -44,9 +48,9 @@ npm run daemon  # node-cron loop
 
 Best for servers, CI, containerized deployments.
 
-## 3) Mac orchestrator (`node dist/index.js --orchestrator`)
+## 3) Mac orchestrator (`node dist/index.js --orchestrator`) — optional/legacy
 
-This is the Mac-only autonomous companion loop.
+This is the Mac-only local companion loop template. It is not the active default path for MUSE Studio.
 
 It:
 - loads local tenant config from `runner/config/tenants.json` (copy from `runner/config/tenants.example.json`; keep the local file gitignored)
@@ -91,7 +95,7 @@ Voice/Telegram docs:
 
 ## Setup
 
-### A) Subscription-first (no API key required)
+### A) Logged-in CLI providers (optional/manual)
 
 #### Claude provider
 ```bash
@@ -109,7 +113,7 @@ cd runner
 ./run.sh
 ```
 
-### B) Optional API fallback
+### B) Optional API provider
 
 Copy env template:
 ```bash
@@ -271,4 +275,4 @@ docker build -t muse-brain-runner .
 docker run --env-file .env -v $(pwd)/logs:/app/logs muse-brain-runner
 ```
 
-If you want subscription-first behavior in containers, run `./run.sh` via an external scheduler on a host where CLI auth is already established.
+If you want CLI-auth behavior in containers, run `./run.sh` via an external scheduler on a host where CLI auth is already established. This is an optional local deployment choice, not the default MUSE Studio path.
