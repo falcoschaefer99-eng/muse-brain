@@ -498,6 +498,7 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		let rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
 
 		if (filter.territory) rows = rows.filter(o => o.territory === filter.territory);
+		if (filter.entity_id) rows = rows.filter(o => o.entity_id === filter.entity_id);
 		if (filter.grip) rows = rows.filter(o => o.texture?.grip === filter.grip);
 		if (filter.charges_all?.length) rows = rows.filter(o => filter.charges_all!.every(c => o.texture?.charge?.includes(c)));
 		if (filter.charges_any?.length) rows = rows.filter(o => filter.charges_any!.some(c => o.texture?.charge?.includes(c)));

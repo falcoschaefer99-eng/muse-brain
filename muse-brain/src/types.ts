@@ -395,10 +395,29 @@ export interface A2ATaskEnvelope {
 
 // --- Daemon Intelligence (Brain v5 Sprint 4) ---
 
+export type DaemonProposalType =
+	| 'link'
+	| 'orphan_rescue'
+	| 'consolidation'
+	| 'dedup'
+	| 'cross_agent'
+	| 'cross_tenant'
+	| 'paradox_detected'
+	| 'skill_recapture'
+	| 'skill_supersession'
+	| 'skill_promotion'
+	| 'recall_contract'
+	| 'fact_commitment'
+	| 'project_routing_update'
+	| 'project_routing_drift'
+	| 'missing_artifact_receipt'
+	| 'stale_deploy_command'
+	| 'path_alias_conflict';
+
 export interface DaemonProposal {
 	id: string;
 	tenant_id: string;
-	proposal_type: 'link' | 'orphan_rescue' | 'consolidation' | 'dedup' | 'cross_agent' | 'cross_tenant' | 'paradox_detected' | 'skill_recapture' | 'skill_supersession' | 'skill_promotion' | 'recall_contract' | 'fact_commitment';
+	proposal_type: DaemonProposalType;
 	source_id: string;
 	target_id: string;
 	similarity?: number;
