@@ -302,7 +302,7 @@ async function listLetters(
 	}
 ): Promise<{ letters: Letter[]; has_more: boolean; next_cursor: string | null }> {
 	if (typeof storage.listLettersPaged === "function") {
-		return await storage.listLettersPaged({
+		const page = await storage.listLettersPaged({
 			context: options.context,
 			limit: options.limit,
 			cursor: options.cursor,
@@ -310,6 +310,11 @@ async function listLetters(
 			from: options.from,
 			query: options.query
 		});
+		return {
+			letters: page.letters,
+			has_more: page.has_more,
+			next_cursor: page.next_cursor ?? null
+		};
 	}
 
 	const allLetters = sortLettersNewestFirst(filterLetters(await storage.readLetters(), options));

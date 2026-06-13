@@ -45,11 +45,22 @@ export interface HybridScoreBreakdown {
 		circadian_multiplier: number;
 		weighted_multiplier: number;
 	};
+	dynamic_weights?: {
+		baseline: { relevance: number; cognition: number };
+		modifiers: Array<Record<string, unknown>>;
+		total_delta: { relevance: number; cognition: number };
+		applied: { relevance: number; cognition: number };
+	};
 	signals: {
 		quoted_phrases: string[];
 		proper_names: string[];
 		temporal_query: boolean;
 		assistant_reference_query: boolean;
+		emotional_state_query?: boolean;
+		contradiction_query?: boolean;
+		relational_query?: boolean;
+		relational_intensity?: number;
+		territory_cues?: string[];
 		quoted_phrase_matches: string[];
 		proper_name_matches: string[];
 		temporal_matched: boolean;

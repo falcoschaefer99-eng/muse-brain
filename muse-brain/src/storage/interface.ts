@@ -89,8 +89,6 @@ export interface ObservationFilter {
 	type?: string;
 	/** User-assigned tag filter — any match. */
 	tags?: string[];
-	/** Filter to observations linked to this entity. */
-	entity_id?: string;
 	limit?: number;
 	offset?: number;
 	/** Column to sort by. Defaults to "created". */
@@ -319,10 +317,6 @@ export interface IBrainStorage {
 	listLettersPaged?(options: LetterPageOptions): Promise<LetterPage>;
 	writeLetters(letters: Letter[]): Promise<void>;
 	appendLetter(letter: Letter): Promise<void>;
-	getLetterById?(id: string): Promise<Letter | null>;
-	listLettersPaged?(options: LetterListOptions): Promise<LetterListResult>;
-	markLettersRead?(ids: string[]): Promise<void>;
-	countLettersFromSince?(fromContext: string, sinceIso: string): Promise<number>;
 
 	// --- Identity Cores ---
 
