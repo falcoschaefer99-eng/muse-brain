@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.8.0] — 2026-06-13
+
+### Added
+- **Agent House Foundations** public release spec: project truth, receipt-backed wayfinding, scoped leases, and Kit routing hygiene.
+- Project dossier `workspace_routing` support for repo URLs, local paths, artifact roots, deploy/test commands, aliases, handoff docs, and related projects.
+- `mind_receipt` operational receipts for repo, deploy, and artifact events, plus `scripts/repo-receipt-sync.mjs` for local checkout → Brain receipt intake.
+- Agent lease trust layer: `X-Brain-Lease`, delegated scope narrowing, enforcement modes, lease ledger, and audit events.
+- Kit project routing hygiene proposals: `project_routing_update`, `project_routing_drift`, `missing_artifact_receipt`, `stale_deploy_command`, and `path_alias_conflict`.
+- `cognitive_advantage` benchmark adapter, heuristic rerank lane, report scripts, and organic corpus seeding helper.
+- GitHub lifecycle-script guard for install-time package script changes.
+
+### Changed
+- Legacy/headless autonomous runner docs now present the runner as optional/manual infrastructure, not the active MUSE Studio default.
+- Runtime wording now distinguishes the Brain's scheduler/webhook contract from future app-level autonomous orchestration.
+- Cross-brain letters now use clearer tenant resolution and delivery status fields.
+
+### Fixed
+- Project routing lookup and receipt paths now avoid semantic guessing when deterministic project truth exists.
+- Kit can now catch missing artifact paths and stale/different routing evidence before it becomes cross-session confusion.
+- `queryObservations({ entity_id })` is honored in both SQLite and Postgres paths.
+
+### Verification
+- `npx tsc --noEmit`
+- `npm test -- --run` — 24 files / 281 tests
+- Cognitive benchmark smoke with `--dataset cognitive_advantage --rerank-mode heuristic`
+
 ## [1.7.0] — 2026-05-11
 
 ### Added

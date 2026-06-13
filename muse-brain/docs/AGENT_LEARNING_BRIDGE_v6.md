@@ -71,7 +71,7 @@ Optional flags:
 
 Do **not** redesign this bridge. Extend it as part of the v1.8.0 Agent House trust layer.
 
-Canonical scope file: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
+Public release scope file: **[MUSE Brain 1.8 — Agent House Foundations](RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)**.
 
 Required bridge extension:
 

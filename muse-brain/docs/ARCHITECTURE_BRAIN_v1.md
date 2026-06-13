@@ -586,7 +586,7 @@ The active post-v1.7.0 planning spine is the Agent House trust layer:
 - v1.9.0: real-failure retrieval benchmark harness, valence-aware query expansion, keyword-dominant emotional retrieval tuning
 - v1.10.0: pattern-level identity/relationship reflection hooks surfaced during wake
 
-Canonical scope file: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
+Public release scope file: **[MUSE Brain 1.8 — Agent House Foundations](RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)**.
 
 ### 16.4 Next lane (parity roadmap)
 

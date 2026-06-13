@@ -3,7 +3,7 @@
 **Date:** 2026-06-10  
 **Status:** Draft implementation spec  
 **Canonical for:** project routing truth, repo-to-brain receipts, Kit synthesis lane  
-**Depends on:** `AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md` v1.8-v1.10 arc
+**Related release:** [MUSE Brain 1.8 — Agent House Foundations](RELEASE_SPEC_v1.8_AGENT_HOUSE_FOUNDATIONS.md)
 
 ---
 

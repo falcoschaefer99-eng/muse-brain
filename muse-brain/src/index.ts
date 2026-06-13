@@ -264,7 +264,7 @@ async function handleMcpRequest(
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "muse-brain", version: "1.7.0" }, // keep in sync with package.json
+						serverInfo: { name: "muse-brain", version: "1.8.0" }, // keep in sync with package.json
 						capabilities: { tools: {} }
 					}
 				};
