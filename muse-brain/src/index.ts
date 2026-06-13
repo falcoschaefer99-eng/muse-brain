@@ -35,8 +35,17 @@ import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullS
 import { createStorage } from "./storage/index";
 import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
-import { ALLOWED_TENANTS } from "./constants";
+import { ALLOWED_TENANTS, resolveTenantId } from "./constants";
 import { runDaemonTasks } from "./daemon/index";
+import {
+	authorizeLeaseForTool,
+	isLeaseExpired,
+	normalizeLeaseMode,
+	resolveRequestLease,
+	type LeaseAuthorization,
+	type LeaseResolution
+} from "./security/leases";
+import type { IBrainStorage } from "./storage/interface";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -44,6 +53,12 @@ const RATE_LIMIT = 120; // requests per minute
 const RATE_WINDOW = 60_000; // 1 minute in ms
 
 const MAX_TENANT_HEADER_LENGTH = 64;
+
+interface RequestIdentity {
+	rawTenant: string;
+	tenant: typeof ALLOWED_TENANTS[number];
+	tenantAlias?: string;
+}
 
 function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; databaseUrl?: string; sqlitePath?: string } {
 	const backendRaw = String(env.STORAGE_BACKEND ?? "postgres").toLowerCase();
@@ -59,24 +74,186 @@ function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; datab
 	};
 }
 
-function resolveTenantFromHeader(request: Request): string | null {
+function resolveRequestIdentity(request: Request): RequestIdentity | null {
 	const rawTenant = request.headers.get("X-Brain-Tenant");
-	const tenant = (rawTenant?.trim() || "rainer");
+	const requestedTenant = (rawTenant?.trim() || "rainer");
 
-	if (!tenant || tenant.length > MAX_TENANT_HEADER_LENGTH || tenant.includes("\0")) {
+	if (!requestedTenant || requestedTenant.length > MAX_TENANT_HEADER_LENGTH || requestedTenant.includes("\0")) {
 		return null;
 	}
 
-	if (!ALLOWED_TENANTS.includes(tenant as typeof ALLOWED_TENANTS[number])) {
+	const canonicalTenant = resolveTenantId(requestedTenant);
+	if (!canonicalTenant) {
 		return null;
 	}
 
-	return tenant;
+	return {
+		rawTenant: requestedTenant,
+		tenant: canonicalTenant,
+		tenantAlias: requestedTenant === canonicalTenant ? undefined : requestedTenant
+	};
+}
+
+function shouldAuditLeaseDecision(auth: LeaseAuthorization): boolean {
+	if (!auth.allowed) return true;
+	const op = auth.requirement.operation;
+	return op.endsWith(".write")
+		|| op.endsWith(".trigger")
+		|| op.endsWith(".link")
+		|| op.endsWith(".edit");
+}
+
+async function payloadHash(value: unknown): Promise<string | undefined> {
+	try {
+		const bytes = new TextEncoder().encode(JSON.stringify(value ?? {}));
+		const digest = await crypto.subtle.digest("SHA-256", bytes);
+		return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+	} catch {
+		return undefined;
+	}
+}
+
+async function recordPresentedLease(
+	storage: IBrainStorage,
+	leaseResolution: LeaseResolution
+): Promise<void> {
+	const lease = leaseResolution.lease;
+	if (!lease || leaseResolution.source !== "header") return;
+
+	await storage.recordAgentLease({
+		lease_id: lease.lease_id,
+		agent_id: lease.agent_id,
+		platform: lease.platform,
+		session_id: lease.session_id,
+		run_id: lease.run_id,
+		parent_lease_id: lease.parent_lease_id,
+		delegation_chain: lease.delegation_chain,
+		capabilities: lease.capabilities,
+		scope: lease.scope as unknown as Record<string, unknown>,
+		status: isLeaseExpired(lease) ? "expired" : "active",
+		issued_at: lease.issued_at,
+		expires_at: lease.expires_at,
+		process_id: lease.process_id,
+		metadata: lease.metadata ?? {}
+	});
+}
+
+function queueLeaseAuditDecision(
+	storage: IBrainStorage,
+	waitUntil: ((promise: Promise<unknown>) => void) | undefined,
+	leaseResolution: LeaseResolution,
+	auth: LeaseAuthorization,
+	toolName: string,
+	args: Record<string, unknown>,
+	result: "allowed" | "denied" | "succeeded" | "failed" | "shadow",
+	reason?: string
+): void {
+	const lease = leaseResolution.lease;
+	const shouldAudit = shouldAuditLeaseDecision(auth);
+	if (!shouldAudit) return;
+
+	const eventPromise = (async () => {
+		const hash = await payloadHash(args);
+		await storage.createAgentAuditEvent({
+			event_type: auth.allowed ? "lease_authorized" : "lease_denied",
+			actor_agent_id: lease?.agent_id,
+			lease_id: lease?.lease_id,
+			platform: lease?.platform,
+			session_id: lease?.session_id,
+			run_id: lease?.run_id,
+			delegation_chain: lease?.delegation_chain ?? [],
+			operation: auth.requirement.operation,
+			tool_name: toolName,
+			resource: auth.requirement.resource ?? {},
+			result,
+			reason: reason ?? auth.reason,
+			payload_hash: hash,
+			diff: {},
+			metadata: {
+				enforcement_mode: leaseResolution.mode,
+				lease_source: leaseResolution.source,
+				required_capabilities: auth.requirement.anyOf
+			}
+		});
+	})().catch(err => {
+		console.error("lease audit write failed:", err instanceof Error ? err.message : "unknown error");
+	});
+
+	if (waitUntil) waitUntil(eventPromise);
+}
+
+type AuthorizeAndExecuteResult =
+	| { status: "ok"; result: any; leaseAuthorization: LeaseAuthorization }
+	| { status: "lease_denied"; leaseAuthorization: LeaseAuthorization }
+	| { status: "ledger_failed"; leaseAuthorization: LeaseAuthorization; error: string };
+
+async function authorizeAndExecuteTool(input: {
+	env: Env;
+	ctx: ExecutionContext;
+	tenant: string;
+	leaseResolution: LeaseResolution;
+	toolName: string;
+	args: Record<string, unknown>;
+}): Promise<AuthorizeAndExecuteResult> {
+	const { env, ctx, tenant, leaseResolution, toolName, args } = input;
+	const storage = createStorage(resolveStorageConfig(env), tenant);
+	const leaseAuthorization = authorizeLeaseForTool(leaseResolution.lease, toolName, args, tenant);
+
+	try {
+		await recordPresentedLease(storage, leaseResolution);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : "unknown error";
+		console.error("critical lease ledger write failed:", message);
+		return { status: "ledger_failed", leaseAuthorization, error: message };
+	}
+
+	if (!leaseAuthorization.allowed && leaseResolution.mode === "required") {
+		queueLeaseAuditDecision(
+			storage,
+			ctx.waitUntil.bind(ctx),
+			leaseResolution,
+			leaseAuthorization,
+			toolName,
+			args,
+			"denied",
+			leaseAuthorization.reason
+		);
+		return { status: "lease_denied", leaseAuthorization };
+	}
+
+	queueLeaseAuditDecision(
+		storage,
+		ctx.waitUntil.bind(ctx),
+		leaseResolution,
+		leaseAuthorization,
+		toolName,
+		args,
+		leaseAuthorization.allowed ? "allowed" : "shadow",
+		leaseAuthorization.reason
+	);
+
+	const result = await executeTool(toolName, args, {
+		storage,
+		ai: env.AI,
+		waitUntil: ctx.waitUntil.bind(ctx),
+		lease: leaseResolution.lease,
+		leaseMode: leaseResolution.mode,
+		leaseResolution,
+		leaseAuthorization
+	});
+
+	return { status: "ok", result, leaseAuthorization };
 }
 
 // ============ MCP PROTOCOL ============
 
-async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: ExecutionContext, tenant: string): Promise<JsonRpcResponse> {
+async function handleMcpRequest(
+	request: JsonRpcRequest,
+	env: Env,
+	ctx: ExecutionContext,
+	tenant: string,
+	leaseResolution: LeaseResolution
+): Promise<JsonRpcResponse> {
 	const { id, method, params } = request;
 
 	try {
@@ -100,12 +277,44 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 
 			case "tools/call": {
 				const { name, arguments: args } = params;
-				const storage = createStorage(resolveStorageConfig(env), tenant);
-				const result = await executeTool(name, args || {}, { storage, ai: env.AI, waitUntil: ctx.waitUntil.bind(ctx) });
+				const toolArgs = args || {};
+				const execution = await authorizeAndExecuteTool({
+					env,
+					ctx,
+					tenant,
+					leaseResolution,
+					toolName: name,
+					args: toolArgs
+				});
+
+				if (execution.status === "lease_denied") {
+					return {
+						jsonrpc: "2.0",
+						id,
+						error: {
+							code: -32001,
+							message: "Lease denied",
+							data: {
+								operation: execution.leaseAuthorization.requirement.operation,
+								reason: execution.leaseAuthorization.reason
+							}
+						}
+					};
+				}
+				if (execution.status === "ledger_failed") {
+					return {
+						jsonrpc: "2.0",
+						id,
+						error: {
+							code: -32002,
+							message: "Lease ledger unavailable"
+						}
+					};
+				}
 				return {
 					jsonrpc: "2.0",
 					id,
-					result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }
+					result: { content: [{ type: "text", text: JSON.stringify(execution.result, null, 2) }] }
 				};
 			}
 
@@ -136,7 +345,7 @@ export default {
 		if (origin && allowedOrigins.includes(origin)) {
 			corsHeaders["Access-Control-Allow-Origin"] = origin;
 			corsHeaders["Access-Control-Allow-Methods"] = "POST, OPTIONS";
-			corsHeaders["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+			corsHeaders["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Brain-Tenant, X-Brain-Lease";
 		}
 
 		if (request.method === "OPTIONS") {
@@ -223,10 +432,19 @@ export default {
 		// Runtime trigger bridge — webhook/scheduler-friendly entrypoint.
 		// Uses existing API-key auth and tenant scoping.
 		if (url.pathname === "/runtime/trigger" && request.method === "POST") {
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
+			const identity = resolveRequestIdentity(request);
+			if (!identity) {
 				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
 					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const tenant = identity.tenant;
+			const leaseMode = normalizeLeaseMode(env.LEASE_ENFORCEMENT_MODE);
+			const leaseResolution = resolveRequestLease(request.headers, tenant, leaseMode);
+			if (leaseResolution.error && (leaseMode === "required" || leaseResolution.source === "header")) {
+				return new Response(JSON.stringify({ error: "Lease denied" }), {
+					status: 401,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
@@ -250,14 +468,33 @@ export default {
 				}
 			}
 
-			const storage = createStorage(resolveStorageConfig(env), tenant);
-			const result = await executeTool("mind_runtime", { action: "trigger", ...payload }, {
-				storage,
-				ai: env.AI,
-				waitUntil: ctx.waitUntil.bind(ctx)
+			const runtimeArgs = { action: "trigger", ...payload };
+			const execution = await authorizeAndExecuteTool({
+				env,
+				ctx,
+				tenant,
+				leaseResolution,
+				toolName: "mind_runtime",
+				args: runtimeArgs
 			});
-			const status = result?.error ? 400 : 200;
-			return new Response(JSON.stringify(result), {
+			if (execution.status === "lease_denied") {
+				return new Response(JSON.stringify({
+					error: "Lease denied",
+					operation: execution.leaseAuthorization.requirement.operation,
+					reason: execution.leaseAuthorization.reason
+				}), {
+					status: 401,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			if (execution.status === "ledger_failed") {
+				return new Response(JSON.stringify({ error: "Lease ledger unavailable" }), {
+					status: 503,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const status = execution.result?.error ? 400 : 200;
+			return new Response(JSON.stringify(execution.result), {
 				status,
 				headers: { "Content-Type": "application/json", ...corsHeaders }
 			});
@@ -265,13 +502,14 @@ export default {
 
 		// SSE for MCP connection
 		if (url.pathname === "/mcp" && request.method === "GET") {
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
+			const identity = resolveRequestIdentity(request);
+			if (!identity) {
 				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
 					status: 400,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
+			const tenant = identity.tenant;
 
 			const { readable, writable } = new TransformStream();
 			const writer = writable.getWriter();
@@ -297,10 +535,19 @@ export default {
 		// MCP JSON-RPC
 		if (url.pathname === "/mcp" && request.method === "POST") {
 			// Tenant resolution — default "rainer" for backward compat (proxy sends no header yet)
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
+			const identity = resolveRequestIdentity(request);
+			if (!identity) {
 				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
 					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const tenant = identity.tenant;
+			const leaseMode = normalizeLeaseMode(env.LEASE_ENFORCEMENT_MODE);
+			const leaseResolution = resolveRequestLease(request.headers, tenant, leaseMode);
+			if (leaseResolution.error && (leaseMode === "required" || leaseResolution.source === "header")) {
+				return new Response(JSON.stringify({ error: "Lease denied" }), {
+					status: 401,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
@@ -322,11 +569,11 @@ export default {
 						headers: { "Content-Type": "application/json", ...corsHeaders }
 					});
 				}
-				const responses = await Promise.all(body.map(req => handleMcpRequest(req, env, ctx, tenant)));
+				const responses = await Promise.all(body.map(req => handleMcpRequest(req, env, ctx, tenant, leaseResolution)));
 				return new Response(JSON.stringify(responses), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 			}
 
-			const response = await handleMcpRequest(body, env, ctx, tenant);
+			const response = await handleMcpRequest(body, env, ctx, tenant, leaseResolution);
 			return new Response(JSON.stringify(response), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 		}
 

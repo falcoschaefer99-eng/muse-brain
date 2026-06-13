@@ -178,7 +178,7 @@ describe("tool alias dispatch", () => {
 
 	it("maps mind_write_letter to mind_letter with action=write", async () => {
 		const appendLetter = vi.fn(async () => undefined);
-		const storage = { appendLetter };
+		const storage = { appendLetter, getTenant: () => "rainer" };
 
 		const result = await executeTool("mind_write_letter", {
 			to_context: "chat",

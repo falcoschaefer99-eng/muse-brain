@@ -9,6 +9,7 @@ export interface Env {
 	CORS_ORIGINS?: string;    // Comma-separated allowed origins, e.g. "https://your-app.example.com"
 	STORAGE_BACKEND?: "postgres" | "sqlite";
 	SQLITE_PATH?: string;
+	LEASE_ENFORCEMENT_MODE?: "off" | "shadow" | "required"; // v1.8 trust layer: shadow by default for legacy clients
 }
 
 export interface Texture {
@@ -112,6 +113,8 @@ export interface Letter {
 	charges?: string[];
 	letter_type?: 'personal' | 'handoff' | 'proposal';
 }
+
+export type DeliveryStatus = "local" | "delivered" | "queued" | "retrying" | "failed_after_retries";
 
 export interface IdentityCore {
 	id: string;
@@ -312,7 +315,6 @@ export interface ProjectDossier {
 	created_at: string;
 	updated_at: string;
 }
-
 
 export interface ProjectDeployRouting {
 	kind?: string;
@@ -659,4 +661,62 @@ export interface WorkspaceRouting {
 	related_projects?: string[];
 	preview_urls?: string[];
 	production_urls?: string[];
+}
+
+// --- Agent House Trust Layer (v1.8) ---
+
+export type AgentLeaseStatus = "active" | "revoked" | "expired";
+
+export interface AgentLeaseRecord {
+	id: string;
+	tenant_id: string;
+	lease_id: string;
+	agent_id: string;
+	platform: string;
+	session_id?: string;
+	run_id?: string;
+	parent_lease_id?: string;
+	delegation_chain: string[];
+	capabilities: string[];
+	scope: Record<string, unknown>;
+	status: AgentLeaseStatus;
+	issued_at: string;
+	expires_at: string;
+	last_heartbeat_at?: string;
+	process_id?: string;
+	metadata: Record<string, unknown>;
+	created_at: string;
+	updated_at: string;
+}
+
+export type AgentAuditResult = "allowed" | "denied" | "succeeded" | "failed" | "shadow";
+
+export interface AgentAuditEvent {
+	id: string;
+	tenant_id: string;
+	event_type: string;
+	actor_agent_id?: string;
+	lease_id?: string;
+	platform?: string;
+	session_id?: string;
+	run_id?: string;
+	delegation_chain: string[];
+	operation?: string;
+	tool_name?: string;
+	resource: Record<string, unknown>;
+	result: AgentAuditResult;
+	reason?: string;
+	payload_hash?: string;
+	diff: Record<string, unknown>;
+	metadata: Record<string, unknown>;
+	created_at: string;
+}
+
+export interface AgentAuditEventFilter {
+	event_type?: string;
+	actor_agent_id?: string;
+	lease_id?: string;
+	result?: AgentAuditResult;
+	created_after?: string;
+	limit?: number;
 }
