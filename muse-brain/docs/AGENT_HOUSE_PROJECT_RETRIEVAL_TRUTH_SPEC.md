@@ -395,6 +395,14 @@ This alone kills a large class of session confusion.
 9. review-gated routing promotion into dossier metadata
 10. synthesis observations for repeated operational truths
 
+**Implementation status:** first daemon proposal slice landed on 2026-06-13.
+
+- `kit-hygiene` now inspects project-linked `repo_receipt`, `deploy_receipt`, and `artifact_receipt` observations.
+- It proposes `project_routing_update` when repeated successful receipts establish a stable local path, artifact root, or deploy command missing from `workspace_routing`.
+- It proposes `project_routing_drift` / `stale_deploy_command` when dossier routing disagrees with repeated successful receipts.
+- It proposes `missing_artifact_receipt` when a completed file-producing project task lacks an artifact path.
+- It does **not** auto-promote routing into project dossiers; promotion remains review-gated.
+
 ### Phase D — Retrieval truth hardening
 
 11. confidence provenance labels for routing answers

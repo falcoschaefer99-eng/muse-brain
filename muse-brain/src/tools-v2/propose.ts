@@ -9,13 +9,33 @@
 
 import { generateId, getTimestamp, toStringArray } from "../helpers";
 import { RESONANCE_TYPES } from "../constants";
-import type { Link, Observation } from "../types";
+import type { DaemonProposalType, Link, Observation } from "../types";
 import type { ToolContext } from "./context";
+
+const PROPOSAL_TYPES: DaemonProposalType[] = [
+	"link",
+	"orphan_rescue",
+	"consolidation",
+	"dedup",
+	"cross_agent",
+	"cross_tenant",
+	"paradox_detected",
+	"skill_recapture",
+	"skill_supersession",
+	"skill_promotion",
+	"recall_contract",
+	"fact_commitment",
+	"project_routing_update",
+	"project_routing_drift",
+	"missing_artifact_receipt",
+	"stale_deploy_command",
+	"path_alias_conflict"
+];
 
 export const TOOL_DEFS = [
 	{
 		name: "mind_propose",
-		description: "Review and manage daemon-generated proposals. action=list: see pending proposals (types: link, orphan_rescue, consolidation, dedup, cross_agent, cross_tenant, paradox_detected, skill_recapture, skill_supersession, skill_promotion, recall_contract, fact_commitment). action=review: accept or reject a proposal (link → bidirectional link; orphan_rescue → rescue or archive; consolidation → skill observation + metabolize sources). action=stats: acceptance statistics.",
+		description: "Review and manage daemon-generated proposals. action=list: see pending proposals (types: link, orphan_rescue, consolidation, dedup, cross_agent, cross_tenant, paradox_detected, skill_recapture, skill_supersession, skill_promotion, recall_contract, fact_commitment, project_routing_update, project_routing_drift, missing_artifact_receipt, stale_deploy_command, path_alias_conflict). action=review: accept or reject a proposal (link → bidirectional link; orphan_rescue → rescue or archive; consolidation → skill observation + metabolize sources). action=stats: acceptance statistics.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -27,7 +47,7 @@ export const TOOL_DEFS = [
 				// list params
 				type: {
 					type: "string",
-					enum: ["link", "orphan_rescue", "consolidation", "dedup", "cross_agent", "cross_tenant", "paradox_detected", "skill_recapture", "skill_supersession", "skill_promotion", "recall_contract", "fact_commitment"],
+					enum: PROPOSAL_TYPES,
 					description: "[list] Filter by proposal type"
 				},
 				status: {

@@ -626,7 +626,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 			if (filter.territory && filter.grip) {
 				rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
-					       last_accessed_at, access_count, links, summary, type, tags
+					       last_accessed_at, access_count, links, summary, type, tags, entity_id
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND territory = ${filter.territory}
@@ -637,7 +637,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 			} else if (filter.territory) {
 				rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
-					       last_accessed_at, access_count, links, summary, type, tags
+					       last_accessed_at, access_count, links, summary, type, tags, entity_id
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND territory = ${filter.territory}
@@ -647,7 +647,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 			} else if (filter.grip) {
 				rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
-					       last_accessed_at, access_count, links, summary, type, tags
+					       last_accessed_at, access_count, links, summary, type, tags, entity_id
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					  AND (texture->>'grip') = ${filter.grip}
@@ -657,7 +657,7 @@ export class PostgresBrainStorage implements IBrainStorage {
 			} else {
 				rows = await this.sql`
 					SELECT id, content, territory, created_at, texture, context, mood,
-					       last_accessed_at, access_count, links, summary, type, tags
+					       last_accessed_at, access_count, links, summary, type, tags, entity_id
 					FROM observations
 					WHERE tenant_id = ${this.tenant}
 					ORDER BY created_at DESC
@@ -691,6 +691,9 @@ export class PostgresBrainStorage implements IBrainStorage {
 			}
 			if (filter.type) {
 				filtered = filtered.filter(({ observation: obs }) => obs.type === filter.type);
+			}
+			if (filter.entity_id) {
+				filtered = filtered.filter(({ observation: obs }) => obs.entity_id === filter.entity_id);
 			}
 			if (filter.tags?.length) {
 				filtered = filtered.filter(({ observation: obs }) =>
