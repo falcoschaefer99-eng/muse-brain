@@ -50,6 +50,7 @@ import type {
 	AgentAuditEventFilter
 } from "../types";
 import type { QuerySignals, RetrievalProfile } from "../retrieval/query-signals";
+import type { RetrievalRerankMode } from "../retrieval/rerank";
 import type { HybridScoreBreakdown } from "../retrieval/scoring";
 
 // ============ FILTER / QUERY TYPES ============
@@ -72,6 +73,8 @@ export interface LetterListResult {
 /** Filter options for queryObservations — all fields optional, AND-combined. */
 export interface ObservationFilter {
 	territory?: string;
+	/** Filter observations linked to this entity. */
+	entity_id?: string;
 	/** Exact grip match. */
 	grip?: string;
 	/** Match observations that have ALL of these charges (superset). */
@@ -124,9 +127,9 @@ export interface HybridSearchOptions {
 	retrieval_profile?: RetrievalProfile;
 	/** Optional pre-extracted query signals (storage extracts when omitted). */
 	query_signals?: QuerySignals;
-	/** Optional rerank mode requested by the caller. Backends may ignore unsupported modes. */
-	rerank_mode?: "off" | "heuristic" | "model";
-	/** Optional number of top candidates to rerank. Backends may ignore unsupported modes. */
+	/** Optional second-pass rerank mode for top candidates. Backends may ignore unsupported modes. */
+	rerank_mode?: RetrievalRerankMode;
+	/** Number of top candidates eligible for rerank. */
 	rerank_top_n?: number;
 	territory?: string;
 	grip?: string[];

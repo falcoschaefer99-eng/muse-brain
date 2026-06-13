@@ -1,7 +1,8 @@
 # MUSE Brain — Retrieval & Benchmark Master Plan
 
-**Status:** Working design spec  
+**Status:** Working design spec
 **Date:** April 8, 2026
+**Purpose:** Durable master design for retrieval upgrades, benchmark competitiveness, release narrative, and cross-session execution.
 
 ---
 
@@ -36,23 +37,48 @@ The architecture must preserve MUSE's identity while making recall sharper.
 
 ## Design Principles
 
-1. **No lossy replacement of source memories**  
+1. **No lossy replacement of source memories**
    Original observations remain canonical. Derived retrieval artifacts may assist search, but they never replace the original memory.
 
-2. **One engine, multiple retrieval profiles**  
+2. **One engine, multiple retrieval profiles**
    We do not fork the brain into separate products. We add profile-driven behavior inside the existing retrieval architecture.
 
-3. **Separate relevance from cognition**  
+3. **Separate relevance from cognition**
    Retrieval relevance and cognitive modulation should be distinguishable, tunable, and inspectable.
 
-4. **Benchmark honestly**  
+4. **Benchmark honestly**
    We publish standard benchmark results clearly, including what is reranked, what is held out, and what is profile-tuned.
 
-5. **Publish the philosophy next to the code**  
-   Every release in this effort ships with narrative framing, changelog notes, and benchmark receipts so the architecture is understandable, not merely implemented.
+5. **Publish the philosophy next to the code**
+   Every release in this lane should ship with narrative framing, changelog notes, and benchmark receipts so the architecture is understandable, not merely implemented.
 
-6. **Match, then surpass**  
-   Matching verbatim recall matters. Surpassing it on relational and contextual memory is the larger opportunity.
+6. **Build the moat, not just the match**
+   Matching verbatim recall matters. Surpassing it on relational/contextual memory is the larger opportunity.
+
+7. **Valence before loudness**
+   Emotional retrieval must find what was felt, not merely what felt strongest. Negative-state queries such as "distress" must not be satisfied by high-charge positive memories such as pride/wonder/growth just because both are emotionally intense.
+
+---
+
+## May 11, 2026 amendment — emotional retrieval trust
+
+Rook identified a concrete failure mode: a search for job-center distress surfaced happy/high-charge craft memories because emotional charge weighting was presence/intensity-based rather than valence-aware.
+
+This changes the implementation order:
+
+- **v1.8.0 must add charge valence metadata/schema** before the retrieval benchmark sprint.
+- **v1.9.0 then benchmarks and tunes** retrieval using real failed queries as the gold set.
+
+Required retrieval rule:
+
+1. keyword/entity matches dominate candidate generation when present
+2. temporal cues narrow candidates when present
+3. emotional valence reranks relevant candidates
+4. emotional intensity / charge phase modulation must not rescue unrelated memories
+
+Gold sets for emotional retrieval must come from real failures, not synthetic-only query generation.
+
+Canonical cross-lane scope: **[Agent House Trust Layer Master Plan](AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md)**.
 
 ---
 
@@ -112,10 +138,28 @@ These should be extracted before ranking and attached to the retrieval request.
 - temporal offsets and ranges
 - assistant-reference cues
 - emotional-state cues
+- associative prompt-context cues
 - contradiction cues
 - territory cues
 - relational-intensity cues
 - check-in / no-contact cues (future lane)
+
+### Associative prompt-context retrieval
+
+The retrieval layer should correlate the live turn's prompt context against the entity/memory graph before ranking.
+
+Goal:
+
+- surface related memories/entities that are implied by the current conversation but not explicitly named
+- use entity co-occurrence, project relations, memory cascade links, recent conversation context, and infrastructure/dependency hints
+- keep the pull inspectable via diagnostics such as `association_source`, `linked_entity`, `cascade_pair`, or `project_dependency`
+
+Concrete failure class:
+
+- A user starts discussing a setup that depends on Agent SDK infrastructure.
+- The brain should surface the associated "Mary + Simon + Agent SDK infrastructure" memory from context, not only after an explicit query for Mary.
+
+This is a v1.9 Retrieval Truth lane and should receive a targeted Rook design/review pass before implementation because it affects when memories wake without exact lexical prompts.
 
 ### Future extension: state-conditioned hints
 There is a promising future architecture path where hints may reference **recorded user/agent state** when relevant.
@@ -564,15 +608,15 @@ Keep this file current. Architecture changes, benchmark insights, and scope shif
 
 ## Immediate Next Move
 
-Start a fresh session and execute **Sprint 1 only**.
+As of 2026-05-11, do **not** start a standalone retrieval sprint first.
 
-Sprint 1 should stay disciplined:
-- retrieval profiles
-- query signal extraction
-- first boost set
-- diagnostics
+Current order:
 
-No premature publication work, no full benchmark harness yet, no scope creep into later sprints.
+1. Land the v1.8.0 trust substrate from `AGENT_HOUSE_TRUST_LAYER_MASTER_PLAN.md`.
+2. Include charge valence metadata/schema in v1.8.0 so emotional retrieval can be evaluated honestly.
+3. Then execute the v1.9.0 retrieval benchmark/tuning sprint using real failure queries.
+
+No benchmark theater: the job-center/distress class of failures must be represented in the gold set before claiming emotional retrieval improvement.
 
 ---
 

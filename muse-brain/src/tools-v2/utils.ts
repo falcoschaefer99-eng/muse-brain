@@ -40,13 +40,16 @@ export function normalizeMetadata(
 	}
 }
 
-export function normalizeLookupText(value: string): string {
+export function normalizeLookupText(value: unknown): string {
+	if (typeof value !== "string") return "";
 	return value
 		.toLowerCase()
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
 		.replace(/['’]/g, "")
-		.replace(/[_-]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim()
+		.replace(/\s+/g, " ");
 }
 
 export function normalizeOptionalTimestamp(value: unknown): string | undefined {
