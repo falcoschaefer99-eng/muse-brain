@@ -1,13 +1,17 @@
 // ============ COMMS TOOLS (v2) ============
 // mind_letter (action: write/read), mind_context (action: set/get)
 
-import type { Letter, Observation } from "../types";
-import { ALLOWED_TENANTS } from "../constants";
+import type { DeliveryStatus, Letter, Observation } from "../types";
+import { knownTenantNames, resolveTenantId } from "../constants";
 import { getTimestamp, generateId, toStringArray } from "../helpers";
 import type { ToolContext } from "./context";
 import { cleanText } from "./utils";
 
 const MAX_LETTER_CONTENT_LENGTH = 4000;
+const MAX_LETTER_CONTEXT_LENGTH = 64;
+const MAX_LETTER_QUERY_LENGTH = 500;
+const DEFAULT_LETTER_LIMIT = 20;
+const MAX_LETTER_LIMIT = 100;
 const MAX_CONTEXT_OPEN_THREAD_TASKS = 20;
 const MAX_FACT_CANDIDATES = 10;
 const MAX_SUMMARY_LENGTH = 10_000;
@@ -172,6 +176,185 @@ function truncateText(input: string, max = 120): string {
 	return `${clean.slice(0, max - 1)}…`;
 }
 
+function normalizeLetterContext(value: unknown, fallback = "chat"): string | { error: string } {
+	if (value === undefined || value === null) return fallback;
+	if (typeof value !== "string") return { error: "context must be a string" };
+	const cleaned = value.trim();
+	if (!cleaned) return { error: "context cannot be blank" };
+	if (cleaned.length > MAX_LETTER_CONTEXT_LENGTH || cleaned.includes("\0")) {
+		return { error: `context too long or invalid (max ${MAX_LETTER_CONTEXT_LENGTH} chars)` };
+	}
+	return cleaned;
+}
+
+function normalizeLetterLimit(value: unknown): number {
+	if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+		return DEFAULT_LETTER_LIMIT;
+	}
+	return Math.max(1, Math.min(MAX_LETTER_LIMIT, value));
+}
+
+function normalizeOptionalString(value: unknown, field: string, max: number): string | undefined | { error: string } {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "string") return { error: `${field} must be a string` };
+	const cleaned = value.trim();
+	if (!cleaned) return undefined;
+	if (cleaned.length > max || cleaned.includes("\0")) {
+		return { error: `${field} too long or invalid (max ${max} chars)` };
+	}
+	return cleaned;
+}
+
+function sortLettersNewestFirst(letters: Letter[]): Letter[] {
+	return [...letters].sort((a, b) => {
+		const ts = Date.parse(b.timestamp) - Date.parse(a.timestamp);
+		if (ts !== 0) return ts;
+		return b.id.localeCompare(a.id);
+	});
+}
+
+function formatLetter(letter: Letter): Record<string, unknown> {
+	return {
+		id: letter.id,
+		from: letter.from_context,
+		content: letter.content,
+		timestamp: letter.timestamp,
+		charges: letter.charges,
+		letter_type: letter.letter_type
+	};
+}
+
+function queueLetterDeliveryAudit(
+	context: ToolContext,
+	storage: ToolContext["storage"],
+	letter: Letter,
+	fromTenant: string,
+	toTenant: string,
+	requestedTo: string | undefined,
+	deliveryStatus: DeliveryStatus
+): void {
+	if (typeof storage.createAgentAuditEvent !== "function") return;
+	const eventPromise = storage.createAgentAuditEvent({
+		event_type: "letter_delivered",
+		actor_agent_id: context.lease?.agent_id,
+		lease_id: context.lease?.lease_id,
+		platform: context.lease?.platform,
+		session_id: context.lease?.session_id,
+		run_id: context.lease?.run_id,
+		delegation_chain: context.lease?.delegation_chain ?? [],
+		operation: "letter.write",
+		tool_name: "mind_letter",
+		resource: {
+			letter_id: letter.id,
+			from_tenant: fromTenant,
+			to_tenant: toTenant,
+			to_context: letter.to_context
+		},
+		result: deliveryStatus === "delivered" || deliveryStatus === "local" ? "succeeded" : "failed",
+		diff: {
+			delivered: {
+				letter_id: letter.id,
+				from_tenant: fromTenant,
+				to_tenant: toTenant,
+				to_context: letter.to_context,
+				delivery_status: deliveryStatus
+			}
+		},
+		metadata: {
+			requested_to: requestedTo,
+			letter_type: letter.letter_type,
+			lease_mode: context.leaseMode
+		}
+	}).catch(err => {
+		console.error("letter delivery audit failed:", err instanceof Error ? err.message : "unknown error");
+	});
+	context.waitUntil?.(eventPromise);
+}
+
+function filterLetters(
+	letters: Letter[],
+	options: {
+		context: string;
+		unreadOnly: boolean;
+		from?: string;
+		query?: string;
+	}
+): Letter[] {
+	const query = options.query?.toLowerCase();
+	return letters.filter(letter => {
+		if (letter.to_context !== options.context) return false;
+		if (options.unreadOnly && letter.read) return false;
+		if (options.from && letter.from_context !== options.from) return false;
+		if (query && !letter.content.toLowerCase().includes(query)) return false;
+		return true;
+	});
+}
+
+async function listLetters(
+	storage: ToolContext["storage"],
+	options: {
+		context: string;
+		limit: number;
+		cursor?: string;
+		unreadOnly: boolean;
+		from?: string;
+		query?: string;
+	}
+): Promise<{ letters: Letter[]; has_more: boolean; next_cursor: string | null }> {
+	if (typeof storage.listLettersPaged === "function") {
+		return await storage.listLettersPaged({
+			context: options.context,
+			limit: options.limit,
+			cursor: options.cursor,
+			unread_only: options.unreadOnly,
+			from: options.from,
+			query: options.query
+		});
+	}
+
+	const allLetters = sortLettersNewestFirst(filterLetters(await storage.readLetters(), options));
+	const cursorIndex = options.cursor ? allLetters.findIndex(letter => letter.id === options.cursor) : -1;
+	const start = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+	const page = allLetters.slice(start, start + options.limit + 1);
+	const hasMore = page.length > options.limit;
+	const letters = hasMore ? page.slice(0, options.limit) : page;
+	return {
+		letters,
+		has_more: hasMore,
+		next_cursor: hasMore && letters.length > 0 ? letters[letters.length - 1].id : null
+	};
+}
+
+async function markLettersRead(storage: ToolContext["storage"], ids: string[]): Promise<void> {
+	if (ids.length === 0) return;
+	if (typeof storage.markLettersRead === "function") {
+		await storage.markLettersRead(ids);
+		return;
+	}
+	const idSet = new Set(ids);
+	const letters = await storage.readLetters();
+	let changed = false;
+	for (const letter of letters) {
+		if (idSet.has(letter.id) && !letter.read) {
+			letter.read = true;
+			changed = true;
+		}
+	}
+	if (changed) await storage.writeLetters(letters);
+}
+
+async function countLettersFromSince(
+	storage: ToolContext["storage"],
+	fromContext: string,
+	sinceIso: string
+): Promise<number> {
+	if (typeof storage.countLettersFromSince === "function") {
+		return await storage.countLettersFromSince(fromContext, sinceIso);
+	}
+	const letters = await storage.readLetters();
+	return letters.filter(letter => letter.from_context === fromContext && letter.timestamp > sinceIso).length;
+}
+
 function isCommitEligibleFact(fact: ExtractedFact, threshold: number): boolean {
 	if (fact.confidence < threshold) return false;
 	return fact.fact_type === "decision" || fact.fact_type === "deadline";
@@ -194,8 +377,8 @@ export const TOOL_DEFS = [
 			properties: {
 				action: {
 					type: "string",
-					enum: ["write", "read"],
-					description: "write: send a letter. read: read incoming letters."
+					enum: ["write", "read", "list", "get", "search"],
+					description: "write: send a letter. read: read unread letters. list/search/get: inspect letter history."
 				},
 				// write params
 				to_context: { type: "string", description: "[write] Recipient context (e.g., 'phone', 'future', 'desktop', 'chat')" },
@@ -205,7 +388,12 @@ export const TOOL_DEFS = [
 				letter_type: { type: "string", enum: ["personal", "handoff", "proposal"], description: "[write] Letter type — personal (default), handoff (task delegation), proposal (suggestion)" },
 				// read params
 				context: { type: "string", default: "chat", description: "[read] Which context to read letters for" },
-				unread_only: { type: "boolean", default: true, description: "[read] Only show unread letters" }
+				unread_only: { type: "boolean", default: true, description: "[read/list/search] Only show unread letters" },
+				id: { type: "string", description: "[get] Letter id" },
+				query: { type: "string", description: "[search] Keyword query" },
+				limit: { type: "number", description: "[read/list/search] Max letters to return" },
+				cursor: { type: "string", description: "[list/search] Cursor letter id" },
+				from: { type: "string", description: "[list/search] Filter by sender context/tenant" }
 			},
 			required: ["action"]
 		}
@@ -268,22 +456,29 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				if (!args.to_context || !args.content) {
 					return { error: "to_context and content are required for action=write" };
 				}
+				const recipientContext = normalizeLetterContext(args.to_context);
+				if (typeof recipientContext !== "string") return recipientContext;
 				if (typeof args.content !== "string") {
 					return { error: "content must be a string" };
 				}
 				if (!args.content.trim()) {
 					return { error: "content cannot be blank" };
 				}
+				if (args.content.includes("\0")) {
+					return { error: "content contains invalid null byte" };
+				}
 				if (args.content.length > MAX_LETTER_CONTENT_LENGTH) {
 					return { error: `content too long (max ${MAX_LETTER_CONTENT_LENGTH} chars)` };
 				}
 
+				const now = getTimestamp();
+				const senderTenant = storage.getTenant();
 				const letter: Letter = {
 					id: generateId("letter"),
-					from_context: args.to ? storage.getTenant() : "chat",
-					to_context: args.to_context,
+					from_context: args.to ? senderTenant : "chat",
+					to_context: recipientContext,
 					content: args.content,
-					timestamp: getTimestamp(),
+					timestamp: now,
 					read: false,
 					charges: toStringArray(args.charges),
 					letter_type: args.letter_type || undefined
@@ -291,61 +486,106 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 				// Cross-brain delivery
 				if (args.to) {
-					const recipient = args.to as string;
-					if (!ALLOWED_TENANTS.includes(recipient as any)) {
-						return { error: `Unknown brain: ${recipient}. Known: ${ALLOWED_TENANTS.join(", ")}` };
+					if (typeof args.to !== "string") {
+						return { error: "to must be a string" };
+					}
+					const requestedRecipient = args.to.trim();
+					const recipient = resolveTenantId(requestedRecipient);
+					if (!recipient) {
+						return { error: `Unknown brain: ${requestedRecipient}. Known: ${knownTenantNames().join(", ")}` };
+					}
+					if (recipient === senderTenant) {
+						return { error: "Cross-brain letter recipient resolves to current tenant; omit 'to' for local letters." };
 					}
 					// Rate limit: max 200 cross-tenant letters per day per sender
 					const recipientStorage = storage.forTenant(recipient);
-					const todayLetters = await recipientStorage.readLetters();
 					const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-					const recentFromSender = todayLetters.filter(l =>
-						l.from_context === storage.getTenant() && l.timestamp > oneDayAgo
-					);
-					if (recentFromSender.length >= 200) {
+					const recentFromSenderCount = await countLettersFromSince(recipientStorage, senderTenant, oneDayAgo);
+					if (recentFromSenderCount >= 200) {
 						return { error: "Daily cross-tenant letter limit reached (200/day)" };
 					}
 					await recipientStorage.appendLetter(letter);
-					return { sent: true, id: letter.id, to_brain: recipient, to_context: args.to_context };
+					const deliveryStatus: DeliveryStatus = "delivered";
+					queueLetterDeliveryAudit(context, recipientStorage, letter, senderTenant, recipient, requestedRecipient, deliveryStatus);
+					return {
+						sent: true,
+						letter_id: letter.id,
+						from_tenant: senderTenant,
+						to_tenant: recipient,
+						requested_to: requestedRecipient,
+						to_context: recipientContext,
+						delivery_status: deliveryStatus,
+						delivered_at: now
+					};
 				}
 
 				await storage.appendLetter(letter);
-				return { sent: true, id: letter.id, to: args.to_context };
+				const deliveryStatus: DeliveryStatus = "local";
+				queueLetterDeliveryAudit(context, storage, letter, senderTenant, senderTenant, undefined, deliveryStatus);
+				return {
+					sent: true,
+					letter_id: letter.id,
+					from_tenant: senderTenant,
+					to_tenant: senderTenant,
+					to_context: recipientContext,
+					delivery_status: deliveryStatus,
+					delivered_at: now
+				};
 			}
 
-			if (action === "read") {
-				const letters = await storage.readLetters();
-				const recipientContext = args.context || "chat";
-
-				let relevant = letters.filter(l => l.to_context === recipientContext);
-				if (args.unread_only !== false) {
-					relevant = relevant.filter(l => !l.read);
+			if (action === "read" || action === "list" || action === "search") {
+				const recipientContext = normalizeLetterContext(args.context);
+				if (typeof recipientContext !== "string") return recipientContext;
+				const cursor = normalizeOptionalString(args.cursor, "cursor", 128);
+				if (cursor && typeof cursor !== "string") return cursor;
+				const from = normalizeOptionalString(args.from, "from", MAX_LETTER_CONTEXT_LENGTH);
+				if (from && typeof from !== "string") return from;
+				const query = normalizeOptionalString(args.query, "query", MAX_LETTER_QUERY_LENGTH);
+				if (query && typeof query !== "string") return query;
+				if (action === "search" && !query) {
+					return { error: "query is required for action=search" };
 				}
+				const unreadOnly = action === "read" ? args.unread_only !== false : args.unread_only === true;
+				const limit = normalizeLetterLimit(args.limit);
+				const result = await listLetters(storage, {
+					context: recipientContext,
+					limit,
+					cursor,
+					unreadOnly,
+					from,
+					query
+				});
 
-				// Mark as read
-				if (relevant.length > 0) {
-					for (const letter of relevant) {
-						const idx = letters.findIndex(l => l.id === letter.id);
-						if (idx !== -1) letters[idx].read = true;
-					}
-					await storage.writeLetters(letters);
+				if (action === "read") {
+					await markLettersRead(storage, result.letters.map(letter => letter.id));
 				}
 
 				return {
 					context: recipientContext,
-					count: relevant.length,
-					letters: relevant.map(l => ({
-						id: l.id,
-						from: l.from_context,
-						content: l.content,
-						timestamp: l.timestamp,
-						charges: l.charges,
-						letter_type: l.letter_type
-					}))
+					count: result.letters.length,
+					has_more: result.has_more,
+					next_cursor: result.next_cursor,
+					letters: result.letters.map(formatLetter)
 				};
 			}
 
-			return { error: `Unknown action: ${action}. Must be write or read.` };
+			if (action === "get") {
+				const id = normalizeOptionalString(args.id, "id", 128);
+				if (!id || typeof id !== "string") return { error: "id is required for action=get" };
+				const direct = typeof storage.getLetterById === "function"
+					? await storage.getLetterById(id)
+					: null;
+				const letter = direct ?? (await storage.readLetters()).find(l => l.id === id) ?? null;
+				if (!letter) {
+					return { error: `Letter not found: ${id}` };
+				}
+				return {
+					found: true,
+					letter: formatLetter(letter)
+				};
+			}
+
+			return { error: `Unknown action: ${action}. Must be write, read, list, get, or search.` };
 		}
 
 		case "mind_context": {

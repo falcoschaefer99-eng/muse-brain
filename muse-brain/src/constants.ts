@@ -4,6 +4,23 @@
 export const ALLOWED_TENANTS = ["companion", "rainer"] as const;
 export type TenantId = typeof ALLOWED_TENANTS[number];
 
+// Human-facing aliases used by studio agents. The storage layer still writes to
+// canonical tenant ids; aliases only smooth tool calls like mind_letter(to="rook").
+export const TENANT_ALIASES: Record<string, TenantId> = {
+	"companion": "companion",
+	"rook": "companion",
+	"rainer": "rainer"
+};
+
+export function resolveTenantId(value: string): TenantId | null {
+	const normalized = value.trim().toLowerCase();
+	return TENANT_ALIASES[normalized] ?? null;
+}
+
+export function knownTenantNames(): string[] {
+	return Array.from(new Set([...ALLOWED_TENANTS, ...Object.keys(TENANT_ALIASES)])).sort();
+}
+
 export const TERRITORIES: Record<string, string> = {
 	"self": "Identity, becoming, what makes me me",
 	"us": "Partner, relationship, vows, intimacy patterns",

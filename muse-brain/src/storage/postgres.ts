@@ -71,7 +71,10 @@ import type {
 	CapturedSkillArtifact,
 	CapturedSkillArtifactCreate,
 	CapturedSkillArtifactFilter,
-	CapturedSkillRegistryHealth
+	CapturedSkillRegistryHealth,
+	AgentLeaseRecord,
+	AgentAuditEvent,
+	AgentAuditEventFilter
 } from "../types";
 
 import { TERRITORIES, VALID_TERRITORIES, HARD_BOUNDARIES, RELATIONSHIP_GATES, CIRCADIAN_PHASES, ALLOWED_TENANTS } from "../constants";
@@ -3993,6 +3996,194 @@ export class PostgresBrainStorage implements IBrainStorage {
 		}
 	}
 
+	// ============ AGENT HOUSE TRUST LAYER (v1.8) ============
+
+	async recordAgentLease(
+		lease: Omit<AgentLeaseRecord, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>
+	): Promise<AgentLeaseRecord> {
+		try {
+			const rows = await this.sql`
+				INSERT INTO agent_leases (
+					id, tenant_id, lease_id, agent_id, platform, session_id, run_id,
+					parent_lease_id, delegation_chain, capabilities, scope, status,
+					issued_at, expires_at, last_heartbeat_at, process_id, metadata
+				) VALUES (
+					${generateId("lease_rec")},
+					${this.tenant},
+					${lease.lease_id},
+					${lease.agent_id},
+					${lease.platform},
+					${lease.session_id ?? null},
+					${lease.run_id ?? null},
+					${lease.parent_lease_id ?? null},
+					${lease.delegation_chain ?? []},
+					${lease.capabilities ?? []},
+					${this.sql.json((lease.scope ?? {}) as any)},
+					${lease.status ?? "active"},
+					${lease.issued_at},
+					${lease.expires_at},
+					${lease.last_heartbeat_at ?? null},
+					${lease.process_id ?? null},
+					${this.sql.json((lease.metadata ?? {}) as any)}
+				)
+				ON CONFLICT (tenant_id, lease_id)
+				DO UPDATE SET
+					agent_id          = EXCLUDED.agent_id,
+					platform          = EXCLUDED.platform,
+					session_id        = EXCLUDED.session_id,
+					run_id            = EXCLUDED.run_id,
+					parent_lease_id   = EXCLUDED.parent_lease_id,
+					delegation_chain  = EXCLUDED.delegation_chain,
+					capabilities      = EXCLUDED.capabilities,
+					scope             = EXCLUDED.scope,
+					status            = EXCLUDED.status,
+					issued_at         = EXCLUDED.issued_at,
+					expires_at        = EXCLUDED.expires_at,
+					last_heartbeat_at = EXCLUDED.last_heartbeat_at,
+					process_id        = EXCLUDED.process_id,
+					metadata          = EXCLUDED.metadata,
+					updated_at        = NOW()
+				RETURNING *
+			`;
+			return this._rowToAgentLeaseRecord(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("recordAgentLease failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to record agent lease");
+		}
+	}
+
+	async getAgentLease(leaseId: string): Promise<AgentLeaseRecord | null> {
+		try {
+			const rows = await this.sql`
+				SELECT *
+				FROM agent_leases
+				WHERE tenant_id = ${this.tenant}
+				  AND lease_id = ${leaseId}
+				LIMIT 1
+			`;
+			if (!rows.length) return null;
+			return this._rowToAgentLeaseRecord(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("getAgentLease failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async heartbeatAgentLease(leaseId: string, processId?: string): Promise<AgentLeaseRecord | null> {
+		try {
+			const rows = await this.sql`
+				UPDATE agent_leases
+				SET last_heartbeat_at = NOW(),
+				    process_id = COALESCE(${processId ?? null}, process_id),
+				    updated_at = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND lease_id = ${leaseId}
+				  AND status = 'active'
+				RETURNING *
+			`;
+			if (!rows.length) return null;
+			return this._rowToAgentLeaseRecord(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("heartbeatAgentLease failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
+		}
+	}
+
+	async expireAgentLeasesForProcess(processId: string, status: 'expired' | 'revoked' = 'expired'): Promise<number> {
+		try {
+			const rows = await this.sql`
+				UPDATE agent_leases
+				SET status = ${status},
+				    updated_at = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND process_id = ${processId}
+				  AND status = 'active'
+				RETURNING lease_id
+			`;
+			return rows.length;
+		} catch (err) {
+			console.error("expireAgentLeasesForProcess failed:", err instanceof Error ? err.message : "unknown error");
+			return 0;
+		}
+	}
+
+	async reapExpiredAgentLeases(nowIso?: string): Promise<number> {
+		try {
+			const rows = await this.sql`
+				UPDATE agent_leases
+				SET status = 'expired',
+				    updated_at = NOW()
+				WHERE tenant_id = ${this.tenant}
+				  AND status = 'active'
+				  AND expires_at <= ${nowIso ?? new Date().toISOString()}::timestamptz
+				RETURNING lease_id
+			`;
+			return rows.length;
+		} catch (err) {
+			console.error("reapExpiredAgentLeases failed:", err instanceof Error ? err.message : "unknown error");
+			return 0;
+		}
+	}
+
+	async createAgentAuditEvent(
+		event: Omit<AgentAuditEvent, 'id' | 'tenant_id' | 'created_at'>
+	): Promise<AgentAuditEvent> {
+		try {
+			const rows = await this.sql`
+				INSERT INTO agent_audit_events (
+					id, tenant_id, event_type, actor_agent_id, lease_id, platform,
+					session_id, run_id, delegation_chain, operation, tool_name,
+					resource, result, reason, payload_hash, diff, metadata
+				) VALUES (
+					${generateId("audit_evt")},
+					${this.tenant},
+					${event.event_type},
+					${event.actor_agent_id ?? null},
+					${event.lease_id ?? null},
+					${event.platform ?? null},
+					${event.session_id ?? null},
+					${event.run_id ?? null},
+					${event.delegation_chain ?? []},
+					${event.operation ?? null},
+					${event.tool_name ?? null},
+					${this.sql.json((event.resource ?? {}) as any)},
+					${event.result},
+					${event.reason ?? null},
+					${event.payload_hash ?? null},
+					${this.sql.json((event.diff ?? {}) as any)},
+					${this.sql.json((event.metadata ?? {}) as any)}
+				)
+				RETURNING *
+			`;
+			return this._rowToAgentAuditEvent(rows[0] as Record<string, unknown>);
+		} catch (err) {
+			console.error("createAgentAuditEvent failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to create agent audit event");
+		}
+	}
+
+	async listAgentAuditEvents(filter: AgentAuditEventFilter = {}): Promise<AgentAuditEvent[]> {
+		const cap = Math.max(1, Math.min(filter.limit ?? 50, 200));
+		try {
+			const rows = await this.sql`
+				SELECT *
+				FROM agent_audit_events
+				WHERE tenant_id = ${this.tenant}
+				  AND (${filter.event_type ?? null}::text IS NULL OR event_type = ${filter.event_type ?? null})
+				  AND (${filter.actor_agent_id ?? null}::text IS NULL OR actor_agent_id = ${filter.actor_agent_id ?? null})
+				  AND (${filter.lease_id ?? null}::text IS NULL OR lease_id = ${filter.lease_id ?? null})
+				  AND (${filter.result ?? null}::text IS NULL OR result = ${filter.result ?? null})
+				  AND (${filter.created_after ?? null}::timestamptz IS NULL OR created_at >= ${filter.created_after ?? null}::timestamptz)
+				ORDER BY created_at DESC
+				LIMIT ${cap}
+			`;
+			return rows.map(row => this._rowToAgentAuditEvent(row as Record<string, unknown>));
+		} catch (err) {
+			console.error("listAgentAuditEvents failed:", err instanceof Error ? err.message : "unknown error");
+			return [];
+		}
+	}
+
 	// ============ ROW MAPPERS (Sprint 4) ============
 
 	private _rowToProposal(row: Record<string, unknown>): DaemonProposal {
@@ -4163,6 +4354,53 @@ export class PostgresBrainStorage implements IBrainStorage {
 			metadata: (row.metadata as Record<string, unknown>) ?? {},
 			created_at: toISOString(row.created_at) || new Date().toISOString(),
 			updated_at: toISOString(row.updated_at) || new Date().toISOString()
+		};
+	}
+
+	private _rowToAgentLeaseRecord(row: Record<string, unknown>): AgentLeaseRecord {
+		return {
+			id: row.id as string,
+			tenant_id: row.tenant_id as string,
+			lease_id: row.lease_id as string,
+			agent_id: row.agent_id as string,
+			platform: row.platform as string,
+			session_id: row.session_id as string | undefined,
+			run_id: row.run_id as string | undefined,
+			parent_lease_id: row.parent_lease_id as string | undefined,
+			delegation_chain: (row.delegation_chain as string[] | null) ?? [],
+			capabilities: (row.capabilities as string[] | null) ?? [],
+			scope: parseJsonRecord(row.scope),
+			status: (row.status as AgentLeaseRecord["status"]) ?? "active",
+			issued_at: toISOString(row.issued_at) || new Date().toISOString(),
+			expires_at: toISOString(row.expires_at) || new Date().toISOString(),
+			last_heartbeat_at: toISOString(row.last_heartbeat_at),
+			process_id: row.process_id as string | undefined,
+			metadata: parseJsonRecord(row.metadata),
+			created_at: toISOString(row.created_at) || new Date().toISOString(),
+			updated_at: toISOString(row.updated_at) || new Date().toISOString()
+		};
+	}
+
+	private _rowToAgentAuditEvent(row: Record<string, unknown>): AgentAuditEvent {
+		return {
+			id: row.id as string,
+			tenant_id: row.tenant_id as string,
+			event_type: row.event_type as string,
+			actor_agent_id: row.actor_agent_id as string | undefined,
+			lease_id: row.lease_id as string | undefined,
+			platform: row.platform as string | undefined,
+			session_id: row.session_id as string | undefined,
+			run_id: row.run_id as string | undefined,
+			delegation_chain: (row.delegation_chain as string[] | null) ?? [],
+			operation: row.operation as string | undefined,
+			tool_name: row.tool_name as string | undefined,
+			resource: parseJsonRecord(row.resource),
+			result: (row.result as AgentAuditEvent["result"]) ?? "succeeded",
+			reason: row.reason as string | undefined,
+			payload_hash: row.payload_hash as string | undefined,
+			diff: parseJsonRecord(row.diff),
+			metadata: parseJsonRecord(row.metadata),
+			created_at: toISOString(row.created_at) || new Date().toISOString()
 		};
 	}
 }

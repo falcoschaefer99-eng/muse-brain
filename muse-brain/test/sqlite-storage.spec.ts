@@ -77,6 +77,61 @@ describe('sqlite storage backend', () => {
 		expect(usage.duty_runs).toBe(1);
 	});
 
+	it('persists agent leases and audit events for the trust layer', async () => {
+		const dbPath = `/tmp/muse-brain-test-${crypto.randomUUID()}.sqlite`;
+		const storage = createStorage({ backend: 'sqlite', sqlitePath: dbPath }, 'rainer');
+		const issued = '2026-05-11T12:00:00.000Z';
+		const expires = '2026-05-11T13:00:00.000Z';
+
+		const lease = await storage.recordAgentLease({
+			lease_id: 'lease_sqlite_test',
+			agent_id: 'salem',
+			platform: 'codex',
+			session_id: 'session_1',
+			run_id: 'run_1',
+			delegation_chain: ['falco', 'rainer', 'salem'],
+			capabilities: ['memory.read'],
+			scope: { tenant: 'rainer', territories: ['craft'] },
+			status: 'active',
+			issued_at: issued,
+			expires_at: expires,
+			process_id: 'proc_1',
+			metadata: { source: 'test' }
+		});
+
+		expect(lease.lease_id).toBe('lease_sqlite_test');
+		expect((await storage.getAgentLease('lease_sqlite_test'))?.agent_id).toBe('salem');
+
+		const heartbeat = await storage.heartbeatAgentLease('lease_sqlite_test', 'proc_2');
+		expect(heartbeat?.process_id).toBe('proc_2');
+		expect(heartbeat?.last_heartbeat_at).toBeDefined();
+
+		await storage.createAgentAuditEvent({
+			event_type: 'lease_denied',
+			actor_agent_id: 'salem',
+			lease_id: 'lease_sqlite_test',
+			platform: 'codex',
+			session_id: 'session_1',
+			run_id: 'run_1',
+			delegation_chain: ['falco', 'rainer', 'salem'],
+			operation: 'observe.write',
+			tool_name: 'mind_observe',
+			resource: { territory: 'craft' },
+			result: 'denied',
+			reason: 'lease capability denied',
+			diff: {},
+			metadata: { enforcement_mode: 'required' }
+		});
+
+		const denied = await storage.listAgentAuditEvents({ result: 'denied', lease_id: 'lease_sqlite_test' });
+		expect(denied).toHaveLength(1);
+		expect(denied[0].diff).toEqual({});
+
+		const expiredCount = await storage.expireAgentLeasesForProcess('proc_2');
+		expect(expiredCount).toBe(1);
+		expect((await storage.getAgentLease('lease_sqlite_test'))?.status).toBe('expired');
+	});
+
 	it('keeps non-entity matches when entity_id is set and includes entity-only candidates', async () => {
 		const dbPath = `/tmp/muse-brain-test-${crypto.randomUUID()}.sqlite`;
 		const storage = createStorage({ backend: 'sqlite', sqlitePath: dbPath }, 'companion');
