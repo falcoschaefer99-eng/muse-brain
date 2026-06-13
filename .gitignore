@@ -15,3 +15,7 @@ dist/
 # Runner local state/config
 runner/state/
 runner/config/tenants.json
+
+# Runner session telemetry (leaks cost/model/tenant — never commit)
+audit.jsonl
+*.jsonl

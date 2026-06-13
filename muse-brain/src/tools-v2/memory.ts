@@ -32,6 +32,10 @@ import {
 	extractQuerySignals
 } from "../retrieval/query-signals";
 import { normalizeLookupText } from "./utils";
+import {
+	extractProjectWorkspaceRoutingFromMetadata,
+	projectWorkspaceRoutingToRuntimeRouting
+} from "./project-routing";
 
 // ============ HELPERS ============
 
@@ -57,6 +61,9 @@ function parseProjectAliases(entityName: string, tags: string[], metadata?: Reco
 	}
 	const metadataSlug = metadata?.slug;
 	if (typeof metadataSlug === "string" && metadataSlug.trim()) aliases.push(metadataSlug.trim());
+	const workspaceRouting = extractProjectWorkspaceRoutingFromMetadata(metadata);
+	if (workspaceRouting?.repo_slug) aliases.push(workspaceRouting.repo_slug);
+	for (const alias of workspaceRouting?.path_aliases ?? []) aliases.push(alias);
 	return Array.from(new Set(aliases.map(alias => alias.trim()).filter(Boolean)));
 }
 
@@ -849,6 +856,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								tenant: winner.project.tenant,
 								entity: winner.project.entity,
 								dossier: winner.project.dossier,
+								workspace_routing: projectWorkspaceRoutingToRuntimeRouting(
+									extractProjectWorkspaceRoutingFromMetadata(winner.project.dossier.metadata)
+								),
 								recent_observations: projectObs.map(row => ({
 									id: row.observation.id,
 									territory: row.territory,
