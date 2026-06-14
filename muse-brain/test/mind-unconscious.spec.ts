@@ -214,7 +214,7 @@ describe("mind_unconscious wrapper", () => {
 			action: "dream",
 			dream_mode: "emotional_chain",
 			seed_territory: "craft",
-			depth: 1
+			depth: 3
 		}, { storage: storage as any });
 
 		expect(result.unconscious_register).toBe("dream");
@@ -236,6 +236,7 @@ describe("mind_unconscious wrapper", () => {
 				texture: expect.objectContaining({ grip: "present" })
 			})
 		]));
+		expect(storage.readTerritory).toHaveBeenCalledTimes(9);
 	});
 
 	it("routes imagination through the aggregate dispatcher and creates a craft observation", async () => {

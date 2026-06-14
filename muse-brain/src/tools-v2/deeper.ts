@@ -184,15 +184,22 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const visited = new Set([seed.id]);
 
 				const deepStrategies = ["emotion_proximity", "somatic_region", "entity", "tension"] as const;
+				const territoryEntries = await Promise.all(
+					Object.keys(TERRITORIES).map(async (territory) => ({
+						territory,
+						observations: await storage.readTerritory(territory)
+					}))
+				);
+				const observationsByTerritory = new Map(
+					territoryEntries.map(entry => [entry.territory, entry.observations])
+				);
 
 				for (let i = 0; i < depth; i++) {
 					const current = dreamChain[dreamChain.length - 1];
 					let candidates: (Observation & { territory: string })[] = [];
 
-					for (const t of Object.keys(TERRITORIES)) {
-						const obs = await storage.readTerritory(t);
-
-						for (const o of obs) {
+					for (const { territory, observations } of territoryEntries) {
+						for (const o of observations) {
 							if (visited.has(o.id)) continue;
 
 							let matches = false;
@@ -252,7 +259,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								}
 							}
 
-							if (matches) candidates.push({ ...o, territory: t });
+							if (matches) candidates.push({ ...o, territory });
 						}
 					}
 
@@ -287,7 +294,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				}
 
 				for (const t of chainTerritories) {
-					territoriesToUpdate[t] = await storage.readTerritory(t);
+					territoriesToUpdate[t] = observationsByTerritory.get(t) ?? [];
 				}
 
 				const now = getTimestamp();
@@ -461,10 +468,9 @@ ${fragments[0]}
 					context: args.seed ? `Imagined from seed: ${args.seed}` : "Autonomous imagination",
 					mood: args.mood || "manic",
 					access_count: 1,
-					last_accessed: getTimestamp()
+					last_accessed: getTimestamp(),
+					type: "imagination"
 				};
-
-				(observation as any).type = "imagination";
 
 				await storage.appendToTerritory("craft", observation);
 
@@ -752,10 +758,10 @@ async function runConsolidate(
 			created: getTimestamp(),
 			texture: { salience: "active", vividness: "soft", charge: [synthesis.suggested_theme], somatic: dominantSomatic[0]?.[0], grip: "present" },
 			access_count: 0,
-			last_accessed: getTimestamp()
+			last_accessed: getTimestamp(),
+			type: "synthesis",
+			source_observations: synthesis.observation_ids
 		};
-		(synthObs as any).type = "synthesis";
-		(synthObs as any).source_observations = synthesis.observation_ids;
 
 		await storage.appendToTerritory("episodic", synthObs);
 		result.synthesis_created = synthId;

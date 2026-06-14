@@ -4,6 +4,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follo
 
 ---
 
+## [1.8.1] — 2026-06-14
+
+### Fixed
+- Removed the `mind_project action=list` N+1 hydration pattern by batch-loading project entities instead of fetching one entity per dossier.
+- Hoisted `mind_dream` territory reads out of the dream-depth loop and reused the same snapshot for texture drift, keeping territory reads constant instead of depth-scaled.
+- Hardened project routing URL validation for `workspace_routing.canonical_repo_url`.
+- Added an accessible README `<h1>` while preserving the visual banner.
+- Replaced load-bearing observation subtype casts with typed `Observation.type` / `source_observations` fields where applicable.
+- Replaced Kit receipt parsing's subtype cast with a runtime `ReceiptKind` guard.
+
+### Tests
+- Added lease boundary coverage for malformed lease headers across enforcement modes, delegation-chain cap behavior, and `allow_all` tenant isolation.
+- Added receipt coverage for the entity-exists-but-dossier-missing path.
+- Added project-list assertions that guard against reintroducing per-dossier entity lookups.
+- Added dream-read count coverage to prevent reintroducing depth-scaled territory reads.
+
+### Deferred
+- HMAC-signed leases and flipping default enforcement from `shadow` to `required` remain future trust-layer work, not a patch-level compatibility change.
+
 ## [1.8.0] — 2026-06-13
 
 ### Added

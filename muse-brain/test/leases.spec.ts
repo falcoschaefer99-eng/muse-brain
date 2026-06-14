@@ -74,6 +74,17 @@ describe("agent lease protocol", () => {
 		expect(resolution.error).toBe("lease is required");
 	});
 
+	it("handles malformed lease headers consistently across enforcement modes", () => {
+		for (const mode of ["off", "shadow", "required"] as const) {
+			const headers = new Headers({ "X-Brain-Lease": "{bad" });
+			const resolution = resolveRequestLease(headers, "rainer", mode, NOW);
+			expect(resolution.mode).toBe(mode);
+			expect(resolution.source).toBe("header");
+			expect(resolution.lease).toBeUndefined();
+			expect(resolution.error).toMatch(/valid JSON/);
+		}
+	});
+
 	it("permits delegated leases to narrow but not widen scope", () => {
 		const parent = parentLease();
 		expect(isScopeSubset(parent.scope, { tenant: "rainer", territories: ["craft"], entities: ["agent:salem"] })).toBe(true);
@@ -129,6 +140,54 @@ describe("agent lease protocol", () => {
 			scope: { tenant: "rainer", territories: ["craft"], entities: ["agent:salem"] },
 			expires_at: "2026-05-11T12:30:00.000Z"
 		}, NOW)).toThrow(/parent lease expired/);
+	});
+
+	it("caps delegation chains at 16 while preserving the newest lineage", () => {
+		const chain = Array.from({ length: 16 }, (_, index) => `agent_${index}`);
+		const child = createDelegatedLease(parentLease({
+			delegation_chain: chain,
+			scope: { tenant: "rainer", allow_all: true },
+			capabilities: [LEASE_CAPABILITIES.memoryRead]
+		}), {
+			lease_id: "lease_child",
+			agent_id: "new_agent",
+			platform: "codex",
+			capabilities: [LEASE_CAPABILITIES.memoryRead],
+			scope: { tenant: "rainer", territories: ["craft"] },
+			expires_at: "2026-05-11T12:30:00.000Z"
+		}, NOW);
+
+		expect(child.delegation_chain).toHaveLength(16);
+		expect(child.delegation_chain[0]).toBe("agent_1");
+		expect(child.delegation_chain.at(-1)).toBe("new_agent");
+	});
+
+	it("does not let allow_all delegated leases cross tenant boundaries", () => {
+		const parent = parentLease({
+			scope: { tenant: "rainer", allow_all: true },
+			capabilities: [LEASE_CAPABILITIES.memoryRead]
+		});
+
+		expect(() => createDelegatedLease(parent, {
+			lease_id: "lease_cross_tenant",
+			agent_id: "salem",
+			platform: "codex",
+			capabilities: [LEASE_CAPABILITIES.memoryRead],
+			scope: { tenant: "companion", allow_all: true },
+			expires_at: "2026-05-11T12:30:00.000Z"
+		}, NOW)).toThrow(/scope exceeds/);
+
+		const child = createDelegatedLease(parent, {
+			lease_id: "lease_same_tenant",
+			agent_id: "salem",
+			platform: "codex",
+			capabilities: [LEASE_CAPABILITIES.memoryRead],
+			scope: { tenant: "rainer", allow_all: true },
+			expires_at: "2026-05-11T12:30:00.000Z"
+		}, NOW);
+
+		expect(authorizeLeaseForTool(child, "mind_query", { territory: "craft" }, "rainer", NOW).allowed).toBe(true);
+		expect(authorizeLeaseForTool(child, "mind_query", { territory: "craft" }, "companion", NOW).reason).toBe("lease tenant mismatch");
 	});
 
 	it("authorizes reads and denies writes outside capability/scope", () => {

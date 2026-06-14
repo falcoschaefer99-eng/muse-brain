@@ -149,10 +149,16 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						limit: args.limit ?? 20
 					});
 
-					const projects = await Promise.all(dossiers.map(async (dossier) => {
-						const entity = await storage.findEntityById(dossier.project_entity_id);
+					const projectIds = [...new Set(dossiers.map(dossier => dossier.project_entity_id))];
+					const entities = typeof storage.findEntitiesByIds === "function"
+						? await storage.findEntitiesByIds(projectIds)
+						: await storage.listEntities({ entity_type: "project" });
+					const entityById = new Map(entities.map(entity => [entity.id, entity]));
+
+					const projects = dossiers.map((dossier) => {
+						const entity = entityById.get(dossier.project_entity_id);
 						return entity ? { entity, dossier } : null;
-					}));
+					});
 
 					const presentProjects = projects.filter((project): project is { entity: Entity; dossier: ProjectDossier } => project != null);
 					return {

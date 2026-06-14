@@ -20,7 +20,7 @@ type ReceiptKind = "repo_receipt" | "deploy_receipt" | "artifact_receipt";
 
 interface ParsedReceipt {
 	id: string;
-	type?: string;
+	type: ReceiptKind;
 	created: string;
 	status?: string;
 	values: Record<string, string[]>;
@@ -31,8 +31,8 @@ function firstValue(receipt: ParsedReceipt, key: string): string | undefined {
 }
 
 function parseReceipt(observation: Observation): ParsedReceipt | null {
-	const type = observation.type as ReceiptKind | undefined;
-	if (type !== "repo_receipt" && type !== "deploy_receipt" && type !== "artifact_receipt") return null;
+	if (!isReceiptKind(observation.type)) return null;
+	const type = observation.type;
 	const values: Record<string, string[]> = {};
 	for (const rawLine of observation.content.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -50,6 +50,10 @@ function parseReceipt(observation: Observation): ParsedReceipt | null {
 		status: firstString(values.status),
 		values
 	};
+}
+
+function isReceiptKind(value: unknown): value is ReceiptKind {
+	return value === "repo_receipt" || value === "deploy_receipt" || value === "artifact_receipt";
 }
 
 function firstString(values: string[] | undefined): string | undefined {

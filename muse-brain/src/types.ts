@@ -38,6 +38,7 @@ export interface Observation {
 	type?: string;     // Observation subtype: "journal", "whisper", etc.
 	tags?: string[];   // User-assigned tags
 	entity_id?: string; // Optional link to a structured entity
+	source_observations?: string[]; // Optional provenance for synthesis/consolidation observations
 }
 
 // Phase B — not yet used by any tool

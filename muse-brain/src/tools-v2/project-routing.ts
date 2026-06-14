@@ -55,10 +55,18 @@ export function normalizeProjectWorkspaceRouting(
 			}
 			: {})
 	};
+	if (normalized.canonical_repo_url && !isAllowedRepoUrl(normalized.canonical_repo_url)) {
+		return { error: "workspace_routing.canonical_repo_url must use https://, ssh://, git+https://, or git@host:path.git form" };
+	}
 
 	return hasProjectRoutingContent(normalized)
 		? { value: normalized }
 		: {};
+}
+
+function isAllowedRepoUrl(value: string): boolean {
+	if (value.startsWith("https://") || value.startsWith("ssh://") || value.startsWith("git+https://")) return true;
+	return /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9._~/-]+(?:\.git)?$/.test(value);
 }
 
 export function extractProjectWorkspaceRoutingFromMetadata(

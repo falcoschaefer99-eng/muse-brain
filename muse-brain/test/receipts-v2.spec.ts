@@ -245,6 +245,27 @@ describe('receipts v2 tool', () => {
 		}));
 	});
 
+	it('rejects receipts when the project entity exists but its dossier is missing', async () => {
+		const project = makeProjectEntity({ name: 'MUSE Brain' });
+		const storage = {
+			findEntityById: vi.fn(),
+			findEntityByName: vi.fn(async (name: string) => name === 'MUSE Brain' ? project : null),
+			getProjectDossier: vi.fn(async () => null),
+			appendToTerritory: vi.fn()
+		};
+
+		const result = await handleReceiptTool('mind_receipt', {
+			action: 'repo',
+			project_name: 'MUSE Brain',
+			status: 'success',
+			commit_sha: 'dfd3532'
+		}, { storage: storage as any });
+
+		expect(result.error).toBe(`Project dossier not found for ${project.id}`);
+		expect(storage.getProjectDossier).toHaveBeenCalledWith(project.id);
+		expect(storage.appendToTerritory).not.toHaveBeenCalled();
+	});
+
 	it('rejects repo receipt traversal paths before writing', async () => {
 		const storage = {
 			findEntityById: vi.fn(),

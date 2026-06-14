@@ -108,6 +108,28 @@ describe('project dossiers v2 tool', () => {
 		expect(result.project).toEqual({ entity, dossier });
 	});
 
+	it('rejects unsafe canonical repo URL schemes in workspace routing', async () => {
+		const storage = {
+			findEntityByName: vi.fn(),
+			createEntity: vi.fn(),
+			createProjectDossier: vi.fn()
+		};
+
+		const result = await handleProjectTool('mind_project', {
+			action: 'create',
+			name: 'Unsafe Routing',
+			workspace_routing: {
+				repo_slug: 'unsafe/routing',
+				canonical_repo_url: 'javascript:alert(1)'
+			}
+		}, { storage: storage as any });
+
+		expect(result.error).toMatch(/canonical_repo_url/i);
+		expect(storage.findEntityByName).not.toHaveBeenCalled();
+		expect(storage.createEntity).not.toHaveBeenCalled();
+		expect(storage.createProjectDossier).not.toHaveBeenCalled();
+	});
+
 	it('returns the existing project id instead of duplicate-creating', async () => {
 		const entity = makeEntity();
 		const storage = {
@@ -135,7 +157,9 @@ describe('project dossiers v2 tool', () => {
 
 		const storage = {
 			listProjectDossiers: vi.fn(async () => [dossier]),
-			findEntityById: vi.fn(async () => entity)
+			findEntityById: vi.fn(async () => entity),
+			findEntitiesByIds: vi.fn(async () => [entity]),
+			listEntities: vi.fn()
 		};
 
 		const result = await handleProjectTool('mind_project', {
@@ -145,13 +169,18 @@ describe('project dossiers v2 tool', () => {
 
 		expect(result.count).toBe(1);
 		expect(result.projects[0]).toEqual({ entity, dossier });
+		expect(storage.findEntitiesByIds).toHaveBeenCalledWith([entity.id]);
+		expect(storage.findEntityById).not.toHaveBeenCalled();
+		expect(storage.listEntities).not.toHaveBeenCalled();
 	});
 
 	it('filters out dossiers whose project entity is missing during list hydration', async () => {
 		const dossier = makeDossier();
 		const storage = {
 			listProjectDossiers: vi.fn(async () => [dossier]),
-			findEntityById: vi.fn(async () => null)
+			findEntitiesByIds: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null),
+			listEntities: vi.fn()
 		};
 
 		const result = await handleProjectTool('mind_project', {
@@ -160,6 +189,28 @@ describe('project dossiers v2 tool', () => {
 
 		expect(result.count).toBe(0);
 		expect(result.projects).toEqual([]);
+		expect(storage.findEntitiesByIds).toHaveBeenCalledWith([dossier.project_entity_id]);
+		expect(storage.findEntityById).not.toHaveBeenCalled();
+		expect(storage.listEntities).not.toHaveBeenCalled();
+	});
+
+	it('hydrates project list with one entity scan when batch lookup is unavailable', async () => {
+		const entity = makeEntity();
+		const dossier = makeDossier({ project_entity_id: entity.id });
+		const storage = {
+			listProjectDossiers: vi.fn(async () => [dossier]),
+			listEntities: vi.fn(async () => [entity]),
+			findEntityById: vi.fn()
+		};
+
+		const result = await handleProjectTool('mind_project', {
+			action: 'list'
+		}, { storage: storage as any });
+
+		expect(result.count).toBe(1);
+		expect(result.projects[0]).toEqual({ entity, dossier });
+		expect(storage.listEntities).toHaveBeenCalledWith({ entity_type: 'project' });
+		expect(storage.findEntityById).not.toHaveBeenCalled();
 	});
 
 	it('updates dossier fields and project entity metadata', async () => {

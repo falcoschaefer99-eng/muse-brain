@@ -2,6 +2,8 @@
   <img src="muse-brain/docs/images/banner.png" alt="MUSE Brain" width="800" />
 </p>
 
+<h1 align="center">MUSE Brain</h1>
+
 <p align="center">
   <img src="muse-brain/docs/images/tagline.svg" alt="A self-learning Relational AI framework. Two minds, one brain. Both get smarter." width="800" />
 </p>
