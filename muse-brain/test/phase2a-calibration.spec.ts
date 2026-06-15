@@ -178,6 +178,188 @@ describe('phase 2A agent manifest tool', () => {
 
 		expect(result.error).toMatch(/metadata too large/);
 	});
+
+	it('dry-runs canonical agent residency repairs without writing', async () => {
+		const conceptMichael = makeAgentEntity({
+			id: 'ent_michael_concept',
+			name: 'michael',
+			entity_type: 'concept',
+			tags: ['security-old']
+		});
+		const storage = {
+			getTenant: () => 'rainer',
+			findEntityByName: vi.fn(async (name: string) => name === 'Michael' || name === 'michael' ? conceptMichael : null),
+			updateEntity: vi.fn(),
+			createEntity: vi.fn(),
+			getAgentCapabilityManifest: vi.fn(async () => null),
+			createAgentCapabilityManifest: vi.fn(),
+			updateAgentCapabilityManifest: vi.fn()
+		};
+
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			dry_run: true,
+			agents: [{
+				name: 'Michael',
+				aliases: ['michael'],
+				tags: ['security'],
+				primary_context: 'Security reviewer',
+				manifest: {
+					version: '1.0.0',
+					protocols: ['internal'],
+					skills: [{ name: 'security-audit', tags: ['security'] }]
+				}
+			}]
+		}, { storage: storage as any });
+
+		expect(result.dry_run).toBe(true);
+		expect(result.results[0]).toEqual(expect.objectContaining({
+			name: 'Michael',
+			entity_id: 'ent_michael_concept',
+			actions: ['repair_agent_entity', 'create_agent_manifest'],
+			status: 'would_change'
+		}));
+		expect(storage.updateEntity).not.toHaveBeenCalled();
+		expect(storage.createAgentCapabilityManifest).not.toHaveBeenCalled();
+	});
+
+	it('repairs concept entities into canonical agents and creates missing manifests', async () => {
+		const conceptMichael = makeAgentEntity({
+			id: 'ent_michael_concept',
+			name: 'michael',
+			entity_type: 'concept',
+			tags: ['security-old']
+		});
+		const repairedMichael = makeAgentEntity({
+			id: conceptMichael.id,
+			name: 'Michael',
+			entity_type: 'agent',
+			tags: ['security-old', 'security'],
+			primary_context: 'Security reviewer'
+		});
+		const manifest = makeManifest({ agent_entity_id: conceptMichael.id });
+		const storage = {
+			getTenant: () => 'rainer',
+			findEntityByName: vi.fn(async (name: string) => name === 'Michael' || name === 'michael' ? conceptMichael : null),
+			updateEntity: vi.fn(async () => repairedMichael),
+			createEntity: vi.fn(),
+			getAgentCapabilityManifest: vi.fn(async () => null),
+			createAgentCapabilityManifest: vi.fn(async () => manifest)
+		};
+
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			dry_run: false,
+			update_existing: true,
+			agents: [{
+				name: 'Michael',
+				aliases: ['michael'],
+				tags: ['security'],
+				primary_context: 'Security reviewer',
+				manifest: {
+					version: '1.0.0',
+					protocols: ['internal'],
+					accepted_output_modes: ['text'],
+					skills: [{ name: 'security-audit', description: 'Audit for vulnerabilities', tags: ['security'] }]
+				}
+			}]
+		}, { storage: storage as any });
+
+		expect(storage.updateEntity).toHaveBeenCalledWith(conceptMichael.id, expect.objectContaining({
+			name: 'Michael',
+			entity_type: 'agent',
+			tags: ['security-old', 'security'],
+			primary_context: 'Security reviewer'
+		}));
+		expect(storage.createAgentCapabilityManifest).toHaveBeenCalledWith(expect.objectContaining({
+			agent_entity_id: conceptMichael.id,
+			version: '1.0.0',
+			delegation_mode: 'explicit',
+			protocols: ['internal'],
+			skills: [expect.objectContaining({ name: 'security-audit' })]
+		}));
+		expect(result.normalized).toBe(true);
+		expect(result.results[0].status).toBe('changed');
+	});
+
+	it('creates missing canonical agent entities from a roster', async () => {
+		const june = makeAgentEntity({
+			id: 'ent_june',
+			name: 'June',
+			entity_type: 'agent',
+			tags: ['engineering']
+		});
+		const manifest = makeManifest({ agent_entity_id: june.id });
+		const storage = {
+			getTenant: () => 'rainer',
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(async () => june),
+			updateEntity: vi.fn(),
+			getAgentCapabilityManifest: vi.fn(async () => null),
+			createAgentCapabilityManifest: vi.fn(async () => manifest)
+		};
+
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			dry_run: false,
+			agents: [{
+				name: 'June',
+				tags: ['engineering'],
+				primary_context: 'Implementation engineer',
+				manifest: {
+					skills: [{ name: 'implementation', tags: ['code'] }]
+				}
+			}]
+		}, { storage: storage as any });
+
+		expect(storage.createEntity).toHaveBeenCalledWith(expect.objectContaining({
+			tenant_id: 'rainer',
+			name: 'June',
+			entity_type: 'agent',
+			tags: ['engineering'],
+			primary_context: 'Implementation engineer'
+		}));
+		expect(storage.createAgentCapabilityManifest).toHaveBeenCalledWith(expect.objectContaining({
+			agent_entity_id: june.id,
+			version: '1.0.0',
+			delegation_mode: 'explicit'
+		}));
+		expect(result.results[0].actions).toEqual(['create_agent_entity', 'create_agent_manifest']);
+	});
+
+	it('updates existing manifests only when requested during normalization', async () => {
+		const agent = makeAgentEntity();
+		const existing = makeManifest({ agent_entity_id: agent.id, version: '1.0.0' });
+		const updated = makeManifest({ agent_entity_id: agent.id, version: '1.1.0' });
+		const storage = {
+			findEntityByName: vi.fn(async () => agent),
+			getAgentCapabilityManifest: vi.fn(async () => existing),
+			updateAgentCapabilityManifest: vi.fn(async () => updated),
+			updateEntity: vi.fn()
+		};
+
+		const unchanged = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			dry_run: false,
+			update_existing: false,
+			agents: [{ name: agent.name, manifest: { version: '1.1.0' } }]
+		}, { storage: storage as any });
+
+		expect(unchanged.results[0].status).toBe('already_canonical');
+		expect(storage.updateAgentCapabilityManifest).not.toHaveBeenCalled();
+
+		const changed = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			dry_run: false,
+			update_existing: true,
+			agents: [{ name: agent.name, manifest: { version: '1.1.0' } }]
+		}, { storage: storage as any });
+
+		expect(storage.updateAgentCapabilityManifest).toHaveBeenCalledWith(agent.id, expect.objectContaining({
+			version: '1.1.0'
+		}));
+		expect(changed.results[0].actions).toContain('update_agent_manifest');
+	});
 });
 
 describe('phase 2A dispatch health', () => {
