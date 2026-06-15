@@ -313,6 +313,30 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 						await storage.appendToTerritory("craft", skillObs);
 
+						const capturedSkill = await storage.createCapturedSkillArtifact({
+							skill_key: buildDerivedSkillKey(storage.getTenant(), agentName, candidateId ?? proposal.id),
+							layer: "derived",
+							status: "candidate",
+							name: `Consolidated learning: ${agentName}`,
+							domain: "agent-learning",
+							task_type: "consolidation",
+							agent_tenant: storage.getTenant(),
+							source_observation_id: skillObs.id,
+							provenance: {
+								proposal_id: proposal.id,
+								consolidation_candidate_id: candidateId,
+								source_observation_ids: sourceObsIds,
+								metabolized_observation_ids: metabolized
+							},
+							metadata: {
+								agent_entity_id: agentId,
+								agent_name: agentName,
+								pattern_description: candidate?.pattern_description,
+								rationale: proposal.rationale,
+								review_gate: "candidate_requires_mind_skill_review"
+							}
+						});
+
 						// Update the agent entity's primary_context if we have an agent ID
 						if (agentId) {
 							await storage.updateEntity(agentId, {
@@ -324,8 +348,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 							reviewed: true,
 							decision: "accepted",
 							proposal_id: reviewed.id,
-							action_taken: "created_skill_observation",
+							action_taken: "created_skill_observation_and_candidate_artifact",
 							skill_observation_id: skillObs.id,
+							captured_skill_id: capturedSkill.id,
+							captured_skill_status: capturedSkill.status,
 							metabolized_count: metabolized.length,
 							metabolized_ids: metabolized,
 							candidate_id: candidateId
@@ -397,6 +423,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		default:
 			throw new Error(`Unknown propose tool: ${name}`);
 	}
+}
+
+function buildDerivedSkillKey(tenant: string, agentName: string, sourceId: string): string {
+	const slug = `${agentName}-${sourceId}`
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 80);
+	return `derived:${tenant}:${slug || "agent-consolidation"}`;
 }
 
 
