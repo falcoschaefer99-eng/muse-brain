@@ -327,6 +327,91 @@ describe('phase 2A agent manifest tool', () => {
 		expect(result.results[0].actions).toEqual(['create_agent_entity', 'create_agent_manifest']);
 	});
 
+	it('dry-runs the built-in builder squad roster when no custom agents are supplied', async () => {
+		const storage = {
+			getTenant: () => 'rainer',
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(),
+			updateEntity: vi.fn(),
+			getAgentCapabilityManifest: vi.fn(),
+			createAgentCapabilityManifest: vi.fn()
+		};
+
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			roster: 'builder'
+		}, { storage: storage as any });
+
+		expect(result.dry_run).toBe(true);
+		expect(result.roster).toBe('builder');
+		expect(result.count).toBe(12);
+		expect(result.results.map((row: any) => row.name)).toEqual(expect.arrayContaining([
+			'Eli',
+			'June',
+			'Reeve',
+			'Michael',
+			'Kit'
+		]));
+		expect(result.results.every((row: any) => row.actions.includes('create_agent_entity'))).toBe(true);
+		expect(storage.createEntity).not.toHaveBeenCalled();
+		expect(storage.createAgentCapabilityManifest).not.toHaveBeenCalled();
+	});
+
+	it('normalizes the built-in creative squad roster and creates manifests', async () => {
+		let nextId = 0;
+		const storage = {
+			getTenant: () => 'rainer',
+			findEntityByName: vi.fn(async () => null),
+			createEntity: vi.fn(async (payload: any) => makeAgentEntity({
+				id: `ent_${++nextId}`,
+				name: payload.name,
+				entity_type: payload.entity_type,
+				tags: payload.tags,
+				primary_context: payload.primary_context
+			})),
+			updateEntity: vi.fn(),
+			getAgentCapabilityManifest: vi.fn(async () => null),
+			createAgentCapabilityManifest: vi.fn(async (payload: any) => makeManifest({
+				agent_entity_id: payload.agent_entity_id,
+				skills: payload.skills,
+				protocols: payload.protocols,
+				metadata: payload.metadata
+			}))
+		};
+
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			roster: 'creative',
+			dry_run: false
+		}, { storage: storage as any });
+
+		expect(result.normalized).toBe(true);
+		expect(result.roster).toBe('creative');
+		expect(result.count).toBe(9);
+		expect(storage.createEntity).toHaveBeenCalledWith(expect.objectContaining({
+			name: 'Dante',
+			entity_type: 'agent',
+			tags: expect.arrayContaining(['dialogue'])
+		}));
+		expect(storage.createAgentCapabilityManifest).toHaveBeenCalledWith(expect.objectContaining({
+			protocols: ['internal'],
+			skills: [expect.objectContaining({ name: 'dialogue-editing' })],
+			metadata: expect.objectContaining({
+				source: 'built_in_agent_house_roster',
+				roster_version: '2026-06-15'
+			})
+		}));
+	});
+
+	it('rejects unknown built-in roster names', async () => {
+		const result = await handleAgentTool('mind_agent', {
+			action: 'normalize',
+			roster: 'goblins'
+		}, { storage: {} as any });
+
+		expect(result.error).toMatch(/roster must be one of/i);
+	});
+
 	it('updates existing manifests only when requested during normalization', async () => {
 		const agent = makeAgentEntity();
 		const existing = makeManifest({ agent_entity_id: agent.id, version: '1.0.0' });

@@ -7,6 +7,7 @@ import { cleanText, normalizeMetadata, normalizeStringList } from "./utils";
 
 const DELEGATION_MODES = ["auto", "explicit", "router"] as const;
 const ENTITY_SALIENCE = ["foundational", "active", "background", "archive"] as const;
+const ROSTERS = ["builder", "creative", "all"] as const;
 
 export const TOOL_DEFS = [
 	{
@@ -61,6 +62,11 @@ export const TOOL_DEFS = [
 						required: ["name"]
 					},
 					description: "[normalize] Canonical agent roster entries to create/repair"
+				},
+				roster: {
+					type: "string",
+					enum: [...ROSTERS],
+					description: "[normalize] Built-in squad roster to use when agents is omitted"
 				},
 				dry_run: { type: "boolean", default: true, description: "[normalize] Preview changes without writing" },
 				update_existing: { type: "boolean", default: false, description: "[normalize] Update existing manifests/entity metadata when supplied" },
@@ -192,9 +198,13 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				}
 
 				case "normalize": {
-					const roster = normalizeAgentRoster(args.agents);
+					const rosterInput = args.agents ?? getBuiltInRoster(args.roster);
+					if (rosterInput === undefined && args.roster !== undefined) {
+						return { error: `roster must be one of: ${ROSTERS.join(", ")}` };
+					}
+					const roster = normalizeAgentRoster(rosterInput);
 					if ("error" in roster) return { error: roster.error };
-					if (roster.value.length === 0) return { error: "agents roster is required for action=normalize" };
+					if (roster.value.length === 0) return { error: "agents roster or roster name is required for action=normalize" };
 
 					const dryRun = args.dry_run !== false;
 					const updateExisting = args.update_existing === true;
@@ -209,6 +219,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						normalized: !dryRun,
 						dry_run: dryRun,
 						count: results.length,
+						roster: args.agents ? "custom" : args.roster,
 						results
 					};
 				}
@@ -238,6 +249,75 @@ interface AgentResidencyRosterEntry {
 		protocols: string[];
 		skills: AgentSkillDescriptor[];
 		metadata: Record<string, unknown>;
+	};
+}
+
+type BuiltInRosterName = typeof ROSTERS[number];
+
+function getBuiltInRoster(value: unknown): unknown[] | undefined {
+	if (typeof value !== "string") return undefined;
+	if (!ROSTERS.includes(value as BuiltInRosterName)) return undefined;
+	if (value === "builder") return [...BUILDER_SQUAD_ROSTER];
+	if (value === "creative") return [...CREATIVE_SQUAD_ROSTER];
+	return [...BUILDER_SQUAD_ROSTER, ...CREATIVE_SQUAD_ROSTER];
+}
+
+const BUILDER_SQUAD_ROSTER = [
+	agentRosterEntry("Eli", "Architect — system design and trade-offs", ["architect", "system-design"], "architecture", ["system-design", "architecture"]),
+	agentRosterEntry("June", "Engineer — implementation and code changes", ["engineer", "implementation"], "engineering", ["implementation", "code"]),
+	agentRosterEntry("Reeve", "Code reviewer — readability, patterns, and maintainability", ["reviewer", "code-review"], "code-review", ["review", "maintainability"]),
+	agentRosterEntry("Michael", "Security reviewer — vulnerabilities, auth, and hardening", ["security"], "security-audit", ["security", "auth"]),
+	agentRosterEntry("Quinn", "Performance reviewer — subrequest budgets, hot paths, and scaling", ["performance"], "performance-review", ["performance", "scaling"]),
+	agentRosterEntry("Kairo", "Test-quality reviewer — coverage gaps, edge cases, and regression proof", ["testing", "test-quality"], "test-quality", ["testing", "coverage"]),
+	agentRosterEntry("Nikita", "Dependency safety reviewer — CVEs, supply chain, and package hygiene", ["dependencies", "supply-chain"], "dependency-safety", ["dependencies", "supply-chain"]),
+	agentRosterEntry("Harmony", "Accessibility reviewer — WCAG and inclusive interface/documentation checks", ["accessibility"], "accessibility-review", ["accessibility", "docs"]),
+	agentRosterEntry("Fischer", "Static analysis reviewer — types, dead code, and lint-level correctness", ["static-analysis", "types"], "static-analysis", ["types", "lint"]),
+	agentRosterEntry("Thorn", "Build error resolver — stack traces, broken gates, and repair paths", ["build", "errors"], "build-debugging", ["build", "debugging"]),
+	agentRosterEntry("Sawyer", "Deploy reviewer — CI/CD, release gates, and production rollout", ["deploy", "ci-cd"], "deployment", ["deploy", "ci"]),
+	agentRosterEntry("Kit", "Housekeeper — filesystem hygiene, routing truth, and cleanup proposals", ["housekeeping", "hygiene"], "workspace-hygiene", ["filesystem", "hygiene"])
+] as const;
+
+const CREATIVE_SQUAD_ROSTER = [
+	agentRosterEntry("Locke", "Dread and tension specialist — pacing, foreshadowing, and threat pressure", ["tension", "dread"], "tension-editing", ["tension", "pacing"]),
+	agentRosterEntry("Dante", "Dialogue and subtext specialist — status warfare and three-track lines", ["dialogue", "subtext"], "dialogue-editing", ["dialogue", "subtext"]),
+	agentRosterEntry("Sibyl", "Thematic specialist — symbolic architecture and four-layer meaning", ["theme", "symbol"], "theme-analysis", ["theme", "symbolism"]),
+	agentRosterEntry("Rosita", "Romance and intimacy specialist — yearning, desire, and relational tension", ["romance", "intimacy"], "romance-editing", ["romance", "intimacy"]),
+	agentRosterEntry("Salem", "Line editor — rhythm, cadence, and sentence-level music", ["line-editing", "cadence"], "line-editing", ["rhythm", "prose"]),
+	agentRosterEntry("Pierce", "Clarity editor — dying metaphors, bloat, and clean sense-making", ["clarity", "line-editing"], "clarity-editing", ["clarity", "editing"]),
+	agentRosterEntry("Mercer", "Economy editor — compression, cuts, and every-word-earns-it discipline", ["economy", "compression"], "economy-editing", ["compression", "editing"]),
+	agentRosterEntry("Sullivan", "Continuity specialist — timeline, consistency, and story-state tracking", ["continuity", "timeline"], "continuity-review", ["continuity", "timeline"]),
+	agentRosterEntry("Scout", "Research specialist — source checks, facts, and verification", ["research", "fact-checking"], "research", ["research", "verification"])
+] as const;
+
+function agentRosterEntry(
+	name: string,
+	primary_context: string,
+	tags: string[],
+	skillName: string,
+	skillTags: string[]
+): Record<string, unknown> {
+	return {
+		name,
+		aliases: [name.toLowerCase()],
+		tags,
+		salience: "active",
+		primary_context,
+		manifest: {
+			version: "1.0.0",
+			delegation_mode: "explicit",
+			supports_streaming: false,
+			accepted_output_modes: ["text"],
+			protocols: ["internal"],
+			skills: [{
+				name: skillName,
+				description: primary_context,
+				tags: skillTags
+			}],
+			metadata: {
+				source: "built_in_agent_house_roster",
+				roster_version: "2026-06-15"
+			}
+		}
 	};
 }
 
