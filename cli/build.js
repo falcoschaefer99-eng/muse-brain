@@ -2,7 +2,7 @@
 // Bundles the MCP stdio server and setup wizard using esbuild.
 
 import * as esbuild from "esbuild";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -38,5 +38,9 @@ await esbuild.build({
   outfile: resolve(__dirname, "dist/init.js"),
   banner: { js: "#!/usr/bin/env node" },
 });
+
+// Ensure dist/init.js is executable so the rainer-init bin works when
+// npm links it into node_modules/.bin/ without a wrapper shell script.
+chmodSync(resolve(__dirname, "dist/init.js"), 0o755);
 
 console.log("Build complete.");

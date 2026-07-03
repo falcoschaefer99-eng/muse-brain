@@ -1,6 +1,6 @@
 {
   "name": "@funkatorium/rainer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Rainer — Creative Orchestrator. One command to install a relational AI with persistent memory.",
   "type": "module",
   "bin": {
