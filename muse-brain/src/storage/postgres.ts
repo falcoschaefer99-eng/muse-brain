@@ -295,6 +295,17 @@ function rowToCapturedSkillArtifact(row: Record<string, unknown>): CapturedSkill
 	};
 }
 
+// ============ LIMBIC CONFIG CACHE ============
+// Module-level Map so the entry persists across instantiations within a Worker isolate.
+// A Cloudflare Worker isolate typically handles many requests for the same tenant before
+// being evicted; caching here means the DB is hit at most once per TTL per tenant,
+// rather than on every mind_state / mind_wake invocation.
+//
+// Key: tenant_id.  Null results are cached too — a "no row / feature-off" tenant pays
+// zero DB cost after the first check within the TTL window.
+const _limbicConfigCache = new Map<string, { at: number; v: { enabled: boolean; natal: unknown } | null }>();
+const LIMBIC_CACHE_TTL_MS = 60_000;
+
 // ============ POSTGRES BRAIN STORAGE ============
 
 export class PostgresBrainStorage implements IBrainStorage {
@@ -4010,6 +4021,35 @@ export class PostgresBrainStorage implements IBrainStorage {
 				duty_runs: 0,
 				impulse_runs: 0
 			};
+		}
+	}
+
+	// ============ LIMBIC CONFIG (Phase 1) ============
+
+	async getLimbicConfig(): Promise<{ enabled: boolean; natal: unknown } | null> {
+		const now = Date.now();
+		const cached = _limbicConfigCache.get(this.tenant);
+		if (cached !== undefined && now - cached.at < LIMBIC_CACHE_TTL_MS) {
+			return cached.v;
+		}
+		try {
+			const rows = await this.sql`
+				SELECT enabled, natal
+				FROM limbic_config
+				WHERE tenant_id = ${this.tenant}
+				LIMIT 1
+			`;
+			const v = rows.length === 0
+				? null
+				: (() => {
+					const row = rows[0] as Record<string, unknown>;
+					return { enabled: Boolean(row.enabled), natal: row.natal ?? null };
+				})();
+			_limbicConfigCache.set(this.tenant, { at: now, v });
+			return v;
+		} catch (err) {
+			console.error("getLimbicConfig failed:", err instanceof Error ? err.message : "unknown error");
+			return null;
 		}
 	}
 

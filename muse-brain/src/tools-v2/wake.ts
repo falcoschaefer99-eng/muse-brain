@@ -11,6 +11,8 @@ import {
 	toStringArray,
 	calculatePullStrength
 } from "../helpers";
+import { getMoonPhaseData } from "../limbic/ephemeris";
+import type { MoonPhaseData } from "../limbic/ephemeris";
 import type { IBrainStorage } from "../storage/interface";
 import type { ToolContext } from "./context";
 
@@ -63,6 +65,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		case "mind_wake": {
 			await ensureRainerEmbodimentCore(storage);
 			const depth = args.depth || "quick";
+			// Single fetch per invocation — Fix 1 (postgres.ts) makes this cached+cheap;
+			// hoisting here removes the three per-branch duplicates that existed before.
+			const limbicConfig = await storage.getLimbicConfig();
 
 			if (depth === "orientation") {
 				const selfObs = await storage.readTerritory("self");
@@ -71,7 +76,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				const state = await storage.readBrainState();
 				const phase = getCurrentCircadianPhase();
 
-				return {
+				const orientationResult: Record<string, unknown> & { celestial?: MoonPhaseData } = {
 					timestamp: getTimestamp(),
 					who_i_am: {
 						foundational_count: foundational.length,
@@ -88,6 +93,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					circadian: phase,
 					hint: "Identity grounding complete. Active pulls below."
 				};
+				if (limbicConfig?.enabled) {
+					orientationResult.celestial = getMoonPhaseData(new Date());
+				}
+				return orientationResult;
 			}
 
 			if (depth === "full") {
@@ -163,6 +172,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					loops,
 					"full"
 				);
+				if (limbicConfig?.enabled) {
+					results.wake.celestial = getMoonPhaseData(new Date());
+				}
 
 				return results;
 			}
@@ -299,7 +311,11 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				}
 			}
 
-			return finalizeWakePayload(storage, quickWake, loops, "quick");
+			const quickResult = await finalizeWakePayload(storage, quickWake, loops, "quick");
+			if (limbicConfig?.enabled) {
+				quickResult.celestial = getMoonPhaseData(new Date());
+			}
+			return quickResult;
 		}
 
 		case "mind_wake_log": {

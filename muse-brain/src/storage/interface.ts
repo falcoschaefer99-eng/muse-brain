@@ -565,4 +565,13 @@ export interface IBrainStorage {
 
 	/** Get the most recent wake log entry, newest first. */
 	readLatestWakeLog(): Promise<WakeLogEntry | null>;
+
+	// --- Limbic Config (Phase 1) ---
+
+	/**
+	 * Return the limbic feature config for this tenant.
+	 * Returns null when no row exists (feature off by default).
+	 * `natal` is reserved for Phase 2 — not read in Phase 1.
+	 */
+	getLimbicConfig(): Promise<{ enabled: boolean; natal: unknown } | null>;
 }
