@@ -611,4 +611,13 @@ export interface IBrainStorage {
 
 	/** List recent audit events for review/reconciliation. */
 	listAgentAuditEvents(filter?: AgentAuditEventFilter): Promise<AgentAuditEvent[]>;
+
+	// --- Limbic Config (Phase 1) ---
+
+	/**
+	 * Return the limbic feature config for this tenant.
+	 * Returns null when no row exists (feature off by default).
+	 * `natal` is reserved for Phase 2 — not read in Phase 1.
+	 */
+	getLimbicConfig(): Promise<{ enabled: boolean; natal: unknown } | null>;
 }

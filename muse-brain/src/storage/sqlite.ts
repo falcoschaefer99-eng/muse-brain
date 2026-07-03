@@ -145,7 +145,8 @@ const KV_KEYS = {
 	agent_leases: "agent_leases",
 	agent_audit_events: "agent_audit_events",
 	memory_cascade: "memory_cascade",
-	retrieval_hints: "retrieval_hints"
+	retrieval_hints: "retrieval_hints",
+	limbic_config: "limbic_config"
 } as const;
 
 function deepClone<T>(value: T): T {
@@ -2231,6 +2232,16 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		return rows
 			.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at))
 			.slice(0, cap);
+	}
+	// ============ LIMBIC CONFIG (Phase 1) ============
+
+	async getLimbicConfig(): Promise<{ enabled: boolean; natal: unknown } | null> {
+		// SQLite uses kv_store — limbic_config key stores a JSON object.
+		// No row = null (feature off). natal is TEXT (JSON-encoded) vs JSONB in Postgres.
+		return this.readValue<{ enabled: boolean; natal: unknown } | null>(
+			KV_KEYS.limbic_config,
+			null
+		);
 	}
 }
 

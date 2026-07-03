@@ -4,6 +4,8 @@
 import type { Desire } from "../types";
 import { DESIRE_STATUSES, RELATIONSHIP_LEVELS } from "../constants";
 import { getTimestamp, generateId, toStringArray, getCurrentCircadianPhase } from "../helpers";
+import { getMoonPhaseData } from "../limbic/ephemeris";
+import type { MoonPhaseData } from "../limbic/ephemeris";
 import type { ToolContext } from "./context";
 import { updateRelationshipLevel, writeRelationalFeeling } from "./relational-utils";
 
@@ -224,10 +226,21 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			const isWrite = args.mood !== undefined || args.charges !== undefined;
 
 			if (!isWrite) {
-				// Read
-				const state = await storage.readBrainState();
+				// Read — circadian is a read-time overlay (never persisted).
+				// celestial mirrors the same pattern: computed at read time,
+				// appended only when limbic_config.enabled = true for this tenant.
+				// When absent or disabled, output is byte-identical to pre-Limbic builds.
+				// readBrainState and getLimbicConfig run concurrently — no serial dependency.
+				const [state, limbicConfig] = await Promise.all([
+					storage.readBrainState(),
+					storage.getLimbicConfig(),
+				]);
 				const phase = getCurrentCircadianPhase();
-				return { ...state, circadian: phase };
+				const result: Record<string, unknown> & { celestial?: MoonPhaseData } = { ...state, circadian: phase };
+				if (limbicConfig?.enabled) {
+					result.celestial = getMoonPhaseData(new Date());
+				}
+				return result;
 			}
 
 			// Write
