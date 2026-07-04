@@ -131,6 +131,7 @@ describe('wake delta', () => {
 				created_at: '2026-03-27T00:00:00.000Z',
 				updated_at: '2026-03-27T00:00:00.000Z'
 			})),
+			getLimbicConfig: vi.fn(async () => null),
 			appendWakeLog
 		};
 
@@ -170,6 +171,7 @@ describe('wake delta', () => {
 			readLatestWakeLog: vi.fn(async () => null),
 			listTaskChangesSince: vi.fn(async () => []),
 			listProjectDossiers: vi.fn(async () => []),
+			getLimbicConfig: vi.fn(async () => null),
 			appendWakeLog
 		};
 
@@ -209,6 +211,7 @@ describe('wake delta', () => {
 			})),
 			listTaskChangesSince: vi.fn(async () => []),
 			listProjectDossiers: vi.fn(async () => []),
+			getLimbicConfig: vi.fn(async () => null),
 			appendWakeLog
 		};
 
@@ -235,7 +238,8 @@ describe('wake delta', () => {
 			readIdentityCores: vi.fn(async () => []),
 			writeIdentityCores,
 			readTerritory: vi.fn(async () => []),
-			readBrainState: vi.fn(async () => makeState())
+			readBrainState: vi.fn(async () => makeState()),
+			getLimbicConfig: vi.fn(async () => null)
 		};
 
 		await handleWakeTool('mind_wake', {
@@ -260,7 +264,8 @@ describe('wake delta', () => {
 			readIdentityCores,
 			writeIdentityCores,
 			readTerritory: vi.fn(async () => []),
-			readBrainState: vi.fn(async () => makeState())
+			readBrainState: vi.fn(async () => makeState()),
+			getLimbicConfig: vi.fn(async () => null)
 		};
 
 		await handleWakeTool('mind_wake', {

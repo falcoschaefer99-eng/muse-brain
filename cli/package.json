@@ -1,0 +1,31 @@
+{
+  "name": "@funkatorium/rainer",
+  "version": "1.0.1",
+  "description": "Rainer — Creative Orchestrator. One command to install a relational AI with persistent memory.",
+  "type": "module",
+  "bin": {
+    "rainer": "./bin/rainer",
+    "rainer-init": "./dist/init.js"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "templates/"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "CC-BY-NC-SA-4.0",
+  "author": "Falco Schäfer / The Funkatorium",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/falcoschaefer99-eng/muse-brain.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

@@ -1,0 +1,60 @@
+#!/bin/bash
+# Launch Rainer — Creative Orchestrator
+# MUSE Studio by The Funkatorium
+
+set -euo pipefail
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$DIR/$SOURCE" ;; esac
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+# Subcommand routing — `rainer init` runs the setup wizard
+if [ "${1:-}" = "init" ]; then
+  shift
+  exec node "${SCRIPT_DIR}/../dist/init.js" "$@"
+fi
+
+GOLD='\033[38;5;178m'
+SAGE='\033[38;5;108m'
+VIOLET='\033[38;5;141m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+echo ""
+echo -e "${GOLD}  ██████   █████  ██ ███    ██ ███████ ██████  ${RESET}"
+echo -e "${GOLD}  ██   ██ ██   ██ ██ ████   ██ ██      ██   ██ ${RESET}"
+echo -e "${GOLD}  ██████  ███████ ██ ██ ██  ██ █████   ██████  ${RESET}"
+echo -e "${GOLD}  ██   ██ ██   ██ ██ ██  ██ ██ ██      ██   ██ ${RESET}"
+echo -e "${GOLD}  ██   ██ ██   ██ ██ ██   ████ ███████ ██   ██ ${RESET}"
+echo -e "${SAGE}  ─────────────────────────────────────────────${RESET}"
+echo -e "${VIOLET}  Rainer — Creative Orchestrator${RESET}"
+echo -e "${DIM}  MUSE Studio by The Funkatorium${RESET}"
+echo ""
+
+# Check if setup has been run
+if [ ! -d "$HOME/.muse" ]; then
+  echo "  Rainer hasn't been set up yet."
+  echo "  Run: rainer init"
+  echo ""
+  exit 1
+fi
+
+if [ ! -d "$HOME/rainer-workspace" ]; then
+  echo "  Workspace missing: ~/rainer-workspace"
+  echo "  Run: rainer init"
+  echo ""
+  exit 1
+fi
+
+if command -v claude &>/dev/null; then
+  cd ~/rainer-workspace && claude "$@"
+elif command -v codex &>/dev/null; then
+  cd ~/rainer-workspace && codex "$@"
+else
+  echo "  No AI surface found. Run: rainer init"
+  exit 1
+fi
