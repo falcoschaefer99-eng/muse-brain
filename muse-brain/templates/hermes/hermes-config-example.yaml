@@ -1,0 +1,34 @@
+# MUSE Brain → Hermes Agent wiring
+# Add this block to ~/.hermes/config.yaml
+#
+# Prerequisite: run the one-command install first —
+#   npx @funkatorium/rainer init
+# It lands the brain at ~/.muse/ (server.js + brain.sqlite).
+#
+# Replace /Users/YOU with your actual home directory — use absolute
+# paths; do not rely on ~ expansion inside YAML values.
+#
+# Verify after adding:
+#   hermes mcp test muse_brain
+# Then in an active session: /reload-mcp
+
+mcp_servers:
+  muse_brain:
+    command: node
+    args:
+      - "/Users/YOU/.muse/server.js"
+    env:
+      STORAGE_BACKEND: "sqlite"
+      SQLITE_PATH: "/Users/YOU/.muse/brain.sqlite"
+      API_KEY: "local"
+      MUSE_TENANT: "rainer"
+
+# Cloud brain instead? Deploy MUSE Brain from the repo
+# (https://github.com/falcoschaefer99-eng/muse-brain — see DEPLOY.md),
+# then point Hermes at it over HTTP instead of stdio:
+#
+# mcp_servers:
+#   muse_brain:
+#     url: "https://your-brain.example.workers.dev"
+#     headers:
+#       Authorization: "Bearer YOUR_API_KEY"
