@@ -82,8 +82,16 @@ Until fix #1 ships, the answer to "can a caller with one companion's key read an
 
 **UNVERIFIED — verify before relying on:**
 - The deployed Cloudflare secret configuration (does prod already have per-tenant secrets bound, overriding what the code implies? The code reads a single `API_KEY` — I cannot see prod Wrangler secrets from this repo).
-- The `mind_runtime` `agent_tenant` row-level reachability into another tenant's storage vs. in-scope column filter (§2, runtime row).
-- Which tenant string the live sovereign-muse gateway actually transmits today (rook vs companion).
+- The `mind_runtime` `agent_tenant` row-level reachability into another tenant's storage vs. in-scope column filter (§2, runtime row). → **RESOLVED 2026-07-06 (June, verified by Michael):** column filter within the caller's own tenant-scoped rows — no cross-tenant row reachability. Gated behind `CROSS_TENANT_READ_GRANTS` anyway as defense-in-depth.
+- Which tenant string the live sovereign-muse gateway actually transmits today (rook vs companion). → **Still open.** Reconcile against the deployed `BRAIN_TENANT` env before enabling any rainer path or cross-brain features.
+
+---
+
+## AMENDMENTS (2026-07-06, post-implementation review — Michael)
+
+1. **§2 project-registry row correction (per June, accepted):** the claim that `scope:"all"` cross-tenant reads were "gated by nothing but a param value" was inaccurate. A pre-existing A1 hard gate (`memory.ts` — `visibility === "shared"` required on the target dossier) already gated every cross-tenant dossier read; it is a data-owner opt-in rather than a server-side grant. The fix implemented on `feat/tenant-key-binding` adds `CROSS_TENANT_READ_GRANTS` as a second, deployment-level layer — **both** must now pass. The severity framing of §2 stands (the header vulnerability made all interior gates moot), but the specific clause is corrected.
+
+2. **Implementation status:** all five required fixes implemented on `feat/tenant-key-binding` and re-reviewed — **PASS WITH CONDITIONS** (see `git log` on that branch and the re-review record). Conditions: (a) remediation completes only at rotation runbook step 5 (delete legacy `API_KEY`) — merge alone does NOT close the deployed vulnerability; (b) M1 hardening (last-match-favors-legacy on duplicate secret values) to be code-enforced.
 
 ```
 MEMORY (persisted to ~/.claude/agents/memory/michael/_universal.md):
