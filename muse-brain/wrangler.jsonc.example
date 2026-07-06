@@ -1,5 +1,12 @@
 /**
  * Copy to wrangler.jsonc and adjust values for your deployment.
+ *
+ * Auth secrets are NOT set here — use `wrangler secret put`:
+ *   wrangler secret put API_KEY_COMPANION
+ *   wrangler secret put API_KEY_RAINER
+ * (Legacy: `wrangler secret put API_KEY` keeps the old header-derived-tenant behavior
+ * with a deprecation warning; delete it once every tenant has its own per-tenant key.
+ * See ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md and .env.example.)
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -16,4 +23,10 @@
       "id": "replace-with-your-hyperdrive-id"
     }
   ]
+  // Optional plain-text tenant vocabulary overrides (not secrets — safe in vars):
+  // "vars": {
+  //   "ALLOWED_TENANTS": "companion,rainer",
+  //   "TENANT_ALIASES": "rook:companion",
+  //   "CROSS_TENANT_READ_GRANTS": "rainer:companion,companion:rainer"
+  // }
 }

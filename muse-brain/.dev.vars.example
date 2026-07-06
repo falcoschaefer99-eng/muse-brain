@@ -1,7 +1,19 @@
 # Local wrangler dev values
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
-API_KEY=local-dev-api-key
+
+# Recommended: per-tenant keys — bearer that matches one of these IS that tenant.
+API_KEY_COMPANION=local-dev-companion-key
+API_KEY_RAINER=local-dev-rainer-key
+
+# DEPRECATED legacy shared key — if set, keeps the old header-derived-tenant behavior
+# and logs a deprecation warning per request. Omit once per-tenant keys above are in use.
+# API_KEY=local-dev-api-key
 
 # Optional local sqlite mode
 # STORAGE_BACKEND=sqlite
 # SQLITE_PATH=./muse-brain.local.sqlite
+
+# Optional tenant vocabulary overrides — see .env.example for format/details
+# ALLOWED_TENANTS=companion,rainer
+# TENANT_ALIASES=rook:companion
+# CROSS_TENANT_READ_GRANTS=rainer:companion,companion:rainer
