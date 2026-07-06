@@ -149,7 +149,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		case "mind_runtime": {
 			const storage = context.storage;
 			const action = args.action;
-			const tenantResult = resolveAgentTenant(storage, args.agent_tenant);
+			const tenantResult = resolveAgentTenant(context, args.agent_tenant);
 			if ("error" in tenantResult) return tenantResult;
 			const agentTenant = tenantResult.value;
 
@@ -575,8 +575,12 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 	}
 }
 
-function resolveAgentTenant(storage: ToolContext["storage"], value: unknown): { value: string } | { error: string } {
-	const fallback = storage.getTenant();
+// agent_tenant defaults to the caller's own key-derived tenant (storage.getTenant()).
+// Any OTHER value requires an explicit CROSS_TENANT_READ_GRANTS entry — same mechanism
+// as the project registry's scope:"all" gate. Default: own tenant only, fail closed.
+// See ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md fix #3.
+function resolveAgentTenant(context: ToolContext, value: unknown): { value: string } | { error: string } {
+	const fallback = context.storage.getTenant();
 	if (value === undefined) return { value: fallback };
 	if (typeof value !== "string") return { error: "agent_tenant must be a string" };
 	const cleaned = value.trim();
@@ -584,7 +588,9 @@ function resolveAgentTenant(storage: ToolContext["storage"], value: unknown): { 
 	if (!isAllowedTenant(cleaned)) {
 		return { error: `Unknown tenant: ${cleaned}. Known: ${ALLOWED_TENANTS.join(", ")}` };
 	}
-	return { value: cleaned };
+	if (cleaned === fallback) return { value: cleaned };
+	if (context.crossTenantGrants?.has(cleaned)) return { value: cleaned };
+	return { error: `Not authorized for agent_tenant: ${cleaned} (no cross-tenant grant for ${fallback})` };
 }
 
 function isAllowedTenant(value: string): value is typeof ALLOWED_TENANTS[number] {

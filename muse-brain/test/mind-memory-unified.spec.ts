@@ -99,7 +99,40 @@ describe("loadProjectRegistry cross-tenant visibility gate (A1)", () => {
 		}
 	});
 
-	it("includes cross-tenant shared projects in lookup results", async () => {
+	// NOTE: prior to ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md fix #3, a visibility:"shared"
+	// dossier was enough on its own to surface cross-tenant — no server-side grant required.
+	// This is now gated by BOTH the per-project visibility opt-in (below) AND an explicit
+	// CROSS_TENANT_READ_GRANTS entry (context.crossTenantGrants), fail closed by default.
+	it("excludes cross-tenant shared projects from lookup results when no cross-tenant read grant is configured (default: own tenant only)", async () => {
+		const sharedEntity = makeEntity("ent_shared", "Shared Atlas", ["atlas"]);
+		const sharedDossier = makeDossier("dossier_shared", "ent_shared", { visibility: "shared" });
+
+		const crossTenantStorage = {
+			listProjectDossiers: vi.fn(async () => [sharedDossier]),
+			findEntityById: vi.fn(async (id: string) => id === "ent_shared" ? sharedEntity : null),
+			readAllTerritories: vi.fn(async () => []),
+			listTasks: vi.fn(async () => [])
+		};
+
+		const storage = {
+			getTenant: () => "companion",
+			forTenant: vi.fn(() => crossTenantStorage as any),
+			listProjectDossiers: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null),
+			readAllTerritories: vi.fn(async () => []),
+			listTasks: vi.fn(async () => [])
+		};
+
+		const result = await handleMemoryTool("mind_memory", {
+			action: "lookup",
+			keyword: "shared atlas"
+		}, { storage: storage as any }); // no crossTenantGrants — fail closed
+
+		expect(result.search_mode).not.toBe("project_bundle");
+		expect(crossTenantStorage.listProjectDossiers).not.toHaveBeenCalled();
+	});
+
+	it("includes cross-tenant shared projects in lookup results ONLY when an explicit cross-tenant read grant is configured", async () => {
 		const sharedEntity = makeEntity("ent_shared", "Shared Atlas", ["atlas"]);
 		const sharedDossier = makeDossier("dossier_shared", "ent_shared", { visibility: "shared" });
 		const now = Date.now();
@@ -127,7 +160,7 @@ describe("loadProjectRegistry cross-tenant visibility gate (A1)", () => {
 		const result = await handleMemoryTool("mind_memory", {
 			action: "lookup",
 			keyword: "shared atlas"
-		}, { storage: storage as any });
+		}, { storage: storage as any, crossTenantGrants: new Set(["rainer"]) });
 
 		expect(result.search_mode).toBe("project_bundle");
 		expect(result.project.entity.id).toBe("ent_shared");

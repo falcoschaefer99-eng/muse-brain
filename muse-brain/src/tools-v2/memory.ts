@@ -109,7 +109,15 @@ async function loadProjectRegistry(
 	const rowsPromise = (async (): Promise<ProjectRegistryRow[]> => {
 		const rows: ProjectRegistryRow[] = [];
 		const currentTenant = context.storage.getTenant();
-		const tenants = scope === "current" ? [currentTenant] : ALLOWED_TENANTS;
+		// scope:"all" cross-tenant READ requires an explicit server-side grant
+		// (CROSS_TENANT_READ_GRANTS) — default is own-tenant only, fail closed. This is a
+		// deployment-level allowlist layered on top of the existing per-project
+		// visibility:"shared" opt-in below (A1 hard gate); both must pass for a
+		// cross-tenant dossier to surface. See ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md fix #3.
+		const grantedTenants = context.crossTenantGrants ?? new Set<string>();
+		const tenants = scope === "current"
+			? [currentTenant]
+			: [currentTenant, ...ALLOWED_TENANTS.filter(t => t !== currentTenant && grantedTenants.has(t))];
 
 		for (const tenant of tenants) {
 			const tenantStorage = tenant === currentTenant ? context.storage : context.storage.forTenant?.(tenant);

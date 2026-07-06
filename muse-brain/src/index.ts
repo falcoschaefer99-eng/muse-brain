@@ -35,8 +35,9 @@ import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullS
 import { createStorage } from "./storage/index";
 import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
-import { ALLOWED_TENANTS } from "./constants";
 import { runDaemonTasks } from "./daemon/index";
+import { resolveAuth } from "./auth";
+import { resolveAllowedTenants, resolveTenantAlias, grantedTenantsFor } from "./tenant-config";
 
 // ============ RATE LIMITING ============
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -59,19 +60,53 @@ function resolveStorageConfig(env: Env): { backend: "postgres" | "sqlite"; datab
 	};
 }
 
-function resolveTenantFromHeader(request: Request): string | null {
+type TenantResolution = { ok: true; tenant: string } | { ok: false; status: number; error: string };
+
+function validateTenantHeaderFormat(rawTenant: string): boolean {
+	return Boolean(rawTenant) && rawTenant.length <= MAX_TENANT_HEADER_LENGTH && !rawTenant.includes("\0");
+}
+
+/**
+ * LEGACY PATH ONLY (env.API_KEY still configured). Preserves today's exact behavior:
+ * tenant comes from the header, defaulting to "rainer" when absent. Do not use this for
+ * the per-tenant-key path — see crossCheckTenantHeader.
+ */
+function resolveLegacyTenantFromHeader(request: Request, env: Env): TenantResolution {
 	const rawTenant = request.headers.get("X-Brain-Tenant");
 	const tenant = (rawTenant?.trim() || "rainer");
 
-	if (!tenant || tenant.length > MAX_TENANT_HEADER_LENGTH || tenant.includes("\0")) {
-		return null;
+	if (!validateTenantHeaderFormat(tenant) || !resolveAllowedTenants(env).includes(tenant)) {
+		return { ok: false, status: 400, error: "Invalid tenant" };
 	}
 
-	if (!ALLOWED_TENANTS.includes(tenant as typeof ALLOWED_TENANTS[number])) {
-		return null;
+	return { ok: true, tenant };
+}
+
+/**
+ * NEW PATH (per-tenant key matched). Tenant identity is already fixed by which key
+ * matched (`keyTenant`) — the header is at most a cross-check, never an override. A
+ * mismatch is a client error (403), not a silent reassignment. Fixes #1/#2 in
+ * ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md.
+ */
+function crossCheckTenantHeader(request: Request, env: Env, keyTenant: string): TenantResolution {
+	const rawHeader = request.headers.get("X-Brain-Tenant");
+	if (rawHeader === null) return { ok: true, tenant: keyTenant };
+
+	const trimmed = rawHeader.trim();
+	if (!validateTenantHeaderFormat(trimmed)) {
+		return { ok: false, status: 400, error: "Invalid tenant" };
 	}
 
-	return tenant;
+	const resolved = resolveTenantAlias(env, trimmed);
+	if (!resolveAllowedTenants(env).includes(resolved)) {
+		return { ok: false, status: 400, error: "Invalid tenant" };
+	}
+
+	if (resolved !== keyTenant) {
+		return { ok: false, status: 403, error: "Tenant mismatch: key is bound to a different tenant" };
+	}
+
+	return { ok: true, tenant: keyTenant };
 }
 
 // ============ MCP PROTOCOL ============
@@ -101,7 +136,12 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 			case "tools/call": {
 				const { name, arguments: args } = params;
 				const storage = createStorage(resolveStorageConfig(env), tenant);
-				const result = await executeTool(name, args || {}, { storage, ai: env.AI, waitUntil: ctx.waitUntil.bind(ctx) });
+				const result = await executeTool(name, args || {}, {
+					storage,
+					ai: env.AI,
+					waitUntil: ctx.waitUntil.bind(ctx),
+					crossTenantGrants: grantedTenantsFor(env, tenant)
+				});
 				return {
 					jsonrpc: "2.0",
 					id,
@@ -157,27 +197,49 @@ export default {
 			});
 		}
 
-		// Auth (timing-safe comparison) — Bearer header only
-		// Query param auth removed — keys in URLs leak to analytics, browser history, proxy logs
+		// Auth + key→tenant binding (timing-safe comparison against every configured
+		// candidate) — Bearer header only. Query param auth removed — keys in URLs leak
+		// to analytics, browser history, proxy logs. See src/auth.ts.
 		const authHeader = request.headers.get("Authorization");
 		const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-		const configuredKey = env.API_KEY?.trim() || "";
-		if (!configuredKey) {
-			console.error("API_KEY missing or empty");
-			return new Response(JSON.stringify({ error: "Service misconfigured" }), {
-				status: 503,
-				headers: { "Content-Type": "application/json", ...corsHeaders }
-			});
-		}
+		const auth = resolveAuth(providedKey, env);
 
-		const encoder = new TextEncoder();
-		const keyA = encoder.encode(providedKey || "");
-		const keyB = encoder.encode(configuredKey);
-		if (keyA.byteLength !== keyB.byteLength || !crypto.subtle.timingSafeEqual(keyA, keyB)) {
+		if (!auth.ok) {
+			if (auth.reason === "misconfigured") {
+				// auth.detail (when present) names only conflicting ENV VAR NAMES — never
+				// secret material. See src/auth.ts findDuplicateSecretValues.
+				console.error(auth.detail ?? "No API keys configured — bind at least one API_KEY_<TENANT> secret or the legacy API_KEY");
+				return new Response(JSON.stringify({ error: "Service misconfigured" }), {
+					status: 503,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
 			return new Response(JSON.stringify({ error: "Unauthorized" }), {
 				status: 401,
 				headers: { "Content-Type": "application/json", ...corsHeaders }
 			});
+		}
+
+		if (auth.legacy) {
+			// Loud, structured deprecation warning — this deployment still has the legacy
+			// shared API_KEY bound. Delete it once every tenant has its own API_KEY_<TENANT>.
+			console.warn(JSON.stringify({
+				level: "warn",
+				event: "deprecated_auth_legacy_api_key",
+				msg: "Legacy shared API_KEY used for auth — migrate to per-tenant API_KEY_<TENANT> secrets",
+				path: url.pathname,
+				ts: new Date().toISOString()
+			}));
+		}
+
+		// keyTenant is null only on the legacy path — tenant there is resolved per-route
+		// below, from the header, with the old default (dual-accept transition).
+		const keyTenant: string | null = auth.legacy ? null : auth.tenant;
+
+		function resolveRequestTenant(): TenantResolution {
+			return keyTenant !== null
+				? crossCheckTenantHeader(request, env, keyTenant)
+				: resolveLegacyTenantFromHeader(request, env);
 		}
 
 		// Per-IP rate limiting (in-memory, per-isolate only — not shared across Workers instances. Defense-in-depth, not a security boundary)
@@ -223,13 +285,14 @@ export default {
 		// Runtime trigger bridge — webhook/scheduler-friendly entrypoint.
 		// Uses existing API-key auth and tenant scoping.
 		if (url.pathname === "/runtime/trigger" && request.method === "POST") {
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
-				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
-					status: 400,
+			const tenantResolution = resolveRequestTenant();
+			if (!tenantResolution.ok) {
+				return new Response(JSON.stringify({ error: tenantResolution.error }), {
+					status: tenantResolution.status,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
+			const tenant = tenantResolution.tenant;
 
 			let payload: Record<string, unknown> = {};
 			if (rawBody.byteLength > 0) {
@@ -254,7 +317,8 @@ export default {
 			const result = await executeTool("mind_runtime", { action: "trigger", ...payload }, {
 				storage,
 				ai: env.AI,
-				waitUntil: ctx.waitUntil.bind(ctx)
+				waitUntil: ctx.waitUntil.bind(ctx),
+				crossTenantGrants: grantedTenantsFor(env, tenant)
 			});
 			const status = result?.error ? 400 : 200;
 			return new Response(JSON.stringify(result), {
@@ -265,13 +329,14 @@ export default {
 
 		// SSE for MCP connection
 		if (url.pathname === "/mcp" && request.method === "GET") {
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
-				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
-					status: 400,
+			const tenantResolution = resolveRequestTenant();
+			if (!tenantResolution.ok) {
+				return new Response(JSON.stringify({ error: tenantResolution.error }), {
+					status: tenantResolution.status,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
+			const tenant = tenantResolution.tenant;
 
 			const { readable, writable } = new TransformStream();
 			const writer = writable.getWriter();
@@ -296,14 +361,17 @@ export default {
 
 		// MCP JSON-RPC
 		if (url.pathname === "/mcp" && request.method === "POST") {
-			// Tenant resolution — default "rainer" for backward compat (proxy sends no header yet)
-			const tenant = resolveTenantFromHeader(request);
-			if (!tenant) {
-				return new Response(JSON.stringify({ error: "Invalid tenant" }), {
-					status: 400,
+			// Tenant identity comes from the key (see resolveAuth above); the header is at
+			// most a cross-check on the new path, or the legacy resolver's source of truth
+			// (with its old default) on the legacy path.
+			const tenantResolution = resolveRequestTenant();
+			if (!tenantResolution.ok) {
+				return new Response(JSON.stringify({ error: tenantResolution.error }), {
+					status: tenantResolution.status,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
 				});
 			}
+			const tenant = tenantResolution.tenant;
 
 			let body: JsonRpcRequest | JsonRpcRequest[];
 			try {
@@ -347,7 +415,7 @@ export default {
 		let totalDecayChanges = 0;
 		let totalNoveltyChanges = 0;
 
-		for (const tenant of ALLOWED_TENANTS) {
+		for (const tenant of resolveAllowedTenants(env)) {
 			const storage = createStorage(resolveStorageConfig(env), tenant);
 			let decayChanges = 0;
 

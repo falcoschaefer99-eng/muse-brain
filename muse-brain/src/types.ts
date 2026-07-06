@@ -4,11 +4,27 @@
 export interface Env {
 	DATABASE_URL?: string;    // Neon Postgres — fallback for local dev (optional when STORAGE_BACKEND=sqlite)
 	HYPERDRIVE?: Hyperdrive;  // Cloudflare Hyperdrive binding — production
-	API_KEY: string;
+	// DEPRECATED — legacy single shared key. If configured, a matching bearer keeps the
+	// old header-derived-tenant behavior (with the old default) and logs a deprecation
+	// warning per request. Delete once every tenant has its own API_KEY_<TENANT> secret.
+	// See ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md and src/auth.ts.
+	API_KEY?: string;
+	// Per-tenant secrets — key→tenant binding. Name: API_KEY_<TENANT_UPPER>, e.g.
+	// API_KEY_COMPANION, API_KEY_RAINER. The bearer that matches ONE of these IS that
+	// tenant; there is no separate tenant selection. Discovered dynamically from
+	// resolveAllowedTenants(env) in src/auth.ts — additional tenants beyond these two
+	// defaults don't need new fields declared here, just a bound secret.
+	API_KEY_COMPANION?: string;
+	API_KEY_RAINER?: string;
 	AI?: Ai;                  // Workers AI — for embeddings generation (optional during migration)
 	CORS_ORIGINS?: string;    // Comma-separated allowed origins, e.g. "https://your-app.example.com"
 	STORAGE_BACKEND?: "postgres" | "sqlite";
 	SQLITE_PATH?: string;
+	// Tenant vocabulary — all optional, all default to the compiled-in ALLOWED_TENANTS
+	// constant with no aliasing and no cross-tenant grants. See src/tenant-config.ts.
+	ALLOWED_TENANTS?: string;           // CSV override, e.g. "companion,rainer,newco"
+	TENANT_ALIASES?: string;            // CSV "alias:canonical" pairs, e.g. "rook:companion"
+	CROSS_TENANT_READ_GRANTS?: string;  // CSV "granter:granted" pairs, e.g. "rainer:companion"
 }
 
 export interface Texture {
