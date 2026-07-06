@@ -433,6 +433,33 @@ describe('worker HTTP routes — per-tenant key binding', () => {
 		expect(mismatched.status).toBe(403);
 	});
 
+	it('M1 (Michael, PASS WITH CONDITIONS re-review): a per-tenant key reused as the legacy key value is a hard config error, not a reopened cross-tenant path', async () => {
+		// Operator misconfiguration: API_KEY_RAINER was set to the SAME value as the
+		// still-configured legacy API_KEY. Before the M1 fix, this bearer would resolve via
+		// the legacy candidate (pushed last, matched last) -> keyTenant=null ->
+		// header-authoritative -> the header cross-check reopens, letting the caller name
+		// ANY tenant again. Must now fail closed with 503, for every bearer, not just the
+		// shared one.
+		const duplicateEnv = { ...env, API_KEY: 'rainer-secret-key' };
+
+		const withSharedKey = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer rainer-secret-key',
+				'X-Brain-Tenant': 'companion'
+			})),
+			duplicateEnv,
+			makeContext()
+		);
+		expect(withSharedKey.status).toBe(503);
+
+		const withUnrelatedKey = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer companion-secret-key' })),
+			duplicateEnv,
+			makeContext()
+		);
+		expect(withUnrelatedKey.status).toBe(503);
+	});
+
 	it('mind_letter sender is forced to the key-derived tenant, not any header value', async () => {
 		const writeLetter: RequestInit = {
 			method: 'POST',

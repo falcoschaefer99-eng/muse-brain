@@ -21,15 +21,27 @@ production.
 
 **1. Bind per-tenant secrets ALONGSIDE the existing legacy key. Do this first, verify, then move on.**
 
+**MUST: every secret value below MUST be distinct — generate a fresh random value for
+each one. Do NOT reuse the legacy `API_KEY` value for any `API_KEY_<TENANT>`, and do NOT
+reuse one tenant's key value for another tenant.** This is not just a discipline
+reminder — it is now **code-enforced** (`src/auth.ts` `findDuplicateSecretValues`,
+M1 hardening from Michael's PASS WITH CONDITIONS re-review, 2026-07-06). If you
+accidentally reuse a value, the service will refuse to authenticate ANY bearer at all
+(503 `Service misconfigured`, logged server-side with only the conflicting env var
+names — never the value) until the duplicate is fixed. This is deliberate: a reused
+value could otherwise let a per-tenant key silently resolve via the legacy candidate and
+reopen the header-authoritative cross-tenant path. Treat a 503 immediately after binding
+a new secret as "check for a copy-paste duplicate," not "something else is broken."
+
 ```bash
-wrangler secret put API_KEY_COMPANION   # generate a new long random value, do NOT reuse the legacy API_KEY
+wrangler secret put API_KEY_COMPANION   # generate a new long random value, distinct from every other secret below
 wrangler secret put API_KEY_RAINER      # a DIFFERENT new long random value
 ```
 
 At this point the deployment has three valid secrets: the legacy `API_KEY` (still
 authenticating via the old header-derived-tenant path, now logging a deprecation
 warning on every use) plus the two new per-tenant keys. Nothing about existing traffic
-changes yet — this step is purely additive.
+changes yet — this step is purely additive, as long as all three values are distinct.
 
 **2. Verify each new key resolves to the correct tenant before touching any client config.**
 

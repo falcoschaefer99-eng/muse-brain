@@ -206,7 +206,9 @@ export default {
 
 		if (!auth.ok) {
 			if (auth.reason === "misconfigured") {
-				console.error("No API keys configured — bind at least one API_KEY_<TENANT> secret or the legacy API_KEY");
+				// auth.detail (when present) names only conflicting ENV VAR NAMES — never
+				// secret material. See src/auth.ts findDuplicateSecretValues.
+				console.error(auth.detail ?? "No API keys configured — bind at least one API_KEY_<TENANT> secret or the legacy API_KEY");
 				return new Response(JSON.stringify({ error: "Service misconfigured" }), {
 					status: 503,
 					headers: { "Content-Type": "application/json", ...corsHeaders }
