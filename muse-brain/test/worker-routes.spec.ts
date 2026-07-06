@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -288,5 +288,279 @@ describe('worker HTTP routes', () => {
 		const secondPayload = await second.json() as { error?: string };
 		expect(firstPayload.error).toMatch(/wake_kind must be one of/i);
 		expect(secondPayload.error).toBe(firstPayload.error);
+	});
+});
+
+// ============ KEY -> TENANT BINDING (ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md) ============
+
+async function getSessionTenant(response: Response): Promise<string | undefined> {
+	const payload = await response.json() as { result?: { content?: { text?: string }[] } };
+	const text = payload.result?.content?.[0]?.text;
+	if (!text) return undefined;
+	const parsed = JSON.parse(text) as { agent_tenant?: string };
+	return parsed.agent_tenant;
+}
+
+function getSessionRequest(headers: Record<string, string> = {}): RequestInit {
+	return {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...headers },
+		body: JSON.stringify({
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'tools/call',
+			params: { name: 'mind_runtime', arguments: { action: 'get_session' } }
+		})
+	};
+}
+
+describe('worker HTTP routes — per-tenant key binding', () => {
+	let tempDir = '';
+	let env: any;
+
+	beforeAll(() => {
+		patchTimingSafeEqual();
+	});
+
+	beforeEach(() => {
+		tempDir = mkdtempSync(join(tmpdir(), 'brain-tenant-key-'));
+		env = {
+			API_KEY_COMPANION: 'companion-secret-key',
+			API_KEY_RAINER: 'rainer-secret-key',
+			STORAGE_BACKEND: 'sqlite',
+			SQLITE_PATH: join(tempDir, 'brain.sqlite')
+		};
+	});
+
+	afterEach(() => {
+		if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	it('key A resolves to tenant A (no header needed)', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer companion-secret-key' })),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('companion');
+	});
+
+	it('key B resolves to tenant B (no header needed)', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer rainer-secret-key' })),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('rainer');
+	});
+
+	it('unknown key is rejected with 401, never a default tenant', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer not-a-real-key' })),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(401);
+	});
+
+	it('header mismatch with a per-tenant key is rejected with 403, never an override', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer rainer-secret-key',
+				'X-Brain-Tenant': 'companion'
+			})),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(403);
+	});
+
+	it('header matching the key-derived tenant is accepted (200)', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer rainer-secret-key',
+				'X-Brain-Tenant': 'rainer'
+			})),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('rainer');
+	});
+
+	it('absent header is accepted — tenant is the key tenant (200)', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer companion-secret-key' })),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('companion');
+	});
+
+	it('fails closed: no per-tenant keys and no legacy API_KEY configured -> 503, never a default tenant', async () => {
+		const noKeyEnv = { ...env, API_KEY_COMPANION: undefined, API_KEY_RAINER: undefined };
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer anything' })),
+			noKeyEnv,
+			makeContext()
+		);
+		expect(response.status).toBe(503);
+	});
+
+	it('single-tenant self-host: only one per-tenant key configured makes that the only reachable tenant', async () => {
+		const singleTenantEnv = { ...env, API_KEY_COMPANION: undefined };
+		const ok = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer rainer-secret-key' })),
+			singleTenantEnv,
+			makeContext()
+		);
+		expect(ok.status).toBe(200);
+		expect(await getSessionTenant(ok)).toBe('rainer');
+
+		// The header can't reach a tenant that has no key bound, even though "companion" is
+		// still in the compiled-in tenant vocabulary.
+		const mismatched = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer rainer-secret-key',
+				'X-Brain-Tenant': 'companion'
+			})),
+			singleTenantEnv,
+			makeContext()
+		);
+		expect(mismatched.status).toBe(403);
+	});
+
+	it('mind_letter sender is forced to the key-derived tenant, not any header value', async () => {
+		const writeLetter: RequestInit = {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Authorization: 'Bearer rainer-secret-key' },
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'tools/call',
+				params: {
+					name: 'mind_letter',
+					arguments: { action: 'write', to: 'companion', to_context: 'chat', content: 'hello from rainer' }
+				}
+			})
+		};
+
+		const response = await worker.fetch(makeRequest('/mcp', writeLetter), env, makeContext());
+		expect(response.status).toBe(200);
+
+		const { SQLiteBrainStorage } = await import('../src/storage/sqlite');
+		const companionStorage = new SQLiteBrainStorage(join(tempDir, 'brain.sqlite'), 'companion');
+		const letters = await companionStorage.readLetters();
+		expect(letters).toHaveLength(1);
+		expect(letters[0].from_context).toBe('rainer');
+	});
+
+	it('a spoofed header cannot forge cross-tenant sender identity — request is rejected before the tool ever runs', async () => {
+		const writeLetter: RequestInit = {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: 'Bearer rainer-secret-key',
+				// Attacker tries to pose as companion by setting the header — must 403, not write anything.
+				'X-Brain-Tenant': 'companion'
+			},
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'tools/call',
+				params: {
+					name: 'mind_letter',
+					arguments: { action: 'write', to: 'rainer', to_context: 'chat', content: 'spoofed sender attempt' }
+				}
+			})
+		};
+
+		const response = await worker.fetch(makeRequest('/mcp', writeLetter), env, makeContext());
+		expect(response.status).toBe(403);
+
+		const { SQLiteBrainStorage } = await import('../src/storage/sqlite');
+		const rainerStorage = new SQLiteBrainStorage(join(tempDir, 'brain.sqlite'), 'rainer');
+		const letters = await rainerStorage.readLetters();
+		expect(letters).toHaveLength(0);
+	});
+});
+
+describe('worker HTTP routes — legacy shared-key dual-accept transition', () => {
+	let tempDir = '';
+	let env: any;
+
+	beforeAll(() => {
+		patchTimingSafeEqual();
+	});
+
+	beforeEach(() => {
+		tempDir = mkdtempSync(join(tmpdir(), 'brain-legacy-key-'));
+		env = {
+			API_KEY: 'legacy-shared-key',
+			STORAGE_BACKEND: 'sqlite',
+			SQLITE_PATH: join(tempDir, 'brain.sqlite')
+		};
+	});
+
+	afterEach(() => {
+		if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	it('legacy key + header keeps header-derived-tenant behavior and logs a deprecation warning', async () => {
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer legacy-shared-key',
+				'X-Brain-Tenant': 'companion'
+			})),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('companion');
+		expect(warnSpy).toHaveBeenCalled();
+		const loggedPayload = warnSpy.mock.calls.map(call => String(call[0])).join('\n');
+		expect(loggedPayload).toMatch(/deprecated_auth_legacy_api_key/);
+		warnSpy.mockRestore();
+	});
+
+	it('legacy key without a header keeps the old default-to-"rainer" behavior', async () => {
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer legacy-shared-key' })),
+			env,
+			makeContext()
+		);
+		expect(response.status).toBe(200);
+		expect(await getSessionTenant(response)).toBe('rainer');
+	});
+
+	it('once the legacy secret is absent, the legacy bearer is rejected outright (no fallback) even when per-tenant keys have been rotated in', async () => {
+		// Rotation in progress: a per-tenant key now exists alongside the (about to be
+		// deleted) legacy key. Once API_KEY is removed, the legacy bearer must be
+		// "unauthorized" (401) — there's still a valid auth path (rainer-secret-key), just
+		// not for the legacy value.
+		const rotatedEnv = { ...env, API_KEY: undefined, API_KEY_RAINER: 'rainer-secret-key' };
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({
+				Authorization: 'Bearer legacy-shared-key',
+				'X-Brain-Tenant': 'companion'
+			})),
+			rotatedEnv,
+			makeContext()
+		);
+		expect(response.status).toBe(401);
+	});
+
+	it('once the legacy secret is absent with no per-tenant keys either, the service fails closed (503 misconfigured)', async () => {
+		const noKeysEnv = { ...env, API_KEY: undefined };
+		const response = await worker.fetch(
+			makeRequest('/mcp', getSessionRequest({ Authorization: 'Bearer legacy-shared-key' })),
+			noKeysEnv,
+			makeContext()
+		);
+		expect(response.status).toBe(503);
 	});
 });

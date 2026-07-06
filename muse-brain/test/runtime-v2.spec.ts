@@ -690,3 +690,81 @@ describe('runtime v2 tool', () => {
 	});
 
 });
+
+// ============ agent_tenant cross-tenant grant gate (ops/MICHAEL_TENANT_KEY_AUDIT_2026-07-06.md fix #3) ============
+
+describe('mind_runtime agent_tenant — cross-tenant read grant gate', () => {
+	it('defaults to the caller\'s own key-derived tenant when agent_tenant is omitted', async () => {
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const storage = { getTenant: () => 'rainer', getAgentRuntimeSession };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session'
+		}, { storage: storage as any });
+
+		expect(result.agent_tenant).toBe('rainer');
+		expect(getAgentRuntimeSession).toHaveBeenCalledWith('rainer');
+	});
+
+	it('allows agent_tenant equal to the caller\'s own tenant with no grant needed', async () => {
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const storage = { getTenant: () => 'rainer', getAgentRuntimeSession };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session',
+			agent_tenant: 'rainer'
+		}, { storage: storage as any });
+
+		expect(result.agent_tenant).toBe('rainer');
+	});
+
+	it('rejects a DIFFERENT agent_tenant when no cross-tenant read grant is configured (default: fail closed)', async () => {
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const storage = { getTenant: () => 'companion', getAgentRuntimeSession };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session',
+			agent_tenant: 'rainer'
+		}, { storage: storage as any }); // no crossTenantGrants
+
+		expect(result.error).toMatch(/not authorized/i);
+		expect(getAgentRuntimeSession).not.toHaveBeenCalled();
+	});
+
+	it('allows a DIFFERENT agent_tenant ONLY when an explicit cross-tenant read grant covers it', async () => {
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const storage = { getTenant: () => 'companion', getAgentRuntimeSession };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session',
+			agent_tenant: 'rainer'
+		}, { storage: storage as any, crossTenantGrants: new Set(['rainer']) });
+
+		expect(result.agent_tenant).toBe('rainer');
+		expect(getAgentRuntimeSession).toHaveBeenCalledWith('rainer');
+	});
+
+	it('a grant for a DIFFERENT tenant does not authorize this one', async () => {
+		const getAgentRuntimeSession = vi.fn(async () => null);
+		const storage = { getTenant: () => 'companion', getAgentRuntimeSession };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session',
+			agent_tenant: 'rainer'
+		}, { storage: storage as any, crossTenantGrants: new Set(['someone-else']) });
+
+		expect(result.error).toMatch(/not authorized/i);
+		expect(getAgentRuntimeSession).not.toHaveBeenCalled();
+	});
+
+	it('still rejects an unknown tenant name regardless of grants', async () => {
+		const storage = { getTenant: () => 'companion' };
+
+		const result = await handleRuntimeTool('mind_runtime', {
+			action: 'get_session',
+			agent_tenant: 'hacker'
+		}, { storage: storage as any, crossTenantGrants: new Set(['hacker']) });
+
+		expect(result.error).toMatch(/unknown tenant/i);
+	});
+});
