@@ -187,6 +187,73 @@ describe('POST /admin/backfill', () => {
 		expect(response.status).toBe(400);
 	});
 
+	it('re-attempts a permanently-dead row exactly once even when mixed with fresh rows across iterations', async () => {
+		// Fischer's trace, reproduced in isolation from the outer beforeEach fixture rows so the
+		// numbers match exactly: 1 dead row sits at the front of the oldest-first queue with 4
+		// fresh rows behind it. chunkSize=2, limit=10 — the while-loop in /admin/backfill needs
+		// several iterations to drain the fresh rows, and the dead row reappears at the front
+		// of every queryUnembedded() call until deadIds filters it out of the batch handed to
+		// embedBackfillBatch. Without that filter, the dead row gets a fresh provider attempt
+		// (and a duplicate skipped[] entry) on every iteration it's mixed into.
+		const isolatedTempDir = mkdtempSync(join(tmpdir(), 'brain-admin-backfill-dead-row-'));
+		try {
+			const deadContent = 'permanently poisoned content';
+			const callLog: string[][] = [];
+			const isolatedEnv = {
+				API_KEY_COMPANION: 'companion-secret-key',
+				STORAGE_BACKEND: 'sqlite',
+				SQLITE_PATH: join(isolatedTempDir, 'brain.sqlite'),
+				AI: {
+					run: async (_model: string, input: { text: string[] }) => {
+						callLog.push([...input.text]);
+						if (input.text.includes(deadContent)) {
+							throw new Error('fake AI batch failure');
+						}
+						return { data: input.text.map(() => new Array(768).fill(0.01)) };
+					}
+				} as unknown as Ai
+			};
+
+			const storage = createStorage({ backend: 'sqlite', sqlitePath: isolatedEnv.SQLITE_PATH }, 'companion');
+			// Dead row first (oldest) so it sits at the front of the queue ahead of 4 fresh rows.
+			await storage.appendToTerritory('craft', makeObservation('obs_dead', deadContent));
+			for (let i = 0; i < 4; i += 1) {
+				await storage.appendToTerritory('craft', makeObservation(`obs_fresh_${i}`, `fresh memory number ${i}`));
+			}
+
+			const response = await worker.fetch(
+				makeRequest('/admin/backfill', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', Authorization: 'Bearer companion-secret-key' },
+					body: JSON.stringify({ mode: 'backfill', limit: 10, chunkSize: 2 })
+				}),
+				isolatedEnv,
+				makeContext()
+			);
+			expect(response.status).toBe(200);
+			const payload = await response.json() as {
+				embedded: number; skipped: { id: string; reason: string }[]; remaining: number; backfilledIds: string[];
+			};
+
+			expect(payload.embedded).toBe(4);
+			expect(payload.skipped).toHaveLength(1);
+			expect(payload.skipped[0].id).toBe('obs_dead');
+			expect(payload.backfilledIds).not.toContain('obs_dead');
+			expect(payload.backfilledIds.sort()).toEqual(['obs_fresh_0', 'obs_fresh_1', 'obs_fresh_2', 'obs_fresh_3']);
+			expect(payload.remaining).toBe(1);
+
+			// The dead row's content only ever appears in provider calls twice — once as part of
+			// the batch attempt, once in the per-row fallback (both within the SAME
+			// embedBackfillBatch invocation, on the one iteration it was first encountered) —
+			// never again in a later loop iteration. The old bug re-attempted it once per
+			// iteration it was mixed into fresh rows (5 duplicate skipped[] entries for this trace).
+			const callsTouchingDeadRow = callLog.filter(texts => texts.includes(deadContent));
+			expect(callsTouchingDeadRow).toHaveLength(2);
+		} finally {
+			rmSync(isolatedTempDir, { recursive: true, force: true });
+		}
+	});
+
 	it('is scoped to the resolved tenant — a different tenant sees its own empty queue', async () => {
 		const rainerEnv = { ...env, API_KEY_RAINER: 'rainer-secret-key' };
 		const response = await worker.fetch(

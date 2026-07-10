@@ -427,25 +427,34 @@ export default {
 			const backfilledIds: string[] = [];
 			const allSkipped: Array<{ id: string; reason: string }> = [];
 			// A row that fails to embed stays embedding=NULL and would otherwise be
-			// re-selected by queryUnembedded every subsequent iteration (still "oldest
-			// unembedded"), burning the whole `limit` budget re-attempting the same dead
-			// row and reporting it as skipped once per iteration. Track ids already seen
-			// this request so a no-progress iteration stops the loop instead of spinning.
-			const attemptedIds = new Set<string>();
+			// re-selected by queryUnembedded on every subsequent iteration (oldest-first
+			// never ages it out). Rows that embed successfully never reappear (queryUnembedded
+			// excludes embedding IS NOT NULL), so the only rows that can recur across
+			// iterations are dead ones. Track ids that failed THIS request in deadIds and
+			// filter them out of each freshly-fetched batch before embedding -- this bounds
+			// each dead row to exactly one provider attempt and one skipped[] entry, even
+			// when it sits at the front of the queue alongside fresh rows still to drain.
+			// `processed` still advances by the full fetched-batch size (not just the fresh
+			// count) so the `limit` bound guarantees termination regardless of how many dead
+			// rows are mixed in; the explicit break below covers the case where a fetch
+			// returns ONLY already-known-dead rows (nothing left to attempt).
+			const deadIds = new Set<string>();
 			let processed = 0;
 
 			while (processed < limit) {
 				const batchLimit = Math.min(chunkSize, limit - processed);
 				const rows = await storage.queryUnembedded(batchLimit);
 				if (rows.length === 0) break;
-				if (rows.every(row => attemptedIds.has(row.id))) break;
-				for (const row of rows) attemptedIds.add(row.id);
 
-				const { embedded, skipped } = await embedBackfillBatch(provider, rows, { chunkSize });
+				const freshRows = rows.filter(row => !deadIds.has(row.id));
+				if (freshRows.length === 0) break;
+
+				const { embedded, skipped } = await embedBackfillBatch(provider, freshRows, { chunkSize });
 				if (embedded.length > 0) {
 					await storage.bulkUpdateEmbeddings(embedded);
 					backfilledIds.push(...embedded.map(e => e.id));
 				}
+				for (const s of skipped) deadIds.add(s.id);
 				allSkipped.push(...skipped);
 				processed += rows.length;
 			}
