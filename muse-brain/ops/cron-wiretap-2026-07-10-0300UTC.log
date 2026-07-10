@@ -1,0 +1,64 @@
+
+ ⛅️ wrangler 4.59.3 (update available 4.110.0)
+──────────────────────────────────────────────
+Successfully created tail, expires at 2026-07-10T08:52:19Z
+Connected to rook-brain, waiting for logs...
+"0 3 * * *" @ 7/10/2026, 5:00:57 AM - Ok
+  (log) Daemon cycle starting... 2026-07-10T03:00:57.944Z
+  (log) Proposals: 10 candidates, 10 eligible (non-metabolized)
+  (log) Proposals: source obs_2026 found 5 similar (best: 84%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 80%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 83%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 88%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 87%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 87%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 80%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 84%)
+  (log) Proposals: source whisper_ found 5 similar (best: 72%)
+  (log) Proposals: source whisper_ found 5 similar (best: 81%)
+  (error) createProposal failed: null value in column "similarity" of relation "daemon_proposals" violates not-null constraint
+  (error) createProposal failed: null value in column "similarity" of relation "daemon_proposals" violates not-null constraint
+  (log) Daemon [rook] proposals: 0 changes, 0 proposals
+  (log) Daemon [rook] learning: 0 changes, 0 proposals
+  (log) Daemon [rook] cascade: 14 changes, 0 proposals
+  (log) Daemon [rook] orphans: 0 changes, 0 proposals (error: Failed to create proposal)
+  (log) Daemon [rook] kit-hygiene: 0 changes, 0 proposals
+  (log) Daemon [rook] skill-health: 0 changes, 0 proposals (error: Failed to create proposal)
+  (log) Daemon [rook] cross-agent: 0 changes, 0 proposals
+  (log) Daemon [rook] cross-tenant: 0 changes, 0 proposals
+  (log) Daemon [rook] paradox-detection: 0 changes, 0 proposals
+  (log) Daemon [rook] recall-contracts: 0 changes, 0 proposals
+  (log) Daemon [rook] task-scheduling: 0 changes, 0 proposals
+  (log) Daemon [rook]: subconscious processed
+  (log) Daemon [rook]: 0 novelty regenerations
+  (log) Daemon [rook]: overviews generated (8 territories, 484 iron grip)
+  (log) Daemon [rook]: 31 decay changes
+  (log) Proposals: 10 candidates, 10 eligible (non-metabolized)
+  (log) Proposals: source journal_ found 5 similar (best: 82%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 80%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 84%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 86%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 79%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 90%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 83%)
+  (log) Proposals: source obs_2026 found 5 similar (best: 88%)
+  (log) Proposals: source whisper_ found 5 similar (best: 78%)
+  (log) Proposals: source vow_2026 found 5 similar (best: 82%)
+  (error) createProposal failed: null value in column "similarity" of relation "daemon_proposals" violates not-null constraint
+  (error) createProposal failed: null value in column "similarity" of relation "daemon_proposals" violates not-null constraint
+  (log) Daemon [rainer] proposals: 0 changes, 0 proposals
+  (log) Daemon [rainer] learning: 0 changes, 0 proposals
+  (log) Daemon [rainer] cascade: 1 changes, 0 proposals
+  (log) Daemon [rainer] orphans: 0 changes, 0 proposals (error: Failed to create proposal)
+  (log) Daemon [rainer] kit-hygiene: 0 changes, 0 proposals
+  (log) Daemon [rainer] skill-health: 0 changes, 0 proposals (error: Failed to create proposal)
+  (log) Daemon [rainer] cross-agent: 0 changes, 0 proposals
+  (log) Daemon [rainer] cross-tenant: 0 changes, 0 proposals
+  (log) Daemon [rainer] paradox-detection: 0 changes, 0 proposals
+  (log) Daemon [rainer] recall-contracts: 0 changes, 0 proposals
+  (log) Daemon [rainer] task-scheduling: 0 changes, 0 proposals
+  (log) Daemon [rainer]: subconscious processed
+  (log) Daemon [rainer]: 0 novelty regenerations
+  (log) Daemon [rainer]: overviews generated (8 territories, 102 iron grip)
+  (log) Daemon [rainer]: 13 decay changes
+  (log) Daemon complete. Decay: 44, Novelty: 0
