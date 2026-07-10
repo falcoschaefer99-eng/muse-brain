@@ -829,9 +829,14 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async queryUnembedded(limit: number): Promise<{id: string; content: string}[]> {
 		try {
+			// content IS NOT NULL / btrim(content) <> '' — empty-content rows are excluded from
+			// selection entirely (they can never be embedded; see WorkersAIEmbeddingProvider
+			// throwing on empty text). Without this, one empty-content row sits at the front of
+			// the oldest-first queue forever, since it's never embedded and never ages out.
 			const rows = await this.sql`
 				SELECT id, content FROM observations
 				WHERE tenant_id = ${this.tenant} AND embedding IS NULL
+				  AND content IS NOT NULL AND btrim(content) <> ''
 				ORDER BY created_at ASC
 				LIMIT ${limit}
 			`;
@@ -844,9 +849,13 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async countUnembedded(): Promise<number> {
 		try {
+			// Mirrors queryUnembedded's predicate — this count is the actual backfill queue
+			// depth, not the coverage denominator (see getEmbeddingCoverage, which counts ALL
+			// rows including empty-content ones, so the coverage % stays honest).
 			const rows = await this.sql`
 				SELECT COUNT(*)::int as count FROM observations
 				WHERE tenant_id = ${this.tenant} AND embedding IS NULL
+				  AND content IS NOT NULL AND btrim(content) <> ''
 			`;
 			return (rows[0]?.count as number) ?? 0;
 		} catch (err) {

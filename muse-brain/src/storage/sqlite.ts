@@ -616,16 +616,23 @@ export class SQLiteBrainStorage implements IBrainStorage {
 
 	async queryUnembedded(limit: number): Promise<{ id: string; content: string }[]> {
 		const cap = Math.max(1, Math.min(limit || 50, 500));
+		// Mirrors postgres.ts's `content IS NOT NULL AND btrim(content) <> ''` predicate —
+		// empty-content rows can never be embedded and must never poison the oldest-first queue.
 		const rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations))
 			.map(o => this.normalizeObservation(o))
 			.filter(o => !o.embedding || !o.embedding.length)
+			.filter(o => typeof o.content === "string" && o.content.trim() !== "")
 			.slice(0, cap);
 		return rows.map(r => ({ id: r.id, content: r.content }));
 	}
 
 	async countUnembedded(): Promise<number> {
+		// Mirrors queryUnembedded's predicate — actual backfill queue depth, not the coverage
+		// denominator (getEmbeddingCoverage counts ALL rows, empty-content included).
 		const rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
-		return rows.filter(o => !o.embedding || !o.embedding.length).length;
+		return rows
+			.filter(o => !o.embedding || !o.embedding.length)
+			.filter(o => typeof o.content === "string" && o.content.trim() !== "").length;
 	}
 
 	async searchSimilar(options: SimilarSearchOptions): Promise<SimilarResult[]> {
