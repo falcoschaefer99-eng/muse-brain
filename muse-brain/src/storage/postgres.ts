@@ -2324,16 +2324,19 @@ export class PostgresBrainStorage implements IBrainStorage {
 		const keywordPromise: Promise<Record<string, unknown>[]> = (async () => {
 			if (!options.query?.trim()) return [];
 			const keywordLimit = profileConfig.candidate_pool.keyword;
+			// Convert space-separated query words to OR-joined for broader keyword matching.
+			// The vector search handles semantic precision; keywords are a boost signal.
+			const keywordOrQuery = options.query.trim().split(/\s+/).join(' OR ');
 			try {
 				if (options.territory && options.grip?.length) {
 					return await this.sql`
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
 						       novelty_score, surface_count, entity_id,
-						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
+						       ts_rank(search_vector, websearch_to_tsquery('english', ${keywordOrQuery})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
-						  AND search_vector @@ plainto_tsquery('english', ${options.query})
+						  AND search_vector @@ websearch_to_tsquery('english', ${keywordOrQuery})
 						  AND territory = ${options.territory}
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY text_rank DESC
@@ -2344,10 +2347,10 @@ export class PostgresBrainStorage implements IBrainStorage {
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
 						       novelty_score, surface_count, entity_id,
-						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
+						       ts_rank(search_vector, websearch_to_tsquery('english', ${keywordOrQuery})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
-						  AND search_vector @@ plainto_tsquery('english', ${options.query})
+						  AND search_vector @@ websearch_to_tsquery('english', ${keywordOrQuery})
 						  AND territory = ${options.territory}
 						ORDER BY text_rank DESC
 						LIMIT ${keywordLimit}
@@ -2357,10 +2360,10 @@ export class PostgresBrainStorage implements IBrainStorage {
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
 						       novelty_score, surface_count, entity_id,
-						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
+						       ts_rank(search_vector, websearch_to_tsquery('english', ${keywordOrQuery})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
-						  AND search_vector @@ plainto_tsquery('english', ${options.query})
+						  AND search_vector @@ websearch_to_tsquery('english', ${keywordOrQuery})
 						  AND (texture->>'grip') = ANY(${options.grip})
 						ORDER BY text_rank DESC
 						LIMIT ${keywordLimit}
@@ -2370,10 +2373,10 @@ export class PostgresBrainStorage implements IBrainStorage {
 						SELECT id, content, territory, created_at, texture, context, mood,
 						       last_accessed_at, access_count, links, summary, type, tags,
 						       novelty_score, surface_count, entity_id,
-						       ts_rank(search_vector, plainto_tsquery('english', ${options.query})) AS text_rank
+						       ts_rank(search_vector, websearch_to_tsquery('english', ${keywordOrQuery})) AS text_rank
 						FROM observations
 						WHERE tenant_id = ${this.tenant}
-						  AND search_vector @@ plainto_tsquery('english', ${options.query})
+						  AND search_vector @@ websearch_to_tsquery('english', ${keywordOrQuery})
 						ORDER BY text_rank DESC
 						LIMIT ${keywordLimit}
 					` as Record<string, unknown>[];
