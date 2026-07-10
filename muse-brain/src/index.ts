@@ -35,6 +35,7 @@ import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullS
 import { createStorage } from "./storage/index";
 import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
+import { embedBackfillBatch } from "./embedding/backfill";
 import { runDaemonTasks } from "./daemon/index";
 import { resolveAuth } from "./auth";
 import { resolveAllowedTenants, resolveTenantAlias, grantedTenantsFor } from "./tenant-config";
@@ -64,6 +65,48 @@ type TenantResolution = { ok: true; tenant: string } | { ok: false; status: numb
 
 function validateTenantHeaderFormat(rawTenant: string): boolean {
 	return Boolean(rawTenant) && rawTenant.length <= MAX_TENANT_HEADER_LENGTH && !rawTenant.includes("\0");
+}
+
+// ============ ADMIN BACKFILL — REQUEST VALIDATION ============
+
+type BackfillMode = "coverage" | "backfill";
+
+interface BackfillRequestBody {
+	mode: BackfillMode;
+	limit: number;
+	chunkSize: number;
+}
+
+type BackfillValidation = { ok: true; body: BackfillRequestBody } | { ok: false; error: string };
+
+const BACKFILL_DEFAULT_LIMIT = 200;
+const BACKFILL_MAX_LIMIT = 400;
+const BACKFILL_DEFAULT_CHUNK_SIZE = 50;
+const BACKFILL_MAX_CHUNK_SIZE = 100;
+
+/** Hard whitelist validation — never trust caller-supplied mode/limit/chunkSize past this gate. */
+function validateBackfillRequestBody(rawBody: unknown): BackfillValidation {
+	if (rawBody === null || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+		return { ok: false, error: "Body must be a JSON object" };
+	}
+	const obj = rawBody as Record<string, unknown>;
+
+	const modeRaw = obj.mode ?? "backfill";
+	if (modeRaw !== "coverage" && modeRaw !== "backfill") {
+		return { ok: false, error: "mode must be one of: coverage, backfill" };
+	}
+
+	const limitRaw = obj.limit ?? BACKFILL_DEFAULT_LIMIT;
+	if (typeof limitRaw !== "number" || !Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > BACKFILL_MAX_LIMIT) {
+		return { ok: false, error: `limit must be an integer between 1 and ${BACKFILL_MAX_LIMIT}` };
+	}
+
+	const chunkSizeRaw = obj.chunkSize ?? BACKFILL_DEFAULT_CHUNK_SIZE;
+	if (typeof chunkSizeRaw !== "number" || !Number.isInteger(chunkSizeRaw) || chunkSizeRaw < 1 || chunkSizeRaw > BACKFILL_MAX_CHUNK_SIZE) {
+		return { ok: false, error: `chunkSize must be an integer between 1 and ${BACKFILL_MAX_CHUNK_SIZE}` };
+	}
+
+	return { ok: true, body: { mode: modeRaw, limit: limitRaw, chunkSize: chunkSizeRaw } };
 }
 
 /**
@@ -323,6 +366,120 @@ export default {
 			const status = result?.error ? 400 : 200;
 			return new Response(JSON.stringify(result), {
 				status,
+				headers: { "Content-Type": "application/json", ...corsHeaders }
+			});
+		}
+
+		// Admin embedding backfill — same auth + tenant plumbing as /runtime/trigger.
+		// mode "coverage" is read-only (no inference calls). mode "backfill" drains the
+		// unembedded queue up to `limit`, `chunkSize` rows at a time, via the resilient
+		// embedBackfillBatch helper (a bad row is skipped, never aborts the whole request).
+		if (url.pathname === "/admin/backfill" && request.method === "POST") {
+			const tenantResolution = resolveRequestTenant();
+			if (!tenantResolution.ok) {
+				return new Response(JSON.stringify({ error: tenantResolution.error }), {
+					status: tenantResolution.status,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const tenant = tenantResolution.tenant;
+
+			let parsedBody: unknown = {};
+			if (rawBody.byteLength > 0) {
+				try {
+					parsedBody = JSON.parse(new TextDecoder().decode(rawBody));
+				} catch {
+					return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+						status: 400,
+						headers: { "Content-Type": "application/json", ...corsHeaders }
+					});
+				}
+			}
+
+			const validated = validateBackfillRequestBody(parsedBody);
+			if (!validated.ok) {
+				return new Response(JSON.stringify({ error: validated.error }), {
+					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const { mode, limit, chunkSize } = validated.body;
+
+			// Check the AI binding before constructing storage — no point opening a
+			// connection for a request that's about to bail with 503.
+			if (mode === "backfill" && !env.AI) {
+				return new Response(JSON.stringify({ error: "Embedding backfill unavailable — no AI binding configured on this deployment" }), {
+					status: 503,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+
+			const storage = createStorage(resolveStorageConfig(env), tenant);
+
+			if (mode === "coverage") {
+				const coverage = await storage.getEmbeddingCoverage();
+				return new Response(JSON.stringify({ tenant, ...coverage }), {
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+
+			const provider = createEmbeddingProvider(env.AI as Ai);
+			const backfilledIds: string[] = [];
+			const allSkipped: Array<{ id: string; reason: string }> = [];
+			// A row that fails to embed stays embedding=NULL and would otherwise be
+			// re-selected by queryUnembedded on every subsequent iteration (oldest-first
+			// never ages it out). Rows that embed successfully never reappear (queryUnembedded
+			// excludes embedding IS NOT NULL), so the only rows that can recur across
+			// iterations are dead ones. Track ids that failed THIS request in deadIds and
+			// filter them out of each freshly-fetched batch before embedding -- this bounds
+			// each dead row to exactly one provider attempt and one skipped[] entry, even
+			// when it sits at the front of the queue alongside fresh rows still to drain.
+			// `processed` still advances by the full fetched-batch size (not just the fresh
+			// count) so the `limit` bound guarantees termination regardless of how many dead
+			// rows are mixed in; the explicit break below covers the case where a fetch
+			// returns ONLY already-known-dead rows (nothing left to attempt).
+			const deadIds = new Set<string>();
+			let processed = 0;
+
+			while (processed < limit) {
+				const batchLimit = Math.min(chunkSize, limit - processed);
+				const rows = await storage.queryUnembedded(batchLimit);
+				if (rows.length === 0) break;
+
+				const freshRows = rows.filter(row => !deadIds.has(row.id));
+				if (freshRows.length === 0) break;
+
+				const { embedded, skipped } = await embedBackfillBatch(provider, freshRows, { chunkSize });
+				if (embedded.length > 0) {
+					await storage.bulkUpdateEmbeddings(embedded);
+					backfilledIds.push(...embedded.map(e => e.id));
+				}
+				for (const s of skipped) deadIds.add(s.id);
+				allSkipped.push(...skipped);
+				processed += rows.length;
+			}
+
+			const remaining = await storage.countUnembedded();
+
+			// IDs and counts ONLY — never content, never keys.
+			console.log(JSON.stringify({
+				event: "admin_backfill",
+				tenant,
+				requested: limit,
+				embedded: backfilledIds.length,
+				skippedCount: allSkipped.length,
+				skippedIds: allSkipped.map(s => s.id),
+				remaining
+			}));
+
+			return new Response(JSON.stringify({
+				tenant,
+				requested: limit,
+				embedded: backfilledIds.length,
+				skipped: allSkipped,
+				remaining,
+				backfilledIds
+			}), {
 				headers: { "Content-Type": "application/json", ...corsHeaders }
 			});
 		}
@@ -604,7 +761,9 @@ export default {
 				console.error(`Daemon [${tenant}]: overview generation error`, e);
 			}
 
-			// Embedding backfill — process up to 20 unembedded observations per cycle
+			// Embedding backfill — process up to 20 unembedded observations per cycle.
+			// A bad row (see embedBackfillBatch) is skipped, never allowed to throw the whole
+			// cycle's batch away — that all-or-nothing throw was the ~7%-coverage wedge.
 			if (env.AI) {
 				try {
 					const provider = createEmbeddingProvider(env.AI);
@@ -612,14 +771,17 @@ export default {
 					const rows = await storage.queryUnembedded(20);
 
 					if (rows.length > 0) {
-						const embeddings = await provider.embedBatch(rows.map(r => r.content));
-						if (embeddings.length !== rows.length) {
-							throw new Error(`Embedding batch size mismatch: expected ${rows.length}, got ${embeddings.length}`);
+						const { embedded, skipped } = await embedBackfillBatch(provider, rows);
+
+						if (embedded.length > 0) {
+							await storage.bulkUpdateEmbeddings(embedded);
 						}
-						await storage.bulkUpdateEmbeddings(rows.map((row, i) => ({ id: row.id, embedding: embeddings[i] })));
+						if (skipped.length > 0) {
+							console.warn(`Daemon [${tenant}]: embedding backfill skipped ${skipped.length} rows`, skipped.map(s => s.id));
+						}
 
 						const remainingCount = await storage.countUnembedded();
-						console.log(`Daemon [${tenant}]: backfilled ${rows.length} embeddings (${remainingCount} remaining)`);
+						console.log(`Daemon [${tenant}]: backfilled ${embedded.length} embeddings (${remainingCount} remaining)`);
 					}
 				} catch (e) {
 					console.error(`Daemon [${tenant}]: embedding backfill error`, e);

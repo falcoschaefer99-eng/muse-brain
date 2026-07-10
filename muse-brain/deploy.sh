@@ -3,18 +3,16 @@
 # Usage: ./deploy.sh [--ref <commit|tag>]
 #
 # Prerequisites:
-#   - wrangler.jsonc must exist (copy from wrangler.jsonc.example, set name + hyperdrive id)
-#     This file is gitignored (instance-specific). Falco's instance: name = "rook-brain"
+#   - wrangler.jsonc must exist. It is tracked in this repo (reproduces Falco's
+#     "rook-brain" production config) — a fresh clone already has it. Self-hosting a
+#     different instance: copy wrangler.jsonc.example instead and set your own
+#     name + hyperdrive id.
 #   - CLOUDFLARE_API_TOKEN set in environment, or run: npx wrangler login
 #   - Run from muse-brain/ subdirectory (where package.json lives)
 #
 # Secrets required (set via: npx wrangler secret put <NAME>):
 #   DATABASE_URL — Neon Postgres connection string (if not using Hyperdrive)
 #   Any other secrets listed in wrangler.jsonc
-#
-# FLAG: wrangler.jsonc is gitignored and must exist locally before this script
-#   will work. If deploying from a fresh clone, copy wrangler.jsonc.example and
-#   fill in: name (set to "rook-brain"), hyperdrive id.
 set -euo pipefail
 
 # Health check URL — derived from worker name in wrangler.jsonc

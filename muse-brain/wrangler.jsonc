@@ -1,0 +1,36 @@
+/**
+ * THIS FILE IS TRACKED (deliberately, as of 2026-07-10) — it reproduces the live
+ * `rook-brain` Cloudflare Worker's actual deployed configuration, verified against
+ * Cloudflare's dashboard/API on 2026-07-10. This makes the deployed reality
+ * reproducible from a fresh clone instead of living only in one operator's local copy.
+ *
+ * No secrets live here — auth keys are set via `wrangler secret put API_KEY_<TENANT>`,
+ * never as plaintext vars. See DEPLOY.md and ops/BRAIN_KEY_ROTATION_RUNBOOK_2026-07-06.md.
+ *
+ * New self-hosted deployments: copy wrangler.jsonc.example instead of forking this file
+ * — it has your own worker name and hyperdrive id, not Falco's.
+ *
+ * No routes/custom_domain block on purpose — the custom domain binding persists across
+ * deploys as long as `name` stays "rook-brain"; adding a routes block here would fight
+ * the dashboard-managed binding rather than reproduce it.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rook-brain",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-27",
+  "compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["0 3 * * *"] },
+  "ai": { "binding": "AI" },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "8b5b9baf5d4e4dfcabb54d7daec01ae6"
+    }
+  ],
+  "vars": {
+    // LOCKED 2026-07-10: Phase-1 probe proved stored tenant_id=rook (1845 rows), companion=0 rows, rainer=711
+    "ALLOWED_TENANTS": "rook,rainer"
+  }
+}

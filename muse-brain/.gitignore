@@ -3,8 +3,12 @@ companion/
 rainer/
 registry/
 
-# Deployment config (instance-specific — use .example files)
-wrangler.jsonc
+# Deployment config
+# wrangler.jsonc is INTENTIONALLY tracked (as of 2026-07-10) — it reproduces this
+# repo's actual `rook-brain` production Worker config, verified against Cloudflare's
+# live settings. No secrets live in it (those are `wrangler secret put` only); see the
+# file's own header comment. New self-hosted deployments should still copy
+# wrangler.jsonc.example and set their own name/hyperdrive id, not fork this file.
 CLAUDE.md
 
 # Internal specs (not for public release)

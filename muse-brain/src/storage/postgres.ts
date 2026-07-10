@@ -829,9 +829,21 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async queryUnembedded(limit: number): Promise<{id: string; content: string}[]> {
 		try {
+			// content IS NOT NULL / btrim(content, ' \t\n\r\f\v') <> '' — empty-or-whitespace-only
+			// content is excluded from selection entirely (it can never be embedded; see
+			// WorkersAIEmbeddingProvider throwing on empty text). Without this, one such row sits
+			// at the front of the oldest-first queue forever, since it's never embedded and never
+			// ages out. Plain `btrim(content)` only strips literal spaces (U+0020) in Postgres —
+			// tab/newline/CR/form-feed/vertical-tab-only content would pass it and re-wedge the
+			// queue; the explicit char class here matches JS's `.trim()` for the sqlite backend
+			// (see sqlite.ts's queryUnembedded), modulo unicode whitespace (e.g. NBSP, em space),
+			// which neither side strips — those rows fall through to embedBackfillBatch's per-row
+			// fallback and dead-ID tracking (src/index.ts) as the residual safety net: they fail to
+			// embed, land in skipped[], and — per the fix there — are never re-attempted this request.
 			const rows = await this.sql`
 				SELECT id, content FROM observations
 				WHERE tenant_id = ${this.tenant} AND embedding IS NULL
+				  AND content IS NOT NULL AND btrim(content, E' \t\n\r\f\v') <> ''
 				ORDER BY created_at ASC
 				LIMIT ${limit}
 			`;
@@ -844,9 +856,14 @@ export class PostgresBrainStorage implements IBrainStorage {
 
 	async countUnembedded(): Promise<number> {
 		try {
+			// Mirrors queryUnembedded's predicate (including the explicit btrim char class —
+			// see the comment there) — this count is the actual backfill queue depth, not the
+			// coverage denominator (see getEmbeddingCoverage, which counts ALL rows including
+			// empty-content ones, so the coverage % stays honest).
 			const rows = await this.sql`
 				SELECT COUNT(*)::int as count FROM observations
 				WHERE tenant_id = ${this.tenant} AND embedding IS NULL
+				  AND content IS NOT NULL AND btrim(content, E' \t\n\r\f\v') <> ''
 			`;
 			return (rows[0]?.count as number) ?? 0;
 		} catch (err) {
