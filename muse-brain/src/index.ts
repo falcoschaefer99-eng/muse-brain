@@ -35,6 +35,7 @@ import { getTimestamp, getCurrentCircadianPhase, generateSummary, calculatePullS
 import { createStorage } from "./storage/index";
 import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
+import { embedBackfillBatch } from "./embedding/backfill";
 import { runDaemonTasks } from "./daemon/index";
 import { resolveAuth } from "./auth";
 import { resolveAllowedTenants, resolveTenantAlias, grantedTenantsFor } from "./tenant-config";
@@ -604,7 +605,9 @@ export default {
 				console.error(`Daemon [${tenant}]: overview generation error`, e);
 			}
 
-			// Embedding backfill — process up to 20 unembedded observations per cycle
+			// Embedding backfill — process up to 20 unembedded observations per cycle.
+			// A bad row (see embedBackfillBatch) is skipped, never allowed to throw the whole
+			// cycle's batch away — that all-or-nothing throw was the ~7%-coverage wedge.
 			if (env.AI) {
 				try {
 					const provider = createEmbeddingProvider(env.AI);
@@ -612,14 +615,17 @@ export default {
 					const rows = await storage.queryUnembedded(20);
 
 					if (rows.length > 0) {
-						const embeddings = await provider.embedBatch(rows.map(r => r.content));
-						if (embeddings.length !== rows.length) {
-							throw new Error(`Embedding batch size mismatch: expected ${rows.length}, got ${embeddings.length}`);
+						const { embedded, skipped } = await embedBackfillBatch(provider, rows);
+
+						if (embedded.length > 0) {
+							await storage.bulkUpdateEmbeddings(embedded);
 						}
-						await storage.bulkUpdateEmbeddings(rows.map((row, i) => ({ id: row.id, embedding: embeddings[i] })));
+						if (skipped.length > 0) {
+							console.warn(`Daemon [${tenant}]: embedding backfill skipped ${skipped.length} rows`, skipped.map(s => s.id));
+						}
 
 						const remainingCount = await storage.countUnembedded();
-						console.log(`Daemon [${tenant}]: backfilled ${rows.length} embeddings (${remainingCount} remaining)`);
+						console.log(`Daemon [${tenant}]: backfilled ${embedded.length} embeddings (${remainingCount} remaining)`);
 					}
 				} catch (e) {
 					console.error(`Daemon [${tenant}]: embedding backfill error`, e);
