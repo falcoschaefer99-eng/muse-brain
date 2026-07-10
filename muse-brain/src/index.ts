@@ -67,6 +67,48 @@ function validateTenantHeaderFormat(rawTenant: string): boolean {
 	return Boolean(rawTenant) && rawTenant.length <= MAX_TENANT_HEADER_LENGTH && !rawTenant.includes("\0");
 }
 
+// ============ ADMIN BACKFILL — REQUEST VALIDATION ============
+
+type BackfillMode = "coverage" | "backfill";
+
+interface BackfillRequestBody {
+	mode: BackfillMode;
+	limit: number;
+	chunkSize: number;
+}
+
+type BackfillValidation = { ok: true; body: BackfillRequestBody } | { ok: false; error: string };
+
+const BACKFILL_DEFAULT_LIMIT = 200;
+const BACKFILL_MAX_LIMIT = 400;
+const BACKFILL_DEFAULT_CHUNK_SIZE = 50;
+const BACKFILL_MAX_CHUNK_SIZE = 100;
+
+/** Hard whitelist validation — never trust caller-supplied mode/limit/chunkSize past this gate. */
+function validateBackfillRequestBody(rawBody: unknown): BackfillValidation {
+	if (rawBody === null || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+		return { ok: false, error: "Body must be a JSON object" };
+	}
+	const obj = rawBody as Record<string, unknown>;
+
+	const modeRaw = obj.mode ?? "backfill";
+	if (modeRaw !== "coverage" && modeRaw !== "backfill") {
+		return { ok: false, error: "mode must be one of: coverage, backfill" };
+	}
+
+	const limitRaw = obj.limit ?? BACKFILL_DEFAULT_LIMIT;
+	if (typeof limitRaw !== "number" || !Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > BACKFILL_MAX_LIMIT) {
+		return { ok: false, error: `limit must be an integer between 1 and ${BACKFILL_MAX_LIMIT}` };
+	}
+
+	const chunkSizeRaw = obj.chunkSize ?? BACKFILL_DEFAULT_CHUNK_SIZE;
+	if (typeof chunkSizeRaw !== "number" || !Number.isInteger(chunkSizeRaw) || chunkSizeRaw < 1 || chunkSizeRaw > BACKFILL_MAX_CHUNK_SIZE) {
+		return { ok: false, error: `chunkSize must be an integer between 1 and ${BACKFILL_MAX_CHUNK_SIZE}` };
+	}
+
+	return { ok: true, body: { mode: modeRaw, limit: limitRaw, chunkSize: chunkSizeRaw } };
+}
+
 /**
  * LEGACY PATH ONLY (env.API_KEY still configured). Preserves today's exact behavior:
  * tenant comes from the header, defaulting to "rainer" when absent. Do not use this for
@@ -324,6 +366,111 @@ export default {
 			const status = result?.error ? 400 : 200;
 			return new Response(JSON.stringify(result), {
 				status,
+				headers: { "Content-Type": "application/json", ...corsHeaders }
+			});
+		}
+
+		// Admin embedding backfill — same auth + tenant plumbing as /runtime/trigger.
+		// mode "coverage" is read-only (no inference calls). mode "backfill" drains the
+		// unembedded queue up to `limit`, `chunkSize` rows at a time, via the resilient
+		// embedBackfillBatch helper (a bad row is skipped, never aborts the whole request).
+		if (url.pathname === "/admin/backfill" && request.method === "POST") {
+			const tenantResolution = resolveRequestTenant();
+			if (!tenantResolution.ok) {
+				return new Response(JSON.stringify({ error: tenantResolution.error }), {
+					status: tenantResolution.status,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const tenant = tenantResolution.tenant;
+
+			let parsedBody: unknown = {};
+			if (rawBody.byteLength > 0) {
+				try {
+					parsedBody = JSON.parse(new TextDecoder().decode(rawBody));
+				} catch {
+					return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+						status: 400,
+						headers: { "Content-Type": "application/json", ...corsHeaders }
+					});
+				}
+			}
+
+			const validated = validateBackfillRequestBody(parsedBody);
+			if (!validated.ok) {
+				return new Response(JSON.stringify({ error: validated.error }), {
+					status: 400,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+			const { mode, limit, chunkSize } = validated.body;
+
+			// Check the AI binding before constructing storage — no point opening a
+			// connection for a request that's about to bail with 503.
+			if (mode === "backfill" && !env.AI) {
+				return new Response(JSON.stringify({ error: "Embedding backfill unavailable — no AI binding configured on this deployment" }), {
+					status: 503,
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+
+			const storage = createStorage(resolveStorageConfig(env), tenant);
+
+			if (mode === "coverage") {
+				const coverage = await storage.getEmbeddingCoverage();
+				return new Response(JSON.stringify({ tenant, ...coverage }), {
+					headers: { "Content-Type": "application/json", ...corsHeaders }
+				});
+			}
+
+			const provider = createEmbeddingProvider(env.AI as Ai);
+			const backfilledIds: string[] = [];
+			const allSkipped: Array<{ id: string; reason: string }> = [];
+			// A row that fails to embed stays embedding=NULL and would otherwise be
+			// re-selected by queryUnembedded every subsequent iteration (still "oldest
+			// unembedded"), burning the whole `limit` budget re-attempting the same dead
+			// row and reporting it as skipped once per iteration. Track ids already seen
+			// this request so a no-progress iteration stops the loop instead of spinning.
+			const attemptedIds = new Set<string>();
+			let processed = 0;
+
+			while (processed < limit) {
+				const batchLimit = Math.min(chunkSize, limit - processed);
+				const rows = await storage.queryUnembedded(batchLimit);
+				if (rows.length === 0) break;
+				if (rows.every(row => attemptedIds.has(row.id))) break;
+				for (const row of rows) attemptedIds.add(row.id);
+
+				const { embedded, skipped } = await embedBackfillBatch(provider, rows, { chunkSize });
+				if (embedded.length > 0) {
+					await storage.bulkUpdateEmbeddings(embedded);
+					backfilledIds.push(...embedded.map(e => e.id));
+				}
+				allSkipped.push(...skipped);
+				processed += rows.length;
+			}
+
+			const remaining = await storage.countUnembedded();
+
+			// IDs and counts ONLY — never content, never keys.
+			console.log(JSON.stringify({
+				event: "admin_backfill",
+				tenant,
+				requested: limit,
+				embedded: backfilledIds.length,
+				skippedCount: allSkipped.length,
+				skippedIds: allSkipped.map(s => s.id),
+				remaining
+			}));
+
+			return new Response(JSON.stringify({
+				tenant,
+				requested: limit,
+				embedded: backfilledIds.length,
+				skipped: allSkipped,
+				remaining,
+				backfilledIds
+			}), {
 				headers: { "Content-Type": "application/json", ...corsHeaders }
 			});
 		}
