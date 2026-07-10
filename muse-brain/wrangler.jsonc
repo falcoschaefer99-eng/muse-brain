@@ -30,7 +30,7 @@
     }
   ],
   "vars": {
-    // PROBE CONFIG — lock to {winner},rainer after Phase-1 tenant probe, see runbook
-    "ALLOWED_TENANTS": "rook,companion,rainer"
+    // LOCKED 2026-07-10: Phase-1 probe proved stored tenant_id=rook (1845 rows), companion=0 rows, rainer=711
+    "ALLOWED_TENANTS": "rook,rainer"
   }
 }
