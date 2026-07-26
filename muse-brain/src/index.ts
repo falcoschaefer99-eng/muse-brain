@@ -37,6 +37,7 @@ import { TOOL_DEFS as TOOLS, executeTool } from "./tools-v2/index";
 import { createEmbeddingProvider } from "./embedding/index";
 import { embedBackfillBatch } from "./embedding/backfill";
 import { runDaemonTasks } from "./daemon/index";
+import { runAiProposalReview } from "./daemon/ai-review";
 import { resolveAuth } from "./auth";
 import { resolveAllowedTenants, resolveTenantAlias, grantedTenantsFor } from "./tenant-config";
 
@@ -165,7 +166,7 @@ async function handleMcpRequest(request: JsonRpcRequest, env: Env, ctx: Executio
 					id,
 					result: {
 						protocolVersion: "2024-11-05",
-						serverInfo: { name: "muse-brain", version: "1.7.0" }, // keep in sync with package.json
+						serverInfo: { name: "muse-brain", version: "1.9.0" }, // keep in sync with package.json
 						capabilities: { tools: {} }
 					}
 				};
@@ -641,6 +642,16 @@ export default {
 				console.log(`Daemon [${tenant}]: subconscious processed`);
 			} catch (e) {
 				console.error(`Daemon [${tenant}]: subconscious error`, e);
+			}
+
+			// AI proposal review — Workers AI (cheap 3B model) reviews what auto-absorption
+			// left pending (link/orphan_rescue/dedup). Needs env.AI, so it's a standalone
+			// call rather than a runDaemonTasks() task (the orchestrator has no AI binding).
+			try {
+				const aiReviewChanges = await runAiProposalReview(storage, env.AI);
+				console.log(`Daemon [${tenant}] ai-review: ${aiReviewChanges} proposals reviewed`);
+			} catch (e) {
+				console.error(`Daemon [${tenant}]: ai-review error`, e);
 			}
 
 			// Novelty regeneration — boost novelty_score for observations unsurfaced >30 days
