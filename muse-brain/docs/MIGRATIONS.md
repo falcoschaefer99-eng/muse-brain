@@ -18,6 +18,8 @@ Run SQL files in numeric order.
 12. `012_runtime_policy_and_budgeting.sql`
 13. `013_captured_skill_registry.sql`
 14. `014_captured_skill_registry_perf.sql`
+15. `015_limbic_config.sql`
+16. `016_proposal_similarity_nullable.sql`
 
 ## Option A — psql (recommended)
 
@@ -32,7 +34,7 @@ done
 
 ## Option B — Neon SQL editor
 
-Open each file and run in order (001 → 014).
+Open each file and run in order (001 → 016).
 
 ## Verify
 
