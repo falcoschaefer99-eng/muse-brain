@@ -44,16 +44,37 @@ import type {
 	CapturedSkillArtifact,
 	CapturedSkillArtifactCreate,
 	CapturedSkillArtifactFilter,
-	CapturedSkillRegistryHealth
+	CapturedSkillRegistryHealth,
+	AgentLeaseRecord,
+	AgentAuditEvent,
+	AgentAuditEventFilter
 } from "../types";
 import type { QuerySignals, RetrievalProfile } from "../retrieval/query-signals";
+import type { RetrievalRerankMode } from "../retrieval/rerank";
 import type { HybridScoreBreakdown } from "../retrieval/scoring";
 
 // ============ FILTER / QUERY TYPES ============
 
+export interface LetterListOptions {
+	context?: string;
+	limit?: number;
+	cursor?: string;
+	unread_only?: boolean;
+	from?: string;
+	query?: string;
+}
+
+export interface LetterListResult {
+	letters: Letter[];
+	has_more: boolean;
+	next_cursor: string | null;
+}
+
 /** Filter options for queryObservations — all fields optional, AND-combined. */
 export interface ObservationFilter {
 	territory?: string;
+	/** Filter observations linked to this entity. */
+	entity_id?: string;
 	/** Exact grip match. */
 	grip?: string;
 	/** Match observations that have ALL of these charges (superset). */
@@ -68,8 +89,6 @@ export interface ObservationFilter {
 	type?: string;
 	/** User-assigned tag filter — any match. */
 	tags?: string[];
-	/** Filter to observations linked to this entity. */
-	entity_id?: string;
 	limit?: number;
 	offset?: number;
 	/** Column to sort by. Defaults to "created". */
@@ -106,9 +125,9 @@ export interface HybridSearchOptions {
 	retrieval_profile?: RetrievalProfile;
 	/** Optional pre-extracted query signals (storage extracts when omitted). */
 	query_signals?: QuerySignals;
-	/** Optional rerank mode requested by the caller. Backends may ignore unsupported modes. */
-	rerank_mode?: "off" | "heuristic" | "model";
-	/** Optional number of top candidates to rerank. Backends may ignore unsupported modes. */
+	/** Optional second-pass rerank mode for top candidates. Backends may ignore unsupported modes. */
+	rerank_mode?: RetrievalRerankMode;
+	/** Number of top candidates eligible for rerank. */
 	rerank_top_n?: number;
 	territory?: string;
 	grip?: string[];
@@ -538,22 +557,22 @@ export interface IBrainStorage {
 	/** Aggregate captured skill health diagnostics for status/layer/provenance coverage. */
 	getCapturedSkillRegistryHealth(): Promise<CapturedSkillRegistryHealth>;
 
-	// --- Autonomous Runtime (Sprint 8) ---
+	// --- Runtime ledger (Sprint 8) ---
 
-	/** Upsert active autonomous session state for a tenant-scoped agent runtime. */
+	/** Upsert active session state for a tenant-scoped agent runtime. */
 	upsertAgentRuntimeSession(
 		session: Omit<AgentRuntimeSession, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>
 	): Promise<AgentRuntimeSession>;
 
-	/** Read latest autonomous session state for a tenant-scoped agent runtime. */
+	/** Read latest session state for a tenant-scoped agent runtime. */
 	getAgentRuntimeSession(agentTenant: string): Promise<AgentRuntimeSession | null>;
 
-	/** Append one autonomous run ledger row. */
+	/** Append one runtime ledger row. */
 	createAgentRuntimeRun(
 		run: Omit<AgentRuntimeRun, 'id' | 'tenant_id' | 'created_at'>
 	): Promise<AgentRuntimeRun>;
 
-	/** List recent autonomous run ledger rows for one tenant-scoped agent runtime. */
+	/** List recent runtime ledger rows for one tenant-scoped agent runtime. */
 	listAgentRuntimeRuns(agentTenant: string, limit?: number): Promise<AgentRuntimeRun[]>;
 
 	/** Upsert runtime execution policy for one tenant-scoped agent runtime. */
@@ -569,6 +588,33 @@ export interface IBrainStorage {
 
 	/** Get the most recent wake log entry, newest first. */
 	readLatestWakeLog(): Promise<WakeLogEntry | null>;
+
+	// --- Agent House Trust Layer (v1.8) ---
+
+	/** Upsert a server-side lease ledger row by tenant+lease_id. */
+	recordAgentLease(
+		lease: Omit<AgentLeaseRecord, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>
+	): Promise<AgentLeaseRecord>;
+
+	/** Fetch a lease ledger row by external lease_id. */
+	getAgentLease(leaseId: string): Promise<AgentLeaseRecord | null>;
+
+	/** Stamp a heartbeat for an active lease. Returns null when not found. */
+	heartbeatAgentLease(leaseId: string, processId?: string): Promise<AgentLeaseRecord | null>;
+
+	/** Mark all active leases for a process as expired/revoked. */
+	expireAgentLeasesForProcess(processId: string, status?: 'expired' | 'revoked'): Promise<number>;
+
+	/** Mark active leases whose expires_at is in the past as expired. */
+	reapExpiredAgentLeases(nowIso?: string): Promise<number>;
+
+	/** Append one audit event. Diffs go in event.diff; avoid full snapshots. */
+	createAgentAuditEvent(
+		event: Omit<AgentAuditEvent, 'id' | 'tenant_id' | 'created_at'>
+	): Promise<AgentAuditEvent>;
+
+	/** List recent audit events for review/reconciliation. */
+	listAgentAuditEvents(filter?: AgentAuditEventFilter): Promise<AgentAuditEvent[]>;
 
 	// --- Limbic Config (Phase 1) ---
 

@@ -110,7 +110,7 @@ export async function buildImpulseWakePrompt(
 
   const summary = `Impulse wake for ${tenant.tenant}`;
   const prompt = [
-    `You are running an autonomous impulse/explore wake for tenant ${tenant.tenant}.`,
+    `You are running an optional/manual impulse/explore wake for tenant ${tenant.tenant}.`,
     `Write one concrete local artifact to: ${artifactPath}`,
     `Follow the strongest live thread from desire, paradox, subconscious heat, or recent dream residue.`,
     `Keep the scope modest but real. Research, synthesize, sketch, or draft something useful.`,

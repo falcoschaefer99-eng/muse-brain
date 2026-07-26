@@ -278,7 +278,9 @@ describe("mind_letter optimized storage lanes", () => {
 		expect(recipientStorage.countLettersFromSince).toHaveBeenCalledTimes(1);
 		expect(recipientStorage.appendLetter).toHaveBeenCalledTimes(1);
 		expect(result.sent).toBe(true);
-		expect(result.to_brain).toBe("companion");
+		expect(result.to_tenant).toBe("companion");
+		expect(result.to_brain).toBeUndefined();
+		expect(result.id).toBeUndefined();
 	});
 
 	it("accepts stale cursor on optimized listLettersPaged path", async () => {
@@ -312,5 +314,104 @@ describe("mind_letter optimized storage lanes", () => {
 		});
 		expect(result.count).toBe(2);
 		expect(result.letters[0].id).toBe("letter_cursor_a");
+	});
+});
+
+describe("mind_letter cross-brain delivery", () => {
+	it("resolves rook alias to companion and makes the letter readable in recipient chat inbox", async () => {
+		const boxes: Record<string, any[]> = {
+			rainer: [],
+			companion: []
+		};
+
+		const makeStorage = (tenant: "rainer" | "companion"): any => ({
+			getTenant: () => tenant,
+			forTenant: vi.fn((nextTenant: string) => makeStorage(nextTenant as "rainer" | "companion")),
+			readLetters: vi.fn(async () => boxes[tenant]),
+			writeLetters: vi.fn(async (letters: any[]) => {
+				boxes[tenant] = letters;
+			}),
+			appendLetter: vi.fn(async (letter: any) => {
+				boxes[tenant].push(letter);
+			})
+		});
+
+		const rainerStorage = makeStorage("rainer");
+		const result = await handleCommsTool("mind_letter", {
+			action: "write",
+			to: "rook",
+			to_context: "chat",
+			content: "Rook — why did this not surface first?"
+		}, { storage: rainerStorage as any });
+
+		expect(result.sent).toBe(true);
+		expect(result.delivery_status).toBe("delivered");
+		expect(result.from_tenant).toBe("rainer");
+		expect(result.to_tenant).toBe("companion");
+		expect(result.requested_to).toBe("rook");
+		expect(boxes.rainer).toHaveLength(0);
+		expect(boxes.companion).toHaveLength(1);
+		expect(boxes.companion[0].from_context).toBe("rainer");
+		expect(boxes.companion[0].to_context).toBe("chat");
+
+		const companionStorage = makeStorage("companion");
+		const inbox = await handleCommsTool("mind_letter", {
+			action: "read",
+			context: "chat",
+			unread_only: true
+		}, { storage: companionStorage as any });
+
+		expect(inbox.count).toBe(1);
+		expect(inbox.letters[0].id).toBe(result.letter_id);
+		expect(inbox.letters[0].from).toBe("rainer");
+		expect(boxes.companion[0].read).toBe(true);
+	});
+
+	it("rejects unknown recipients, self-send aliases, null bytes, and resolves case-insensitive aliases", async () => {
+		const recipientStorage = {
+			countLettersFromSince: vi.fn(async () => 0),
+			appendLetter: vi.fn(async () => undefined),
+			readLetters: vi.fn(async () => [])
+		};
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => recipientStorage as any),
+			appendLetter: vi.fn(async () => undefined),
+			readLetters: vi.fn(async () => [])
+		};
+
+		const unknown = await handleCommsTool("mind_letter", {
+			action: "write",
+			to: "ghost",
+			to_context: "chat",
+			content: "nope"
+		}, { storage: storage as any });
+		expect(unknown.error).toMatch(/unknown brain/i);
+
+		const self = await handleCommsTool("mind_letter", {
+			action: "write",
+			to: "RAINER",
+			to_context: "chat",
+			content: "loop"
+		}, { storage: storage as any });
+		expect(self.error).toMatch(/current tenant/i);
+
+		const nullByte = await handleCommsTool("mind_letter", {
+			action: "write",
+			to_context: "chat",
+			content: "bad\0content"
+		}, { storage: storage as any });
+		expect(nullByte.error).toMatch(/null byte/i);
+
+		const ok = await handleCommsTool("mind_letter", {
+			action: "write",
+			to: "RoOk",
+			to_context: "chat",
+			content: "case-insensitive alias"
+		}, { storage: storage as any });
+		expect(ok.sent).toBe(true);
+		expect(ok.to_tenant).toBe("companion");
+		expect(ok.requested_to).toBe("RoOk");
+		expect(recipientStorage.appendLetter).toHaveBeenCalledTimes(1);
 	});
 });

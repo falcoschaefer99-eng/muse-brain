@@ -1,5 +1,6 @@
 import type { RetrievalProfile } from "../retrieval/query-signals";
 import { normalizeRetrievalProfile } from "../retrieval/query-signals";
+import type { RetrievalRerankMode } from "../retrieval/rerank";
 import type { SupportedBenchmarkDataset } from "./adapters/index";
 
 export interface CliOptions {
@@ -13,6 +14,8 @@ export interface CliOptions {
 	profiles: RetrievalProfile[];
 	result_limit: number;
 	min_similarity: number;
+	rerank_mode?: RetrievalRerankMode;
+	rerank_top_n?: number;
 }
 
 function requireValue(flag: string, value: string | undefined): string {
@@ -44,7 +47,7 @@ export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
 	}
 
 	const dataset = requireValue("--dataset", args.get("--dataset")) as SupportedBenchmarkDataset;
-	if (dataset !== "longmemeval" && dataset !== "locomo") {
+	if (dataset !== "longmemeval" && dataset !== "locomo" && dataset !== "cognitive_advantage") {
 		throw new Error(`Unsupported dataset: ${dataset}`);
 	}
 
@@ -57,6 +60,17 @@ export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
 	if (backend === "postgres" && !databaseUrl) {
 		throw new Error("Missing value for --database-url when --backend postgres");
 	}
+	const rerankModeRaw = args.get("--rerank-mode");
+	const rerankMode = rerankModeRaw as RetrievalRerankMode | undefined;
+	if (rerankMode !== undefined && rerankMode !== "off" && rerankMode !== "heuristic" && rerankMode !== "model") {
+		throw new Error(`Unsupported rerank mode: ${rerankModeRaw}`);
+	}
+	const rerankTopN = args.has("--rerank-top-n")
+		? Number.parseInt(args.get("--rerank-top-n") ?? "", 10)
+		: undefined;
+	if (rerankTopN !== undefined && (!Number.isInteger(rerankTopN) || rerankTopN <= 0)) {
+		throw new Error("--rerank-top-n must be a positive integer");
+	}
 
 	return {
 		dataset,
@@ -68,6 +82,8 @@ export function parseBenchmarkCliArgs(argv: string[]): CliOptions {
 		tenant: args.get("--tenant") ?? "companion",
 		profiles: parseProfiles(args.get("--profiles")),
 		result_limit: Number.parseInt(args.get("--result-limit") ?? "10", 10),
-		min_similarity: Number.parseFloat(args.get("--min-similarity") ?? "0.01")
+		min_similarity: Number.parseFloat(args.get("--min-similarity") ?? "0.01"),
+		rerank_mode: rerankMode,
+		rerank_top_n: rerankTopN
 	};
 }

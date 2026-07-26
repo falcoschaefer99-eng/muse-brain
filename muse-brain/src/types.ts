@@ -25,6 +25,7 @@ export interface Env {
 	ALLOWED_TENANTS?: string;           // CSV override, e.g. "companion,rainer,newco"
 	TENANT_ALIASES?: string;            // CSV "alias:canonical" pairs, e.g. "rook:companion"
 	CROSS_TENANT_READ_GRANTS?: string;  // CSV "granter:granted" pairs, e.g. "rainer:companion"
+	LEASE_ENFORCEMENT_MODE?: "off" | "shadow" | "required"; // v1.8 trust layer: shadow by default for legacy clients
 }
 
 export interface Texture {
@@ -53,6 +54,7 @@ export interface Observation {
 	type?: string;     // Observation subtype: "journal", "whisper", etc.
 	tags?: string[];   // User-assigned tags
 	entity_id?: string; // Optional link to a structured entity
+	source_observations?: string[]; // Optional provenance for synthesis/consolidation observations
 }
 
 // Phase B — not yet used by any tool
@@ -128,6 +130,8 @@ export interface Letter {
 	charges?: string[];
 	letter_type?: 'personal' | 'handoff' | 'proposal';
 }
+
+export type DeliveryStatus = "local" | "delivered" | "queued" | "retrying" | "failed_after_retries";
 
 export interface IdentityCore {
 	id: string;
@@ -329,6 +333,26 @@ export interface ProjectDossier {
 	updated_at: string;
 }
 
+export interface ProjectDeployRouting {
+	kind?: string;
+	commands: string[];
+	preview_urls: string[];
+	production_urls: string[];
+}
+
+export interface ProjectWorkspaceRouting {
+	repo_slug?: string;
+	canonical_repo_url?: string;
+	default_branch?: string;
+	local_paths: string[];
+	artifact_roots: string[];
+	deploy?: ProjectDeployRouting;
+	test_commands: string[];
+	path_aliases: string[];
+	handoff_docs: string[];
+	related_projects: string[];
+}
+
 export interface ProjectDossierFilter {
 	lifecycle_status?: 'active' | 'paused' | 'archived';
 	updated_after?: string;
@@ -388,10 +412,29 @@ export interface A2ATaskEnvelope {
 
 // --- Daemon Intelligence (Brain v5 Sprint 4) ---
 
+export type DaemonProposalType =
+	| 'link'
+	| 'orphan_rescue'
+	| 'consolidation'
+	| 'dedup'
+	| 'cross_agent'
+	| 'cross_tenant'
+	| 'paradox_detected'
+	| 'skill_recapture'
+	| 'skill_supersession'
+	| 'skill_promotion'
+	| 'recall_contract'
+	| 'fact_commitment'
+	| 'project_routing_update'
+	| 'project_routing_drift'
+	| 'missing_artifact_receipt'
+	| 'stale_deploy_command'
+	| 'path_alias_conflict';
+
 export interface DaemonProposal {
 	id: string;
 	tenant_id: string;
-	proposal_type: 'link' | 'orphan_rescue' | 'consolidation' | 'dedup' | 'cross_agent' | 'cross_tenant' | 'paradox_detected' | 'skill_recapture' | 'skill_supersession' | 'skill_promotion' | 'recall_contract' | 'fact_commitment';
+	proposal_type: DaemonProposalType;
 	source_id: string;
 	target_id: string;
 	similarity?: number;
@@ -637,4 +680,79 @@ export interface AgentRuntimeUsage {
 	impulse_runs: number;
 	last_run_at?: string;
 	last_impulse_run_at?: string;
+}
+
+export interface WorkspaceRouting {
+	local_workspace?: string;
+	shared_workspace?: string;
+	peer_workspace?: string;
+	artifact_workspace?: string;
+	repo_slug?: string;
+	canonical_repo_url?: string;
+	default_branch?: string;
+	deploy_commands?: string[];
+	test_commands?: string[];
+	path_aliases?: string[];
+	handoff_docs?: string[];
+	related_projects?: string[];
+	preview_urls?: string[];
+	production_urls?: string[];
+}
+
+// --- Agent House Trust Layer (v1.8) ---
+
+export type AgentLeaseStatus = "active" | "revoked" | "expired";
+
+export interface AgentLeaseRecord {
+	id: string;
+	tenant_id: string;
+	lease_id: string;
+	agent_id: string;
+	platform: string;
+	session_id?: string;
+	run_id?: string;
+	parent_lease_id?: string;
+	delegation_chain: string[];
+	capabilities: string[];
+	scope: Record<string, unknown>;
+	status: AgentLeaseStatus;
+	issued_at: string;
+	expires_at: string;
+	last_heartbeat_at?: string;
+	process_id?: string;
+	metadata: Record<string, unknown>;
+	created_at: string;
+	updated_at: string;
+}
+
+export type AgentAuditResult = "allowed" | "denied" | "succeeded" | "failed" | "shadow";
+
+export interface AgentAuditEvent {
+	id: string;
+	tenant_id: string;
+	event_type: string;
+	actor_agent_id?: string;
+	lease_id?: string;
+	platform?: string;
+	session_id?: string;
+	run_id?: string;
+	delegation_chain: string[];
+	operation?: string;
+	tool_name?: string;
+	resource: Record<string, unknown>;
+	result: AgentAuditResult;
+	reason?: string;
+	payload_hash?: string;
+	diff: Record<string, unknown>;
+	metadata: Record<string, unknown>;
+	created_at: string;
+}
+
+export interface AgentAuditEventFilter {
+	event_type?: string;
+	actor_agent_id?: string;
+	lease_id?: string;
+	result?: AgentAuditResult;
+	created_after?: string;
+	limit?: number;
 }

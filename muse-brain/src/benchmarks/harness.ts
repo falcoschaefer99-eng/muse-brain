@@ -14,11 +14,11 @@ function makeObservationFromDocument(doc: BenchmarkCase["documents"][number]): O
 	return {
 		id: doc.id,
 		content: doc.content,
-		territory: "episodic",
+		territory: doc.territory ?? "episodic",
 		created: doc.created,
 		// Intentional benchmark neutral texture:
 		// keep Layer B flat for injected benchmark docs so profile deltas are mostly Layer A retrieval behavior.
-		texture: {
+		texture: doc.texture ?? {
 			salience: "background",
 			vividness: "soft",
 			charge: [],
@@ -235,7 +235,9 @@ export async function runBenchmarkHarness(options: BenchmarkHarnessOptions): Pro
 					embedding: queryEmbedding,
 					retrieval_profile: profile,
 					limit: options.run_config.result_limit,
-					min_similarity: options.run_config.min_similarity
+					min_similarity: options.run_config.min_similarity,
+					rerank_mode: options.run_config.rerank_mode,
+					rerank_top_n: options.run_config.rerank_top_n
 				});
 
 				caseResults.push(buildCaseResult(

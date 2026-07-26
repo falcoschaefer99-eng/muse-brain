@@ -6,6 +6,11 @@ import type { Entity, ProjectDossier } from "../types";
 import { getTimestamp } from "../helpers";
 import type { ToolContext } from "./context";
 import { cleanText, normalizeMetadata, normalizeOptionalTimestamp, normalizeStringList } from "./utils";
+import {
+	extractProjectWorkspaceRoutingFromMetadata,
+	normalizeProjectWorkspaceRouting,
+	setProjectWorkspaceRoutingMetadata
+} from "./project-routing";
 
 const LIFECYCLE_STATUSES = ["active", "paused", "archived"] as const;
 
@@ -42,6 +47,7 @@ export const TOOL_DEFS = [
 				open_questions: { type: "array", items: { type: "string" }, description: "[create/update] Open questions" },
 				next_actions: { type: "array", items: { type: "string" }, description: "[create/update] Next actions" },
 				metadata: { type: "object", description: "[create/update] Flexible project metadata" },
+				workspace_routing: { type: "object", description: "[create/update] Structured repo/path/deploy routing metadata" },
 				updated_after: { type: "string", description: "[list] ISO timestamp filter for recent project activity" },
 				limit: { type: "number", description: "[list] Max results (default 20)" }
 			},
@@ -67,6 +73,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					if (!cleanName) return { error: "name is required for action=create" };
 					const metadataResult = normalizeMetadata(args.metadata);
 					if (metadataResult.error) return { error: metadataResult.error };
+					let dossierMetadata = metadataResult.value;
+					const embeddedRoutingResult = normalizeProjectWorkspaceRouting(dossierMetadata.workspace_routing);
+					if (embeddedRoutingResult.error) return { error: embeddedRoutingResult.error };
+					dossierMetadata = setProjectWorkspaceRoutingMetadata(dossierMetadata, embeddedRoutingResult.value);
+					if (args.workspace_routing !== undefined) {
+						const routingResult = normalizeProjectWorkspaceRouting(args.workspace_routing);
+						if (routingResult.error) return { error: routingResult.error };
+						dossierMetadata = setProjectWorkspaceRoutingMetadata(dossierMetadata, routingResult.value);
+					}
 
 					const existing = await storage.findEntityByName(cleanName);
 					if (existing) return { error: "Project already exists", entity_id: existing.id };
@@ -89,7 +104,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						decisions: normalizeStringList(args.decisions),
 						open_questions: normalizeStringList(args.open_questions),
 						next_actions: normalizeStringList(args.next_actions),
-						metadata: metadataResult.value,
+						metadata: dossierMetadata,
 						last_active_at: getTimestamp()
 					});
 
@@ -97,7 +112,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						created: true,
 						project: {
 							entity,
-							dossier
+							dossier,
+							workspace_routing: extractProjectWorkspaceRoutingFromMetadata(dossier.metadata) ?? extractProjectWorkspaceRoutingFromMetadata(dossierMetadata)
 						}
 					};
 				}
@@ -109,7 +125,13 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					const dossier = await storage.getProjectDossier(entity.id);
 					if (!dossier) return { error: `Project dossier not found for ${entity.name}` };
 
-					return { project: { entity, dossier } };
+					return {
+						project: {
+							entity,
+							dossier,
+							workspace_routing: extractProjectWorkspaceRoutingFromMetadata(dossier.metadata)
+						}
+					};
 				}
 
 				case "list": {
@@ -127,13 +149,25 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						limit: args.limit ?? 20
 					});
 
-					const projects = await Promise.all(dossiers.map(async (dossier) => {
-						const entity = await storage.findEntityById(dossier.project_entity_id);
+					const projectIds = [...new Set(dossiers.map(dossier => dossier.project_entity_id))];
+					const entities = typeof storage.findEntitiesByIds === "function"
+						? await storage.findEntitiesByIds(projectIds)
+						: await storage.listEntities({ entity_type: "project" });
+					const entityById = new Map(entities.map(entity => [entity.id, entity]));
+
+					const projects = dossiers.map((dossier) => {
+						const entity = entityById.get(dossier.project_entity_id);
 						return entity ? { entity, dossier } : null;
-					}));
+					});
 
 					const presentProjects = projects.filter((project): project is { entity: Entity; dossier: ProjectDossier } => project != null);
-					return { projects: presentProjects, count: presentProjects.length };
+					return {
+						projects: presentProjects.map(project => ({
+							...project,
+							workspace_routing: extractProjectWorkspaceRoutingFromMetadata(project.dossier.metadata)
+						})),
+						count: presentProjects.length
+					};
 				}
 
 				case "update": {
@@ -159,7 +193,18 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					if (args.metadata !== undefined) {
 						const metadataResult = normalizeMetadata(args.metadata);
 						if (metadataResult.error) return { error: metadataResult.error };
-						dossierUpdates.metadata = metadataResult.value;
+						const embeddedRoutingResult = normalizeProjectWorkspaceRouting(metadataResult.value.workspace_routing);
+						if (embeddedRoutingResult.error) return { error: embeddedRoutingResult.error };
+						dossierUpdates.metadata = setProjectWorkspaceRoutingMetadata(metadataResult.value, embeddedRoutingResult.value);
+					}
+					if (args.workspace_routing !== undefined) {
+						const routingResult = normalizeProjectWorkspaceRouting(args.workspace_routing);
+						if (routingResult.error) return { error: routingResult.error };
+						const baseMetadata = dossierUpdates.metadata
+							?? (typeof storage.getProjectDossier === "function"
+								? ((await storage.getProjectDossier(entity.id))?.metadata ?? {})
+								: {});
+						dossierUpdates.metadata = setProjectWorkspaceRoutingMetadata(baseMetadata, routingResult.value);
 					}
 
 					if (Object.keys(entityUpdates).length === 0 && Object.keys(dossierUpdates).length === 0) {
@@ -176,7 +221,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						updated: true,
 						project: {
 							entity: updatedEntity,
-							dossier: updatedDossier
+							dossier: updatedDossier,
+							workspace_routing: extractProjectWorkspaceRoutingFromMetadata(updatedDossier.metadata)
+								?? extractProjectWorkspaceRoutingFromMetadata(dossierUpdates.metadata)
 						}
 					};
 				}

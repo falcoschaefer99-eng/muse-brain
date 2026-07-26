@@ -340,9 +340,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						},
 						context: `Synthesis from resolved loop: ${args.id}`,
 						access_count: 0,
-						last_accessed: getTimestamp()
+						last_accessed: getTimestamp(),
+						type: "synthesis"
 					};
-					(synthesis as any).type = "synthesis";
 
 					await storage.appendToTerritory(synthesisTerritory, synthesis);
 

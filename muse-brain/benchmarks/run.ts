@@ -31,7 +31,9 @@ async function main(): Promise<void> {
 			profiles: options.profiles,
 			top_k: [1, 5, 10],
 			result_limit: options.result_limit,
-			min_similarity: options.min_similarity
+			min_similarity: options.min_similarity,
+			rerank_mode: options.rerank_mode,
+			rerank_top_n: options.rerank_top_n
 		},
 		cases
 	});

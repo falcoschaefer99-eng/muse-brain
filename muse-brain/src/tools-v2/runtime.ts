@@ -1,5 +1,5 @@
-// ============ AUTONOMOUS RUNTIME TOOL (v2) ============
-// mind_runtime — session continuity + autonomous run ledger + lean wake policy.
+// ============ RUNTIME TOOL (v2) ============
+// mind_runtime — session continuity + runtime run ledger + lean wake policy.
 
 import { ALLOWED_TENANTS, CONFIDENCE_DEFAULTS } from "../constants";
 import type {
@@ -11,11 +11,18 @@ import type {
 	Observation,
 	CapturedSkillArtifact,
 	ProjectDossier,
-	OpenLoop
+	OpenLoop,
+	Entity,
+	WorkspaceRouting
 } from "../types";
 import { generateId, getTimestamp } from "../helpers";
 import type { ToolContext } from "./context";
 import { cleanText, normalizeMetadata, normalizeOptionalTimestamp } from "./utils";
+import {
+	extractProjectWorkspaceRoutingFromMetadata,
+	mergeWorkspaceRouting,
+	projectWorkspaceRoutingToRuntimeRouting
+} from "./project-routing";
 
 const TRIGGER_MODES = ["schedule", "webhook", "manual", "delegated"] as const;
 const SESSION_STATUSES = ["active", "paused", "ended", "failed"] as const;
@@ -45,13 +52,6 @@ type IntentionPulse = {
 	stale_project_window_hours: number;
 	requires_attention: boolean;
 	summary_lines: string[];
-};
-
-type WorkspaceRouting = {
-	local_workspace?: string;
-	shared_workspace?: string;
-	peer_workspace?: string;
-	artifact_workspace?: string;
 };
 
 const INTENTION_STALE_TASK_HOURS = 24;
@@ -97,7 +97,7 @@ const POLICY_DEFAULTS: Record<ExecutionMode, Omit<AgentRuntimePolicy,
 export const TOOL_DEFS = [
 	{
 		name: "mind_runtime",
-		description: "Track autonomous runtime continuity and lean wake policy. action=set_session stores resumable state. action=get_session fetches session state. action=log_run appends one run row. action=list_runs returns recent runs. action=set_policy/get_policy manage runtime budgets. action=trigger runs the webhook/schedule bridge with duty-vs-impulse policy gating.",
+		description: "Track runtime continuity and lean wake policy. action=set_session stores resumable state. action=get_session fetches session state. action=log_run appends one run row. action=list_runs returns recent runs. action=set_policy/get_policy manage runtime budgets. action=trigger runs the webhook/schedule bridge with duty-vs-impulse policy gating.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -377,7 +377,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					const delegatedAwayOpenTaskCount = runnableOpenTasks.filter(task => isDelegatedAwayFromAgent(task, agentTenant)).length;
 					const blockedOpenTaskCount = openTasks.length - runnableOpenTasks.length;
 					const recommendedTask = pickRecommendedTask(actionableOpenTasks, agentTenant);
-					const workspaceRouting = extractWorkspaceRouting(metadataResult.value, agentTenant);
+					const metadataWorkspaceRouting = extractWorkspaceRouting(metadataResult.value, agentTenant);
 
 					let highPriorityPending = 0;
 					if (wakeKind === "impulse" && policy.require_priority_clear_for_impulse) {
@@ -404,6 +404,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						}
 					}
 					const selectedTask = claimedTask ?? recommendedTask;
+					const projectWorkspaceRouting = selectedTask
+						? await resolveTaskProjectWorkspaceRouting(storage, selectedTask)
+						: undefined;
+					const workspaceRouting = mergeWorkspaceRouting(projectWorkspaceRouting, metadataWorkspaceRouting);
 					const contextRetrievalPolicy = buildContextRetrievalPolicy(policy, wakeKind);
 					const intentionPulse = await buildIntentionPulse(storage, startedAt, agentTenant);
 
@@ -814,6 +818,45 @@ function extractWorkspaceRouting(metadata: Record<string, unknown>, agentTenant:
 	return Object.values(routing).some(Boolean) ? routing : undefined;
 }
 
+async function resolveTaskProjectWorkspaceRouting(
+	storage: ToolContext["storage"],
+	task: Task
+): Promise<WorkspaceRouting | undefined> {
+	const entityIds = Array.isArray(task.linked_entity_ids)
+		? task.linked_entity_ids.map(id => cleanText(id)).filter((id): id is string => Boolean(id))
+		: [];
+	if (entityIds.length === 0) return undefined;
+
+	const tenantStorage = task.tenant_id === storage.getTenant()
+		? storage
+		: storage.forTenant?.(task.tenant_id) ?? storage;
+	const anyStorage = tenantStorage as typeof tenantStorage & {
+		findEntitiesByIds?: (ids: string[]) => Promise<Entity[]>;
+	};
+
+	let entities: Entity[] = [];
+	if (typeof anyStorage.findEntitiesByIds === "function") {
+		const batch = await anyStorage.findEntitiesByIds(entityIds);
+		entities = (Array.isArray(batch) ? batch : []).filter((entity): entity is Entity => Boolean(entity));
+	} else {
+		for (const entityId of entityIds) {
+			const entity = await tenantStorage.findEntityById?.(entityId);
+			if (entity) entities.push(entity);
+		}
+	}
+
+	const projectEntities = entities.filter(entity => entity.entity_type === "project");
+	for (const projectEntity of projectEntities) {
+		const dossier = await tenantStorage.getProjectDossier?.(projectEntity.id);
+		if (!dossier) continue;
+		const projectRouting = extractProjectWorkspaceRoutingFromMetadata(dossier.metadata);
+		const runtimeRouting = projectWorkspaceRoutingToRuntimeRouting(projectRouting);
+		if (runtimeRouting) return runtimeRouting;
+	}
+
+	return undefined;
+}
+
 function pickRecommendedTask(tasks: Task[], agentTenant: string): Task | undefined {
 	const actionable = tasks.filter(task => isTaskActionableForAgent(task, agentTenant));
 	const delegated = actionable.filter(task => isDelegatedTaskForAgent(task, agentTenant));
@@ -887,6 +930,13 @@ function buildAutonomousTaskPrompt(
 		if (workspaceRouting.shared_workspace) lines.push(`- Shared workspace: ${workspaceRouting.shared_workspace}`);
 		if (workspaceRouting.peer_workspace) lines.push(`- Peer workspace: ${workspaceRouting.peer_workspace}`);
 		if (workspaceRouting.artifact_workspace) lines.push(`- Artifact workspace: ${workspaceRouting.artifact_workspace}`);
+		if (workspaceRouting.repo_slug) lines.push(`- Repo slug: ${workspaceRouting.repo_slug}`);
+		if (workspaceRouting.canonical_repo_url) lines.push(`- Canonical repo: ${workspaceRouting.canonical_repo_url}`);
+		if (workspaceRouting.default_branch) lines.push(`- Default branch: ${workspaceRouting.default_branch}`);
+		if (workspaceRouting.deploy_commands?.length) lines.push(`- Deploy commands: ${workspaceRouting.deploy_commands.join(" | ")}`);
+		if (workspaceRouting.test_commands?.length) lines.push(`- Test commands: ${workspaceRouting.test_commands.join(" | ")}`);
+		if (workspaceRouting.related_projects?.length) lines.push(`- Related projects: ${workspaceRouting.related_projects.join(", ")}`);
+		if (workspaceRouting.handoff_docs?.length) lines.push(`- Handoff docs: ${workspaceRouting.handoff_docs.join(" | ")}`);
 	}
 
 	if (policy) {

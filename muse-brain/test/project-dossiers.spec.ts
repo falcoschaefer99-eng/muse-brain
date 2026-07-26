@@ -54,7 +54,14 @@ describe('project dossiers v2 tool', () => {
 			tags: [' shared ', ' brain '],
 			summary: '  Make the brain more coherent. ',
 			goals: [' ship dossiers ', ' ', 'wake delta'],
-			next_actions: [' write migration ']
+			next_actions: [' write migration '],
+			workspace_routing: {
+				repo_slug: 'brain-surgery',
+				local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery'],
+				deploy: {
+					commands: ['npm run deploy']
+				}
+			}
 		}, { storage: storage as any });
 
 		expect(storage.createEntity).toHaveBeenCalledWith(expect.objectContaining({
@@ -66,11 +73,21 @@ describe('project dossiers v2 tool', () => {
 			project_entity_id: entity.id,
 			summary: 'Make the brain more coherent.',
 			goals: ['ship dossiers', 'wake delta'],
-			next_actions: ['write migration']
+			next_actions: ['write migration'],
+			metadata: expect.objectContaining({
+				workspace_routing: expect.objectContaining({
+					repo_slug: 'brain-surgery',
+					local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery']
+				})
+			})
 		}));
 		expect(result.created).toBe(true);
 		expect(result.project.entity).toEqual(entity);
 		expect(result.project.dossier).toEqual(dossier);
+		expect(result.project.workspace_routing).toEqual(expect.objectContaining({
+			repo_slug: 'brain-surgery',
+			local_paths: ['/Users/falco/AI/rainer-workspace/brain-surgery']
+		}));
 	});
 
 	it('gets a single hydrated project dossier', async () => {
@@ -89,6 +106,28 @@ describe('project dossiers v2 tool', () => {
 
 		expect(storage.getProjectDossier).toHaveBeenCalledWith(entity.id);
 		expect(result.project).toEqual({ entity, dossier });
+	});
+
+	it('rejects unsafe canonical repo URL schemes in workspace routing', async () => {
+		const storage = {
+			findEntityByName: vi.fn(),
+			createEntity: vi.fn(),
+			createProjectDossier: vi.fn()
+		};
+
+		const result = await handleProjectTool('mind_project', {
+			action: 'create',
+			name: 'Unsafe Routing',
+			workspace_routing: {
+				repo_slug: 'unsafe/routing',
+				canonical_repo_url: 'javascript:alert(1)'
+			}
+		}, { storage: storage as any });
+
+		expect(result.error).toMatch(/canonical_repo_url/i);
+		expect(storage.findEntityByName).not.toHaveBeenCalled();
+		expect(storage.createEntity).not.toHaveBeenCalled();
+		expect(storage.createProjectDossier).not.toHaveBeenCalled();
 	});
 
 	it('returns the existing project id instead of duplicate-creating', async () => {
@@ -118,7 +157,9 @@ describe('project dossiers v2 tool', () => {
 
 		const storage = {
 			listProjectDossiers: vi.fn(async () => [dossier]),
-			findEntityById: vi.fn(async () => entity)
+			findEntityById: vi.fn(async () => entity),
+			findEntitiesByIds: vi.fn(async () => [entity]),
+			listEntities: vi.fn()
 		};
 
 		const result = await handleProjectTool('mind_project', {
@@ -128,13 +169,18 @@ describe('project dossiers v2 tool', () => {
 
 		expect(result.count).toBe(1);
 		expect(result.projects[0]).toEqual({ entity, dossier });
+		expect(storage.findEntitiesByIds).toHaveBeenCalledWith([entity.id]);
+		expect(storage.findEntityById).not.toHaveBeenCalled();
+		expect(storage.listEntities).not.toHaveBeenCalled();
 	});
 
 	it('filters out dossiers whose project entity is missing during list hydration', async () => {
 		const dossier = makeDossier();
 		const storage = {
 			listProjectDossiers: vi.fn(async () => [dossier]),
-			findEntityById: vi.fn(async () => null)
+			findEntitiesByIds: vi.fn(async () => []),
+			findEntityById: vi.fn(async () => null),
+			listEntities: vi.fn()
 		};
 
 		const result = await handleProjectTool('mind_project', {
@@ -143,6 +189,28 @@ describe('project dossiers v2 tool', () => {
 
 		expect(result.count).toBe(0);
 		expect(result.projects).toEqual([]);
+		expect(storage.findEntitiesByIds).toHaveBeenCalledWith([dossier.project_entity_id]);
+		expect(storage.findEntityById).not.toHaveBeenCalled();
+		expect(storage.listEntities).not.toHaveBeenCalled();
+	});
+
+	it('hydrates project list with one entity scan when batch lookup is unavailable', async () => {
+		const entity = makeEntity();
+		const dossier = makeDossier({ project_entity_id: entity.id });
+		const storage = {
+			listProjectDossiers: vi.fn(async () => [dossier]),
+			listEntities: vi.fn(async () => [entity]),
+			findEntityById: vi.fn()
+		};
+
+		const result = await handleProjectTool('mind_project', {
+			action: 'list'
+		}, { storage: storage as any });
+
+		expect(result.count).toBe(1);
+		expect(result.projects[0]).toEqual({ entity, dossier });
+		expect(storage.listEntities).toHaveBeenCalledWith({ entity_type: 'project' });
+		expect(storage.findEntityById).not.toHaveBeenCalled();
 	});
 
 	it('updates dossier fields and project entity metadata', async () => {
@@ -167,7 +235,12 @@ describe('project dossiers v2 tool', () => {
 			tags: ['brain', 'wake'],
 			primary_context: 'Sharper wake intelligence',
 			summary: 'Wake delta is online.',
-			next_actions: ['write tests']
+			next_actions: ['write tests'],
+			workspace_routing: {
+				repo_slug: 'brain-surgery',
+				artifact_roots: ['/tmp/artifacts'],
+				test_commands: ['npm test']
+			}
 		}, { storage: storage as any });
 
 		expect(storage.updateEntity).toHaveBeenCalledWith(entity.id, expect.objectContaining({
@@ -176,11 +249,22 @@ describe('project dossiers v2 tool', () => {
 		}));
 		expect(storage.updateProjectDossier).toHaveBeenCalledWith(entity.id, expect.objectContaining({
 			summary: 'Wake delta is online.',
-			next_actions: ['write tests']
+			next_actions: ['write tests'],
+			metadata: expect.objectContaining({
+				workspace_routing: expect.objectContaining({
+					repo_slug: 'brain-surgery',
+					artifact_roots: ['/tmp/artifacts'],
+					test_commands: ['npm test']
+				})
+			})
 		}));
 		expect(result.updated).toBe(true);
 		expect(result.project.entity).toEqual(updatedEntity);
 		expect(result.project.dossier).toEqual(updatedDossier);
+		expect(result.project.workspace_routing).toEqual(expect.objectContaining({
+			repo_slug: 'brain-surgery',
+			artifact_roots: ['/tmp/artifacts']
+		}));
 	});
 
 	it('rejects oversized metadata before creating a project entity', async () => {

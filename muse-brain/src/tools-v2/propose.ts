@@ -9,13 +9,33 @@
 
 import { generateId, getTimestamp, toStringArray } from "../helpers";
 import { RESONANCE_TYPES } from "../constants";
-import type { Link, Observation } from "../types";
+import type { DaemonProposalType, Link, Observation } from "../types";
 import type { ToolContext } from "./context";
+
+const PROPOSAL_TYPES: DaemonProposalType[] = [
+	"link",
+	"orphan_rescue",
+	"consolidation",
+	"dedup",
+	"cross_agent",
+	"cross_tenant",
+	"paradox_detected",
+	"skill_recapture",
+	"skill_supersession",
+	"skill_promotion",
+	"recall_contract",
+	"fact_commitment",
+	"project_routing_update",
+	"project_routing_drift",
+	"missing_artifact_receipt",
+	"stale_deploy_command",
+	"path_alias_conflict"
+];
 
 export const TOOL_DEFS = [
 	{
 		name: "mind_propose",
-		description: "Review and manage daemon-generated proposals. action=list: see pending proposals (types: link, orphan_rescue, consolidation, dedup, cross_agent, cross_tenant, paradox_detected, skill_recapture, skill_supersession, skill_promotion, recall_contract, fact_commitment). action=review: accept or reject a proposal (link → bidirectional link; orphan_rescue → rescue or archive; consolidation → skill observation + metabolize sources). action=stats: acceptance statistics.",
+		description: "Review and manage daemon-generated proposals. action=list: see pending proposals (types: link, orphan_rescue, consolidation, dedup, cross_agent, cross_tenant, paradox_detected, skill_recapture, skill_supersession, skill_promotion, recall_contract, fact_commitment, project_routing_update, project_routing_drift, missing_artifact_receipt, stale_deploy_command, path_alias_conflict). action=review: accept or reject a proposal (link → bidirectional link; orphan_rescue → rescue or archive; consolidation → skill observation + metabolize sources). action=stats: acceptance statistics.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -27,7 +47,7 @@ export const TOOL_DEFS = [
 				// list params
 				type: {
 					type: "string",
-					enum: ["link", "orphan_rescue", "consolidation", "dedup", "cross_agent", "cross_tenant", "paradox_detected", "skill_recapture", "skill_supersession", "skill_promotion", "recall_contract", "fact_commitment"],
+					enum: PROPOSAL_TYPES,
 					description: "[list] Filter by proposal type"
 				},
 				status: {
@@ -293,6 +313,30 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 
 						await storage.appendToTerritory("craft", skillObs);
 
+						const capturedSkill = await storage.createCapturedSkillArtifact({
+							skill_key: buildDerivedSkillKey(storage.getTenant(), agentName, candidateId ?? proposal.id),
+							layer: "derived",
+							status: "candidate",
+							name: `Consolidated learning: ${agentName}`,
+							domain: "agent-learning",
+							task_type: "consolidation",
+							agent_tenant: storage.getTenant(),
+							source_observation_id: skillObs.id,
+							provenance: {
+								proposal_id: proposal.id,
+								consolidation_candidate_id: candidateId,
+								source_observation_ids: sourceObsIds,
+								metabolized_observation_ids: metabolized
+							},
+							metadata: {
+								agent_entity_id: agentId,
+								agent_name: agentName,
+								pattern_description: candidate?.pattern_description,
+								rationale: proposal.rationale,
+								review_gate: "candidate_requires_mind_skill_review"
+							}
+						});
+
 						// Update the agent entity's primary_context if we have an agent ID
 						if (agentId) {
 							await storage.updateEntity(agentId, {
@@ -304,8 +348,10 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 							reviewed: true,
 							decision: "accepted",
 							proposal_id: reviewed.id,
-							action_taken: "created_skill_observation",
+							action_taken: "created_skill_observation_and_candidate_artifact",
 							skill_observation_id: skillObs.id,
+							captured_skill_id: capturedSkill.id,
+							captured_skill_status: capturedSkill.status,
 							metabolized_count: metabolized.length,
 							metabolized_ids: metabolized,
 							candidate_id: candidateId
@@ -377,6 +423,15 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 		default:
 			throw new Error(`Unknown propose tool: ${name}`);
 	}
+}
+
+function buildDerivedSkillKey(tenant: string, agentName: string, sourceId: string): string {
+	const slug = `${agentName}-${sourceId}`
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 80);
+	return `derived:${tenant}:${slug || "agent-consolidation"}`;
 }
 
 

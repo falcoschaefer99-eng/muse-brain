@@ -1,4 +1,6 @@
 import type { RetrievalProfile } from "../retrieval/query-signals";
+import type { RetrievalRerankMode } from "../retrieval/rerank";
+import type { Observation } from "../types";
 
 export interface BenchmarkDocument {
 	id: string;
@@ -7,6 +9,8 @@ export interface BenchmarkDocument {
 	type?: string;
 	context?: string;
 	tags?: string[];
+	territory?: string;
+	texture?: Observation["texture"];
 }
 
 export interface BenchmarkCase {
@@ -28,6 +32,8 @@ export interface BenchmarkRunConfig {
 	top_k: number[];
 	result_limit: number;
 	min_similarity: number;
+	rerank_mode?: RetrievalRerankMode;
+	rerank_top_n?: number;
 }
 
 export interface BenchmarkCaseResult {

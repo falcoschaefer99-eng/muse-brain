@@ -183,3 +183,16 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# ── Benchmark artifacts (never commit — binary/generated, ~393MB) ──
+benchmarks/data/
+benchmarks/results/
+*.sqlite
+.bench-dist/
+
+# Private operational docs (Rainer session artifacts / handovers)
+architect/
+ops/
+
+# Repo-receipt-sync local state
+.repo-receipt-sync-state.json

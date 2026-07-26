@@ -45,7 +45,10 @@ import type {
 	CapturedSkillArtifact,
 	CapturedSkillArtifactCreate,
 	CapturedSkillArtifactFilter,
-	CapturedSkillRegistryHealth
+	CapturedSkillRegistryHealth,
+	AgentLeaseRecord,
+	AgentAuditEvent,
+	AgentAuditEventFilter
 } from "../types";
 
 import {
@@ -70,6 +73,7 @@ import {
 	computeRetrievalHintMatch,
 	deriveQueryHintTerms
 } from "../retrieval/hints";
+import { applyRetrievalRerank } from "../retrieval/rerank";
 
 import type {
 	IBrainStorage,
@@ -138,6 +142,8 @@ const KV_KEYS = {
 	runtime_sessions: "runtime_sessions",
 	runtime_runs: "runtime_runs",
 	runtime_policies: "runtime_policies",
+	agent_leases: "agent_leases",
+	agent_audit_events: "agent_audit_events",
 	memory_cascade: "memory_cascade",
 	retrieval_hints: "retrieval_hints",
 	limbic_config: "limbic_config"
@@ -493,6 +499,7 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		let rows = (await this.readCollection<StoredObservation>(KV_KEYS.observations)).map(o => this.normalizeObservation(o));
 
 		if (filter.territory) rows = rows.filter(o => o.territory === filter.territory);
+		if (filter.entity_id) rows = rows.filter(o => o.entity_id === filter.entity_id);
 		if (filter.grip) rows = rows.filter(o => o.texture?.grip === filter.grip);
 		if (filter.charges_all?.length) rows = rows.filter(o => filter.charges_all!.every(c => o.texture?.charge?.includes(c)));
 		if (filter.charges_any?.length) rows = rows.filter(o => filter.charges_any!.some(c => o.texture?.charge?.includes(c)));
@@ -820,7 +827,17 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		}
 
 		results.sort((a, b) => b.score - a.score);
-		return results.slice(0, limit);
+		const reranked = await applyRetrievalRerank({
+			query: options.query,
+			retrieval_profile: retrievalProfile,
+			query_signals: querySignals,
+			results,
+			options: {
+				mode: options.rerank_mode ?? "off",
+				top_n: options.rerank_top_n
+			}
+		});
+		return reranked.results.slice(0, limit);
 	}
 
 	async recordMemoryCascade(observationIds: string[]): Promise<void> {
@@ -2108,6 +2125,133 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		};
 	}
 
+	// ============ AGENT HOUSE TRUST LAYER (v1.8) ============
+
+	async recordAgentLease(
+		lease: Omit<AgentLeaseRecord, "id" | "tenant_id" | "created_at" | "updated_at">
+	): Promise<AgentLeaseRecord> {
+		const rows = await this.readCollection<AgentLeaseRecord>(KV_KEYS.agent_leases);
+		const now = nowIso();
+		const existingIndex = rows.findIndex(row => row.lease_id === lease.lease_id);
+		const next: AgentLeaseRecord = {
+			id: existingIndex >= 0 ? rows[existingIndex].id : generateId("lease_rec"),
+			tenant_id: this.tenant,
+			lease_id: lease.lease_id,
+			agent_id: lease.agent_id,
+			platform: lease.platform,
+			session_id: lease.session_id,
+			run_id: lease.run_id,
+			parent_lease_id: lease.parent_lease_id,
+			delegation_chain: lease.delegation_chain ?? [],
+			capabilities: lease.capabilities ?? [],
+			scope: lease.scope ?? {},
+			status: lease.status ?? "active",
+			issued_at: lease.issued_at,
+			expires_at: lease.expires_at,
+			last_heartbeat_at: lease.last_heartbeat_at,
+			process_id: lease.process_id,
+			metadata: lease.metadata ?? {},
+			created_at: existingIndex >= 0 ? rows[existingIndex].created_at : now,
+			updated_at: now
+		};
+		if (existingIndex >= 0) rows[existingIndex] = next;
+		else rows.push(next);
+		await this.writeCollection(KV_KEYS.agent_leases, rows);
+		return next;
+	}
+
+	async getAgentLease(leaseId: string): Promise<AgentLeaseRecord | null> {
+		const rows = await this.readCollection<AgentLeaseRecord>(KV_KEYS.agent_leases);
+		return rows.find(row => row.lease_id === leaseId) ?? null;
+	}
+
+	async heartbeatAgentLease(leaseId: string, processId?: string): Promise<AgentLeaseRecord | null> {
+		const rows = await this.readCollection<AgentLeaseRecord>(KV_KEYS.agent_leases);
+		const idx = rows.findIndex(row => row.lease_id === leaseId && row.status === "active");
+		if (idx < 0) return null;
+		rows[idx] = {
+			...rows[idx],
+			last_heartbeat_at: nowIso(),
+			process_id: processId ?? rows[idx].process_id,
+			updated_at: nowIso()
+		};
+		await this.writeCollection(KV_KEYS.agent_leases, rows);
+		return rows[idx];
+	}
+
+	async expireAgentLeasesForProcess(processId: string, status: "expired" | "revoked" = "expired"): Promise<number> {
+		const rows = await this.readCollection<AgentLeaseRecord>(KV_KEYS.agent_leases);
+		const now = nowIso();
+		let changed = 0;
+		const next = rows.map(row => {
+			if (row.process_id === processId && row.status === "active") {
+				changed += 1;
+				return { ...row, status, updated_at: now };
+			}
+			return row;
+		});
+		if (changed > 0) await this.writeCollection(KV_KEYS.agent_leases, next);
+		return changed;
+	}
+
+	async reapExpiredAgentLeases(nowIsoValue?: string): Promise<number> {
+		const rows = await this.readCollection<AgentLeaseRecord>(KV_KEYS.agent_leases);
+		const now = nowIsoValue ?? nowIso();
+		const nowMs = toMillis(now);
+		let changed = 0;
+		const next = rows.map(row => {
+			if (row.status === "active" && toMillis(row.expires_at) <= nowMs) {
+				changed += 1;
+				return { ...row, status: "expired" as const, updated_at: now };
+			}
+			return row;
+		});
+		if (changed > 0) await this.writeCollection(KV_KEYS.agent_leases, next);
+		return changed;
+	}
+
+	async createAgentAuditEvent(
+		event: Omit<AgentAuditEvent, "id" | "tenant_id" | "created_at">
+	): Promise<AgentAuditEvent> {
+		const created: AgentAuditEvent = {
+			id: generateId("audit_evt"),
+			tenant_id: this.tenant,
+			event_type: event.event_type,
+			actor_agent_id: event.actor_agent_id,
+			lease_id: event.lease_id,
+			platform: event.platform,
+			session_id: event.session_id,
+			run_id: event.run_id,
+			delegation_chain: event.delegation_chain ?? [],
+			operation: event.operation,
+			tool_name: event.tool_name,
+			resource: event.resource ?? {},
+			result: event.result,
+			reason: event.reason,
+			payload_hash: event.payload_hash,
+			diff: event.diff ?? {},
+			metadata: event.metadata ?? {},
+			created_at: nowIso()
+		};
+		const rows = await this.readCollection<AgentAuditEvent>(KV_KEYS.agent_audit_events);
+		rows.push(created);
+		await this.writeCollection(KV_KEYS.agent_audit_events, rows);
+		return created;
+	}
+
+	async listAgentAuditEvents(filter: AgentAuditEventFilter = {}): Promise<AgentAuditEvent[]> {
+		const createdAfterMs = filter.created_after ? toMillis(filter.created_after) : 0;
+		const cap = Math.max(1, Math.min(filter.limit ?? 50, 200));
+		let rows = await this.readCollection<AgentAuditEvent>(KV_KEYS.agent_audit_events);
+		if (filter.event_type) rows = rows.filter(row => row.event_type === filter.event_type);
+		if (filter.actor_agent_id) rows = rows.filter(row => row.actor_agent_id === filter.actor_agent_id);
+		if (filter.lease_id) rows = rows.filter(row => row.lease_id === filter.lease_id);
+		if (filter.result) rows = rows.filter(row => row.result === filter.result);
+		if (createdAfterMs > 0) rows = rows.filter(row => toMillis(row.created_at) >= createdAfterMs);
+		return rows
+			.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at))
+			.slice(0, cap);
+	}
 	// ============ LIMBIC CONFIG (Phase 1) ============
 
 	async getLimbicConfig(): Promise<{ enabled: boolean; natal: unknown } | null> {

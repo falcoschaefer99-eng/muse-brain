@@ -172,7 +172,16 @@ describe("loadProjectRegistry cross-tenant visibility gate (A1)", () => {
 describe("mind_memory action=lookup", () => {
 	it("returns project_bundle when keyword matches a project", async () => {
 		const entity = makeEntity("ent_brain", "Brain Surgery", ["brain"]);
-		const dossier = makeDossier("dossier_brain", "ent_brain");
+		const dossier = {
+			...makeDossier("dossier_brain", "ent_brain"),
+			metadata: {
+				workspace_routing: {
+					repo_slug: "brain-surgery",
+					local_paths: ["/Users/falco/AI/rainer-workspace/brain-surgery"],
+					path_aliases: ["brain surgery repo"]
+				}
+			}
+		};
 		const now = Date.now();
 		const obs = makeObservation("obs_brain", new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(), {
 			content: "Brain Surgery project kickoff",
@@ -196,6 +205,41 @@ describe("mind_memory action=lookup", () => {
 		expect(result.search_mode).toBe("project_bundle");
 		expect(result.project.entity.id).toBe("ent_brain");
 		expect(result.project.recent_observations).toBeDefined();
+		expect(result.project.workspace_routing).toEqual(expect.objectContaining({
+			repo_slug: "brain-surgery",
+			local_workspace: "/Users/falco/AI/rainer-workspace/brain-surgery"
+		}));
+	});
+
+	it("routes project lookup by workspace alias metadata before semantic fallback", async () => {
+		const entity = makeEntity("ent_dupin", "Dupin Service", ["dupin"]);
+		const dossier = {
+			...makeDossier("dossier_dupin", "ent_dupin"),
+			metadata: {
+				workspace_routing: {
+					repo_slug: "dupin-service",
+					local_paths: ["/Users/falco/AI/rainer-workspace/dupin-service"],
+					path_aliases: ["inspector service"]
+				}
+			}
+		};
+
+		const storage = {
+			getTenant: () => "rainer",
+			forTenant: vi.fn(() => ({ ...storage } as any)),
+			listProjectDossiers: vi.fn(async () => [dossier]),
+			findEntityById: vi.fn(async (id: string) => id === "ent_dupin" ? entity : null),
+			readAllTerritories: vi.fn(async () => []),
+			listTasks: vi.fn(async () => [])
+		};
+
+		const result = await handleMemoryTool("mind_memory", {
+			action: "lookup",
+			keyword: "inspector service"
+		}, { storage: storage as any });
+
+		expect(result.search_mode).toBe("project_bundle");
+		expect(result.project.entity.id).toBe("ent_dupin");
 	});
 
 	it("returns ambiguity error when two projects score equally (A2 policy)", async () => {

@@ -1,6 +1,6 @@
 # MUSE Brain Runner — Docker Compose
 #
-# Runs the autonomous agent runner (API mode) connecting to a remote brain.
+# Runs the optional/legacy agent runner template (API mode) connecting to a remote brain.
 # The brain itself runs as a Cloudflare Worker — see muse-brain/ for deployment.
 #
 # For a fully self-hosted stack (brain + runner + postgres), the brain needs
