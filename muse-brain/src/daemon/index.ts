@@ -1,6 +1,6 @@
 // ============ DAEMON ORCHESTRATOR (Sprint 4 + Sprint 6 + Sprint 7) ============
 // Runs all daemon intelligence tasks in order.
-// Execution order: proposals → learning → cascade → orphans → kit-hygiene → skill-health → cross-agent → cross-tenant → paradox-detection → recall-contracts → task-scheduling.
+// Execution order: proposals → learning → cascade → orphans → absorption → kit-hygiene → skill-health → cross-agent → cross-tenant → paradox-detection → recall-contracts → task-scheduling.
 // Proposals first — it's the primary feature and uses the fewest subrequests.
 // Each task is isolated — failures don't cascade.
 
@@ -10,6 +10,7 @@ import type { DaemonTaskResult } from "./types";
 
 import { runCascadeTask } from "./tasks/cascade";
 import { runOrphanTask } from "./tasks/orphans";
+import { runAbsorptionTask } from "./tasks/absorption";
 import { runProposalTask } from "./tasks/proposals";
 import { runLearningTask } from "./tasks/learning";
 import { runKitHygieneTask } from "./tasks/kit-hygiene";
@@ -72,6 +73,19 @@ export async function runDaemonTasks(
 	} catch (err) {
 		results.push({
 			task: "orphans",
+			changes: 0,
+			proposals_created: 0,
+			error: err instanceof Error ? err.message : "unknown error"
+		});
+	}
+
+	// 4.5. Auto-absorption — digest high-confidence proposals immediately
+	try {
+		const result = await runAbsorptionTask(storage);
+		results.push(result);
+	} catch (err) {
+		results.push({
+			task: "absorption",
 			changes: 0,
 			proposals_created: 0,
 			error: err instanceof Error ? err.message : "unknown error"
