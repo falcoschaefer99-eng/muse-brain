@@ -8,10 +8,13 @@
 import type { IBrainStorage } from "../../storage/interface";
 import type { DaemonTaskResult } from "../types";
 
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 50;
 
 export async function runProposalTask(storage: IBrainStorage): Promise<DaemonTaskResult> {
 	let proposals_created = 0;
+
+	const expired = await storage.expireStaleProposals(30);
+	if (expired > 0) console.log(`Proposals: auto-expired ${expired} stale pending proposal(s)`);
 
 	// Read config: threshold + tenant weights
 	const config = await storage.readDaemonConfig();

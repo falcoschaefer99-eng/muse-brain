@@ -1390,6 +1390,10 @@ export class SQLiteBrainStorage implements IBrainStorage {
 		return set;
 	}
 
+	async expireStaleProposals(_days: number): Promise<number> {
+		return 0;
+	}
+
 	// ============ ORPHANS ============
 
 	async markOrphan(observationId: string): Promise<void> {
@@ -1452,6 +1456,14 @@ export class SQLiteBrainStorage implements IBrainStorage {
 			...current,
 			link_proposal_threshold: threshold,
 			last_threshold_update: nowIso()
+		});
+	}
+
+	async updateDaemonConfigData(data: Record<string, unknown>): Promise<void> {
+		const current = await this.readDaemonConfig();
+		await this.writeValue(KV_KEYS.daemon_config, {
+			...current,
+			data: { ...(current.data as Record<string, unknown>), ...data }
 		});
 	}
 

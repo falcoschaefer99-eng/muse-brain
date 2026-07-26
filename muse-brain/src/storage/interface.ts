@@ -417,6 +417,8 @@ export interface IBrainStorage {
 	proposalExists(type: string, sourceId: string, targetId: string): Promise<boolean>;
 	/** Batch-check whether proposals exist for multiple (type, source, target) triples. Returns a Set of keys that exist. */
 	batchProposalExists(checks: Array<{ type: string; sourceId: string; targetId: string }>): Promise<Set<string>>;
+	/** Auto-reject proposals that have been pending for more than the given number of days. Returns the count expired. */
+	expireStaleProposals(days: number): Promise<number>;
 
 	// --- Orphan Management ---
 
@@ -429,6 +431,8 @@ export interface IBrainStorage {
 
 	readDaemonConfig(): Promise<DaemonConfig>;
 	updateProposalThreshold(threshold: number): Promise<void>;
+	/** Merge-replace the daemon_config.data JSON blob (per-tenant free-form daemon state, e.g. last_ai_review). */
+	updateDaemonConfigData(data: Record<string, unknown>): Promise<void>;
 
 	// --- Health Queries ---
 

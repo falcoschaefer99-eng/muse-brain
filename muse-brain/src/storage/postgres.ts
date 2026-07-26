@@ -2811,11 +2811,13 @@ export class PostgresBrainStorage implements IBrainStorage {
 			for (const row of rows) {
 				const total = row.total as number;
 				const accepted = row.accepted as number;
+				const rejected = row.rejected as number;
+				const reviewed = accepted + rejected;
 				result[row.proposal_type as string] = {
 					total,
 					accepted,
-					rejected: row.rejected as number,
-					ratio: total > 0 ? accepted / total : 0
+					rejected,
+					ratio: reviewed > 0 ? accepted / reviewed : 0
 				};
 			}
 			return result;
@@ -2867,6 +2869,23 @@ export class PostgresBrainStorage implements IBrainStorage {
 		} catch (err) {
 			console.error("batchProposalExists failed:", err instanceof Error ? err.message : "unknown error");
 			return new Set();
+		}
+	}
+
+	async expireStaleProposals(days: number): Promise<number> {
+		try {
+			const rows = await this.sql`
+				UPDATE daemon_proposals
+				SET status = 'rejected', feedback_note = 'Auto-expired: pending > ' || ${days}::text || ' days'
+				WHERE tenant_id = ${this.tenant}
+				  AND status = 'pending'
+				  AND proposed_at < NOW() - (${days}::text || ' days')::interval
+				RETURNING id
+			`;
+			return rows.length;
+		} catch (err) {
+			console.error("expireStaleProposals failed:", err instanceof Error ? err.message : "unknown error");
+			return 0;
 		}
 	}
 
@@ -2972,6 +2991,21 @@ export class PostgresBrainStorage implements IBrainStorage {
 		} catch (err) {
 			console.error("updateProposalThreshold failed:", err instanceof Error ? err.message : "unknown error");
 			throw new Error("Failed to update proposal threshold");
+		}
+	}
+
+	async updateDaemonConfigData(data: Record<string, unknown>): Promise<void> {
+		try {
+			const serialized = JSON.stringify(data);
+			await this.sql`
+				INSERT INTO daemon_config (tenant_id, data)
+				VALUES (${this.tenant}, ${serialized}::jsonb)
+				ON CONFLICT (tenant_id)
+				DO UPDATE SET data = ${serialized}::jsonb
+			`;
+		} catch (err) {
+			console.error("updateDaemonConfigData failed:", err instanceof Error ? err.message : "unknown error");
+			throw new Error("Failed to update daemon config data");
 		}
 	}
 
