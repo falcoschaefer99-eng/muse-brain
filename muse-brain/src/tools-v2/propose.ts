@@ -392,6 +392,7 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 							task
 						};
 					}
+				}
 
 				// Rejection or unknown type — just return the reviewed status
 				return {
@@ -400,7 +401,6 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					proposal_id: reviewed.id,
 					action_taken: args.decision === "rejected" ? "rejected" : "none"
 				};
-			}
 			}
 
 			// --- stats ---
