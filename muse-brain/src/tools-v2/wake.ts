@@ -200,8 +200,6 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 			if (overviews.length === 0) {
 				quickWake = await runQuickWake(storage, letters, loops, state, subconscious, pendingTasks);
 			} else {
-				const cutoff48h = now - (48 * 60 * 60 * 1000);
-
 				const territories: Record<string, number> = {};
 				let totalObs = 0;
 				const territoriesWithRecent: string[] = [];
@@ -216,34 +214,24 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 				if (territoriesWithRecent.length === overviews.length) {
 					quickWake = await runQuickWake(storage, letters, loops, state, subconscious, pendingTasks);
 				} else {
-					// Load only territories with recent activity
+					// Load territories active within the 7d window — a superset of the 48h-recent
+					// set. This is provably sufficient: a territory whose last_activity predates the
+					// 7d cutoff cannot contain any observation newer than that cutoff, so it's safe to
+					// skip. Needed so the adaptive 48h→7d widen (Defect 2) and the recent-iron lane
+					// (Defect 1, which always scans 7d for iron/strong grip) have real data to work with.
+					const cutoff7d = now - (7 * 24 * 60 * 60 * 1000);
+					const territories7d = overviews
+						.filter(ov => {
+							try { return new Date(ov.last_activity).getTime() > cutoff7d; } catch { return false; }
+						})
+						.map(ov => ov.territory);
+
 					const recentTerritoryData = await Promise.all(
-						territoriesWithRecent.map(async t => ({
+						territories7d.map(async t => ({
 							territory: t,
 							observations: await storage.readTerritory(t)
 						}))
 					);
-
-					const recent: any[] = [];
-					for (const { territory, observations } of recentTerritoryData) {
-						for (const obs of observations) {
-							try {
-								const created = new Date(obs.created).getTime();
-								if (created > cutoff48h) {
-									recent.push({
-										id: obs.id,
-										territory,
-										glimpse: obs.content.slice(0, 120) + (obs.content.length > 120 ? "..." : ""),
-										charge: obs.texture?.charge || [],
-										somatic: obs.texture?.somatic,
-										grip: obs.texture?.grip,
-										created: obs.created
-									});
-								}
-							} catch { /* skip invalid date */ }
-						}
-					}
-					recent.sort((a, b) => (b.created || "") > (a.created || "") ? 1 : -1);
 
 					// Iron grip from pre-computed index
 					const sortedIron = [...ironIndex].sort((a, b) => b.pull - a.pull);
@@ -255,6 +243,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 						charge: entry.charges
 					}));
 
+					const pullingIds = new Set(topPulls.map(p => p.id));
+					const { recent, recentWindow, recentGrip } = buildRecencyLanes(recentTerritoryData, pullingIds, now);
+
 					const recentCharges: Record<string, number> = {};
 					const recentSomatic: Record<string, number> = {};
 					for (const r of recent) {
@@ -265,6 +256,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 					const activeLoops = loops.filter(l => !["resolved", "abandoned"].includes(l.status));
 					const burning = activeLoops.filter(l => l.status === "burning");
 					const nagging = activeLoops.filter(l => l.status === "nagging");
+
+					const unreadLetters = letters.filter(l => !l.read && l.to_context === "chat");
 
 					quickWake = {
 						timestamp: getTimestamp(),
@@ -283,7 +276,9 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								somatic: Object.entries(recentSomatic).sort((a, b) => b[1] - a[1]).slice(0, 3)
 							}
 						},
+						recent_window: recentWindow,
 						pulling: topPulls,
+						recent_grip: recentGrip,
 						loops: {
 							burning: burning.length,
 							nagging: nagging.length,
@@ -293,7 +288,8 @@ export async function handleTool(name: string, args: any, context: ToolContext):
 								content: l.content.slice(0, 80)
 							}))
 						},
-						unread_letters: letters.filter(l => !l.read && l.to_context === "chat").length,
+						unread_letters: unreadLetters.length,
+						unread_letter_preview: buildUnreadLetterPreview(unreadLetters),
 						subconscious: subconscious ? {
 							hot_entities: subconscious.hot_entities?.slice(0, 3) ?? [],
 							mood_inference: subconscious.mood_inference,
@@ -420,10 +416,8 @@ async function runQuickWake(
 	]);
 
 	const now = Date.now();
-	const cutoff48h = now - (48 * 60 * 60 * 1000);
 
 	const territories: Record<string, number> = {};
-	const recent: any[] = [];
 	const ironGrip: { obs: Observation; territory: string; pull: number }[] = [];
 	const noveltyPool: { obs: Observation; territory: string; novelty: number }[] = [];
 	let totalObs = 0;
@@ -433,21 +427,6 @@ async function runQuickWake(
 		totalObs += observations.length;
 
 		for (const obs of observations) {
-			try {
-				const created = new Date(obs.created).getTime();
-				if (created > cutoff48h) {
-					recent.push({
-						id: obs.id,
-						territory,
-						glimpse: obs.content.slice(0, 120) + (obs.content.length > 120 ? "..." : ""),
-						charge: obs.texture?.charge || [],
-						somatic: obs.texture?.somatic,
-						grip: obs.texture?.grip,
-						created: obs.created
-					});
-				}
-			} catch { /* skip */ }
-
 			if (obs.texture?.grip === "iron") {
 				ironGrip.push({ obs, territory, pull: calculatePullStrength(obs) });
 			}
@@ -458,8 +437,6 @@ async function runQuickWake(
 			}
 		}
 	}
-
-	recent.sort((a, b) => (b.created || "") > (a.created || "") ? 1 : -1);
 
 	noveltyPool.sort((a, b) => b.novelty - a.novelty);
 	const topNovelty = noveltyPool.slice(0, 5).map(({ obs, territory, novelty }) => ({
@@ -480,6 +457,9 @@ async function runQuickWake(
 		charge: obs.texture?.charge || []
 	}));
 
+	const pullingIds = new Set(topPulls.map(p => p.id));
+	const { recent, recentWindow, recentGrip } = buildRecencyLanes(territoryData, pullingIds, now);
+
 	const recentCharges: Record<string, number> = {};
 	const recentSomatic: Record<string, number> = {};
 	for (const r of recent) {
@@ -490,6 +470,8 @@ async function runQuickWake(
 	const activeLoops = loops.filter(l => !["resolved", "abandoned"].includes(l.status));
 	const burning = activeLoops.filter(l => l.status === "burning");
 	const nagging = activeLoops.filter(l => l.status === "nagging");
+
+	const unreadLetters = letters.filter(l => !l.read && l.to_context === "chat");
 
 	return {
 		timestamp: getTimestamp(),
@@ -508,7 +490,9 @@ async function runQuickWake(
 				somatic: Object.entries(recentSomatic).sort((a, b) => b[1] - a[1]).slice(0, 3)
 			}
 		},
+		recent_window: recentWindow,
 		pulling: topPulls,
+		recent_grip: recentGrip,
 		novelty: topNovelty,
 		loops: {
 			burning: burning.length,
@@ -519,7 +503,8 @@ async function runQuickWake(
 				content: l.content.slice(0, 80)
 			}))
 		},
-		unread_letters: letters.filter(l => !l.read && l.to_context === "chat").length,
+		unread_letters: unreadLetters.length,
+		unread_letter_preview: buildUnreadLetterPreview(unreadLetters),
 		subconscious: subconscious ? {
 			hot_entities: subconscious.hot_entities?.slice(0, 3) ?? [],
 			mood_inference: subconscious.mood_inference,
@@ -705,5 +690,100 @@ function summarizePendingTasks(pendingTasks: Task[]) {
 			assigned_tenant: task.assigned_tenant,
 			scheduled_wake: task.scheduled_wake
 		}))
+	};
+}
+
+// Recency-aware slices of the wake payload. Deliberately kept separate from the
+// pull-ranked iron grip index (ironGrip/topPulls) upstream — Defect 1 fix is additive,
+// not a re-ranking, so old foundational anchors keep occupying `pulling` exactly as before.
+const RECENT_ADAPTIVE_MIN_ROWS = 5;
+const RECENT_GRIP_WINDOW_DAYS = 7;
+const RECENT_GRIP_LIMIT = 3;
+
+type RecencyLanes = {
+	recent: any[];
+	recentWindow: "48h" | "7d";
+	recentGrip: any[];
+};
+
+// Defect 2 (adaptive recent window): 48h is the default lens; if it yields fewer than
+// RECENT_ADAPTIVE_MIN_ROWS rows, widen to 7d and flag it so the caller knows which lens it got.
+// Defect 1 (recent-iron lane): a dedicated `recent_grip` slice — top iron/strong observations
+// from the last 7 days, ranked by pull, excluding anything already surfaced in `pulling`.
+function buildRecencyLanes(
+	territoryData: { territory: string; observations: Observation[] }[],
+	pullingIds: Set<string>,
+	nowMs: number
+): RecencyLanes {
+	const cutoff48h = nowMs - (48 * 60 * 60 * 1000);
+	const cutoff7d = nowMs - (RECENT_GRIP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+	const recent48h: any[] = [];
+	const recent7d: any[] = [];
+	const gripCandidates: { obs: Observation; territory: string; pull: number }[] = [];
+
+	for (const { territory, observations } of territoryData) {
+		for (const obs of observations) {
+			let createdMs: number;
+			try {
+				createdMs = new Date(obs.created).getTime();
+				if (Number.isNaN(createdMs)) continue;
+			} catch { continue; }
+
+			if (createdMs <= cutoff7d) continue;
+
+			const entry = {
+				id: obs.id,
+				territory,
+				glimpse: obs.content.slice(0, 120) + (obs.content.length > 120 ? "..." : ""),
+				charge: obs.texture?.charge || [],
+				somatic: obs.texture?.somatic,
+				grip: obs.texture?.grip,
+				created: obs.created
+			};
+			recent7d.push(entry);
+			if (createdMs > cutoff48h) recent48h.push(entry);
+
+			const grip = obs.texture?.grip;
+			if ((grip === "iron" || grip === "strong") && !pullingIds.has(obs.id)) {
+				gripCandidates.push({ obs, territory, pull: calculatePullStrength(obs) });
+			}
+		}
+	}
+
+	const useWideWindow = recent48h.length < RECENT_ADAPTIVE_MIN_ROWS;
+	const recent = useWideWindow ? recent7d : recent48h;
+	recent.sort((a, b) => (b.created || "") > (a.created || "") ? 1 : -1);
+
+	gripCandidates.sort((a, b) => b.pull - a.pull);
+	const recentGrip = gripCandidates.slice(0, RECENT_GRIP_LIMIT).map(({ obs, territory, pull }) => ({
+		id: obs.id,
+		territory,
+		summary: obs.summary || extractEssence(obs),
+		pull,
+		grip: obs.texture?.grip,
+		charge: obs.texture?.charge || [],
+		created: obs.created
+	}));
+
+	return {
+		recent,
+		recentWindow: useWideWindow ? "7d" : "48h",
+		recentGrip
+	};
+}
+
+// Defect 3: a stray unread letter is easy to miss behind a bare count. Surface a
+// read-only preview of the oldest unread letter (sender + first ~100 chars) so it can't
+// be quietly ignored. Never mutates `read` — that stays the reader's job.
+function buildUnreadLetterPreview(unreadLetters: Letter[]): { from: string; preview: string; timestamp: string } | null {
+	if (unreadLetters.length === 0) return null;
+
+	const oldest = [...unreadLetters].sort((a, b) => (a.timestamp || "") > (b.timestamp || "") ? 1 : -1)[0];
+
+	return {
+		from: oldest.from_context,
+		preview: oldest.content.slice(0, 100) + (oldest.content.length > 100 ? "..." : ""),
+		timestamp: oldest.timestamp
 	};
 }
