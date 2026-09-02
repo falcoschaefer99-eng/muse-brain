@@ -1,6 +1,6 @@
 {
 	"name": "muse-brain",
-	"version": "1.9.0",
+	"version": "1.10.0",
 	"description": "Relational memory substrate for AI agents with MCP tools, identity continuity, and self-hosted persistence.",
 	"keywords": [
 		"mcp",
